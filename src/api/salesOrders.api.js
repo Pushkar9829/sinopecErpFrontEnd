@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, apiUrl } from './client';
 
 export const salesOrdersApi = {
   list: () => api.get('/api/sales-orders'),
@@ -23,7 +23,7 @@ export const salesOrdersApi = {
 };
 
 export async function downloadSalesOrderFile(orderId, attachmentId, fileName) {
-  const response = await fetch(`/api/sales-orders/${orderId}/attachments/${attachmentId}/file`, {
+  const response = await fetch(apiUrl(`/api/sales-orders/${orderId}/attachments/${attachmentId}/file`), {
     credentials: 'include',
   });
   if (!response.ok) {

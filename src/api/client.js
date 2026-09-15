@@ -1,3 +1,10 @@
+const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+export function apiUrl(path) {
+  if (!path.startsWith('/')) return path;
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
+
 let refreshPromise = null;
 
 async function parseBody(response) {
@@ -13,7 +20,7 @@ async function parseBody(response) {
 async function request(path, options = {}, retry = true) {
   const { body, headers, ...rest } = options;
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     credentials: 'include',
     headers: {
       ...(isForm ? {} : { 'Content-Type': 'application/json' }),
@@ -31,7 +38,7 @@ async function request(path, options = {}, retry = true) {
   ) {
     refreshPromise =
       refreshPromise ||
-      fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }).finally(() => {
+      fetch(apiUrl('/api/auth/refresh'), { method: 'POST', credentials: 'include' }).finally(() => {
         refreshPromise = null;
       });
 
