@@ -1,3 +1,5 @@
+import { clearStoredTokens, getStoredTokens, setStoredTokens } from '../lib/authTokens';
+
 const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export function apiUrl(path) {
@@ -17,6 +19,11 @@ async function parseBody(response) {
   }
 }
 
+function authHeaders() {
+  const { accessToken } = getStoredTokens();
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+}
+
 async function request(path, options = {}, retry = true) {
   const { body, headers, ...rest } = options;
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -24,6 +31,7 @@ async function request(path, options = {}, retry = true) {
     credentials: 'include',
     headers: {
       ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+      ...authHeaders(),
       ...(headers || {}),
     },
     ...rest,
@@ -38,7 +46,31 @@ async function request(path, options = {}, retry = true) {
   ) {
     refreshPromise =
       refreshPromise ||
-      fetch(apiUrl('/api/auth/refresh'), { method: 'POST', credentials: 'include' }).finally(() => {
+      (async () => {
+        const { refreshToken } = getStoredTokens();
+        const refreshed = await fetch(apiUrl('/api/auth/refresh'), {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders(),
+          },
+          body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+        });
+        if (refreshed.ok) {
+          const payload = await parseBody(refreshed);
+          const data = payload.data !== undefined ? payload.data : payload;
+          if (data?.accessToken || data?.refreshToken) {
+            setStoredTokens({
+              accessToken: data.accessToken,
+              refreshToken: data.refreshToken,
+            });
+          }
+        } else {
+          clearStoredTokens();
+        }
+        return refreshed;
+      })().finally(() => {
         refreshPromise = null;
       });
 

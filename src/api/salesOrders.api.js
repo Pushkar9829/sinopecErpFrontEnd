@@ -1,4 +1,5 @@
 import { api, apiUrl } from './client';
+import { getStoredTokens } from '../lib/authTokens';
 
 export const salesOrdersApi = {
   list: () => api.get('/api/sales-orders'),
@@ -23,8 +24,10 @@ export const salesOrdersApi = {
 };
 
 export async function downloadSalesOrderFile(orderId, attachmentId, fileName) {
+  const { accessToken } = getStoredTokens();
   const response = await fetch(apiUrl(`/api/sales-orders/${orderId}/attachments/${attachmentId}/file`), {
     credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   });
   if (!response.ok) {
     throw new Error('Download failed');

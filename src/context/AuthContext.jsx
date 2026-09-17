@@ -42,11 +42,8 @@ export function AuthProvider({ children }) {
         return nextUser;
       },
       async logout() {
-        try {
-          await authApi.logout();
-        } finally {
-          setUser(null);
-        }
+        await authApi.logout();
+        setUser(null);
       },
     }),
     [user, loading]
