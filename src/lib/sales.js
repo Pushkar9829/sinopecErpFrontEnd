@@ -100,29 +100,32 @@ export const OPTION_GROUPS = [
   { id: 'productType', label: 'Product type', hint: 'Bag, roll, finished product' },
   { id: 'material', label: 'Material', hint: 'HDPE, LDPE, PP' },
   { id: 'unit', label: 'Unit', hint: 'pcs, kg, roll' },
-  { id: 'color', label: 'Color', hint: 'Blue, white, natural' },
+  { id: 'color', label: 'Color', hint: 'Red, black, green, golden' },
   { id: 'thickness', label: 'Thickness', hint: '40 micron, 50 micron' },
   { id: 'size', label: 'Size', hint: '20 × 30 inch' },
   { id: 'width', label: 'Width', hint: '20 inch, 500 mm' },
   { id: 'length', label: 'Length', hint: '30 inch, 800 m' },
   { id: 'rawMaterial', label: 'Raw material', hint: 'HDPE granules' },
-  { id: 'materialType', label: 'Material type', hint: 'Polymer, film' },
+  { id: 'materialType', label: 'Material type', hint: 'LD - Plain, LD - BST' },
   { id: 'materialGrade', label: 'Material grade', hint: 'Film grade' },
-  { id: 'additive', label: 'Additives', hint: 'UV stabilizer' },
-  { id: 'holeType', label: 'Hole type', hint: 'Round, die cut' },
+  { id: 'additive', label: 'Additives', hint: 'UV stabilizer, EVA' },
+  { id: 'specialRequirement', label: 'Special requirements', hint: 'Half Punch, as per sample' },
+  { id: 'holeType', label: 'Hole type', hint: 'Punch, Butterfly' },
+  { id: 'holeCount', label: 'No. of holes', hint: '1 to 6' },
   { id: 'holeSize', label: 'Hole size', hint: '8 mm' },
   { id: 'holePosition', label: 'Hole position', hint: 'Top centre' },
-  { id: 'tapeType', label: 'Tape type', hint: 'Adhesive' },
-  { id: 'printColor', label: 'Print colours', hint: 'Blue, White' },
+  { id: 'tapeType', label: 'Tape type', hint: '11mm Tape, PP line tape' },
+  { id: 'printImpression', label: 'Print impression', hint: '0+1, 1+1, 2+2' },
+  { id: 'printColor', label: 'Print colours', hint: 'Red, Black, Golden' },
   { id: 'printDesign', label: 'Print design', hint: 'Customer logo' },
 ];
 
 export const OPTION_LIST_SECTIONS = [
   { id: 'product', label: 'Product', groups: ['productType', 'material', 'unit'] },
   { id: 'size', label: 'Size & colour', groups: ['size', 'width', 'length', 'thickness', 'color'] },
-  { id: 'factory', label: 'Factory material', groups: ['rawMaterial', 'materialType', 'materialGrade', 'additive'] },
-  { id: 'print', label: 'Printing', groups: ['printColor', 'printDesign'] },
-  { id: 'finish', label: 'Holes & tape', groups: ['holeType', 'holeSize', 'holePosition', 'tapeType'] },
+  { id: 'factory', label: 'Rolling', groups: ['rawMaterial', 'materialType', 'materialGrade', 'additive', 'specialRequirement'] },
+  { id: 'print', label: 'Printing', groups: ['printImpression', 'printColor', 'printDesign'] },
+  { id: 'finish', label: 'Cutting / holes & tape', groups: ['holeType', 'holeCount', 'holeSize', 'holePosition', 'tapeType'] },
 ];
 
 export function canViewSalesOrders(can) {
@@ -316,9 +319,11 @@ export function emptyLineItem() {
       colors: '',
       design: '',
       requirement: '',
+      specialRequirements: '',
     },
-    holes: { required: false, count: '', type: '', size: '', position: '' },
+    holes: { required: false, count: '', type: '', size: '', position: '', specialRequirements: '' },
     tape: { required: false, type: '' },
+    image: { originalName: '', mimeType: '', dataUrl: '', url: '', key: '', storage: '' },
   };
 }
 
@@ -349,6 +354,7 @@ export function itemFromApi(item) {
     printing: { ...base.printing, ...(item.printing || {}) },
     holes: { ...base.holes, ...(item.holes || {}) },
     tape: { ...base.tape, ...(item.tape || {}) },
+    image: { ...base.image, ...(item.image || {}) },
   };
 }
 
@@ -384,9 +390,20 @@ export function itemToPayload(item) {
     manufacturing: item.manufacturing,
     roll: item.roll,
     bag: item.bag,
-    printing: { ...item.printing, required: routeHasPrint(item.productionRoute) || Boolean(item.printing?.required) },
+    printing: {
+      ...item.printing,
+      required: routeHasPrint(item.productionRoute) || Boolean(item.printing?.required),
+    },
     holes: { ...item.holes, required: Boolean(item.holes?.required) },
     tape: { ...item.tape, required: Boolean(item.tape?.required) },
+    image: {
+      originalName: item.image?.originalName || '',
+      mimeType: item.image?.mimeType || '',
+      dataUrl: item.image?.url ? '' : item.image?.dataUrl || '',
+      url: item.image?.url || '',
+      key: item.image?.key || '',
+      storage: item.image?.storage || '',
+    },
   };
 }
 

@@ -6,7 +6,6 @@ import { salesSettingsApi } from '../api/salesSettings.api';
 import { SalesOrderLineCard } from '../components/sales/SalesOrderLineCard';
 import { Field, Grid, Section, inputClass } from '../components/ui/FormField';
 import { PageHeader } from '../components/ui/PageHeader';
-import { Tabs } from '../components/ui/Tabs';
 import { usePermission } from '../hooks/usePermission';
 import {
   PAYMENT_METHODS,
@@ -125,6 +124,14 @@ export function SalesOrderForm() {
       shippingAddress: customer?.shippingAddress || prev.shippingAddress,
       deliveryLocation: customer?.shippingAddress || customer?.billingAddress || prev.deliveryLocation,
     }));
+
+    const attached = (customer?.products || []).map(itemFromApi);
+    if (attached.length) {
+      setItems(attached);
+      setTab('products');
+    } else if (!isEdit) {
+      setItems([emptyLineItem()]);
+    }
   }
 
   function payload() {
@@ -166,6 +173,30 @@ export function SalesOrderForm() {
     }
   }
 
+  const steps = useMemo(
+    () =>
+      [
+        { id: 'order', label: 'Order', hint: 'Customer & dates' },
+        { id: 'products', label: 'Product', hint: 'Line items', count: items.length },
+        { id: 'delivery', label: 'Delivery', hint: 'Address & payment' },
+        ...(showCommercial ? [{ id: 'totals', label: 'Total', hint: 'Amounts' }] : []),
+      ].map((step, index) => ({ ...step, number: index + 1 })),
+    [items.length, showCommercial]
+  );
+
+  const stepIndex = Math.max(
+    0,
+    steps.findIndex((step) => step.id === tab)
+  );
+  const currentStep = steps[stepIndex] || steps[0];
+  const isFirstStep = stepIndex <= 0;
+  const isLastStep = stepIndex >= steps.length - 1;
+
+  function goStep(direction) {
+    const next = steps[stepIndex + direction];
+    if (next) setTab(next.id);
+  }
+
   if (!loaded) {
     return <p className="text-sm text-slate">Loading sales order…</p>;
   }
@@ -174,7 +205,7 @@ export function SalesOrderForm() {
     <form onSubmit={handleSubmit} className="space-y-5">
       <PageHeader
         title={isEdit ? `Edit ${number}` : 'New sales order'}
-        subtitle="Save as draft. Submit from the order page when product, manufacturing, and delivery details are complete."
+        subtitle="Follow the steps: Order → Product → Delivery → Total. Save as draft anytime."
         backTo={isEdit ? `/sales-orders/${id}` : '/sales-orders'}
         backLabel={isEdit ? number : 'Sales orders'}
         actions={
@@ -188,23 +219,63 @@ export function SalesOrderForm() {
             </button>
           ) : null
         }
-        extra={
-          <Tabs
-            tabs={[
-              { id: 'order', label: 'Order', tone: 'info' },
-              { id: 'delivery', label: 'Delivery & payment', tone: 'warning' },
-              { id: 'products', label: 'Products', count: items.length, tone: 'accent' },
-              ...(showCommercial ? [{ id: 'totals', label: 'Totals', tone: 'success' }] : []),
-            ]}
-            value={tab}
-            onChange={setTab}
-          />
-        }
       />
+
+      <div className="rounded-xl border border-line bg-card p-3 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-2">
+          {steps.map((step, index) => {
+            const active = step.id === tab;
+            const done = index < stepIndex;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => setTab(step.id)}
+                className={`flex flex-1 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                  active
+                    ? 'border-accent bg-accent/10'
+                    : done
+                      ? 'border-emerald-200 bg-emerald-50/70 hover:border-accent'
+                      : 'border-line bg-paper/60 hover:border-accent'
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                    active
+                      ? 'bg-accent text-white'
+                      : done
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-white text-slate border border-line'
+                  }`}
+                >
+                  {done ? '✓' : step.number}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs uppercase tracking-wide text-slate">
+                    Step {step.number}
+                  </span>
+                  <span className="block truncate text-sm font-medium text-ink">
+                    {step.label}
+                    {step.count != null ? ` (${step.count})` : ''}
+                  </span>
+                  <span className="hidden text-xs text-slate sm:block">{step.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-sm text-slate">
+          <span className="font-medium text-ink">
+            Step {currentStep.number}: {currentStep.label}
+          </span>
+          {' — '}
+          {currentStep.hint}
+        </p>
+      </div>
 
         {tab === 'order' ? (
         <>
-        <Section title="Order">
+        <Section title={`Step ${steps.find((s) => s.id === 'order')?.number || 1} · Order`}>
           <Grid>
             {isEdit ? (
               <Field label="Sales order no.">
@@ -278,8 +349,64 @@ export function SalesOrderForm() {
         </>
         ) : null}
 
+        {tab === 'products' ? (
+        <Section
+          title={`Step ${steps.find((s) => s.id === 'products')?.number || 2} · Product`}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value=""
+                disabled={!canSave}
+                onChange={(event) => {
+                  const route = event.target.value;
+                  if (!route) return;
+                  setItems((prev) => prev.map((item) => applyRoute(item, route)));
+                }}
+                className={`${inputClass} mt-0 w-64`}
+              >
+                <option value="">Set flow on all products</option>
+                {PRODUCTION_ROUTES.map((route) => (
+                  <option key={route.id} value={route.id}>
+                    {route.label}
+                  </option>
+                ))}
+              </select>
+              {canSave ? (
+                <button
+                  type="button"
+                  onClick={() => setItems((prev) => [...prev, emptyLineItem()])}
+                  className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-paper"
+                >
+                  Add product
+                </button>
+              ) : null}
+            </div>
+          }
+        >
+          <p className="mb-3 text-xs text-slate">
+            Customer products load automatically when you pick a customer. New products added here are saved onto that customer for next time.
+          </p>
+          <div className="space-y-4">
+            {items.map((item, index) => (
+              <SalesOrderLineCard
+                key={item.id || index}
+                item={item}
+                index={index}
+                showCommercial={showCommercial}
+                canEdit={canSave}
+                templates={templates}
+                options={options}
+                removable={items.length > 1}
+                onChange={(next) => setItems((prev) => prev.map((row, rowIndex) => (rowIndex === index ? next : row)))}
+                onRemove={() => setItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+              />
+            ))}
+          </div>
+        </Section>
+        ) : null}
+
         {tab === 'delivery' ? (
-        <Section title="Delivery and payment">
+        <Section title={`Step ${steps.find((s) => s.id === 'delivery')?.number || 3} · Delivery`}>
           <Grid>
             {showCommercial ? (
               <>
@@ -339,60 +466,8 @@ export function SalesOrderForm() {
         </Section>
         ) : null}
 
-        {tab === 'products' ? (
-        <Section
-          title="Line items"
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value=""
-                disabled={!canSave}
-                onChange={(event) => {
-                  const route = event.target.value;
-                  if (!route) return;
-                  setItems((prev) => prev.map((item) => applyRoute(item, route)));
-                }}
-                className={`${inputClass} mt-0 w-64`}
-              >
-                <option value="">Set flow on all products</option>
-                {PRODUCTION_ROUTES.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {route.label}
-                  </option>
-                ))}
-              </select>
-              {canSave ? (
-                <button
-                  type="button"
-                  onClick={() => setItems((prev) => [...prev, emptyLineItem()])}
-                  className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-paper"
-                >
-                  Add product
-                </button>
-              ) : null}
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            {items.map((item, index) => (
-              <SalesOrderLineCard
-                key={item.id || index}
-                item={item}
-                index={index}
-                showCommercial={showCommercial}
-                canEdit={canSave}
-                templates={templates}
-                options={options}
-                onChange={(next) => setItems((prev) => prev.map((row, rowIndex) => (rowIndex === index ? next : row)))}
-                onRemove={() => setItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
-              />
-            ))}
-          </div>
-        </Section>
-        ) : null}
-
         {tab === 'totals' && showCommercial ? (
-          <Section title="Totals">
+          <Section title={`Step ${steps.find((s) => s.id === 'totals')?.number || 4} · Total`}>
             <Grid cols="sm:grid-cols-2 lg:grid-cols-5">
               <Field label="Subtotal">
                 <input readOnly value={formatMoney(totals.subtotal)} className={inputClass} />
@@ -415,18 +490,37 @@ export function SalesOrderForm() {
 
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-        {canSave ? (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : isEdit ? 'Save draft' : 'Create draft'}
-            </button>
-            <p className="self-center text-xs text-slate">Attachments can be added after the draft is saved.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+          <button
+            type="button"
+            disabled={isFirstStep}
+            onClick={() => goStep(-1)}
+            className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-paper disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ← Previous
+          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {!isLastStep ? (
+              <button
+                type="button"
+                onClick={() => goStep(1)}
+                className="rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent hover:bg-accent/10"
+              >
+                Next: Step {stepIndex + 2} · {steps[stepIndex + 1]?.label} →
+              </button>
+            ) : null}
+            {canSave ? (
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+              >
+                {saving ? 'Saving…' : isEdit ? 'Save draft' : 'Create draft'}
+              </button>
+            ) : null}
           </div>
-        ) : null}
+        </div>
+        <p className="text-xs text-slate">Attachments can be added after the draft is saved.</p>
     </form>
   );
 }

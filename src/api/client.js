@@ -7,6 +7,19 @@ export function apiUrl(path) {
   return API_BASE ? `${API_BASE}${path}` : path;
 }
 
+export function resolveMediaUrl(value) {
+  if (!value) return '';
+  if (
+    String(value).startsWith('http://') ||
+    String(value).startsWith('https://') ||
+    String(value).startsWith('data:') ||
+    String(value).startsWith('blob:')
+  ) {
+    return value;
+  }
+  return apiUrl(value);
+}
+
 let refreshPromise = null;
 
 async function parseBody(response) {

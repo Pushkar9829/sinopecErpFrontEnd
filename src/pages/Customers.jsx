@@ -80,7 +80,7 @@ export function Customers() {
     <div className="space-y-5">
       <PageHeader
         title="Customers"
-        subtitle="Customer master used on sales orders. Selecting a customer fills code, GST, and addresses."
+        subtitle="Attach products on each customer — they auto-fill when you create a sales order."
         search={<SearchField value={query} onChange={setQuery} placeholder="Search name, code, contact, GST" />}
         actions={
           <PermissionGate permission="sales:create">
@@ -116,6 +116,7 @@ export function Customers() {
               <th className="px-4 py-3 font-medium">Contact</th>
               <th className="px-4 py-3 font-medium">GST</th>
               <th className="px-4 py-3 font-medium">Category</th>
+              <th className="px-4 py-3 font-medium">Products</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Actions</th>
             </tr>
@@ -147,6 +148,7 @@ export function Customers() {
                 </td>
                 <td className="px-4 py-3 text-slate">{customer.gstNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate">{customer.priceCategory || '—'}</td>
+                <td className="px-4 py-3 text-slate">{customer.products?.length || 0}</td>
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                   <StatusToggle
                     checked={customer.isActive}
