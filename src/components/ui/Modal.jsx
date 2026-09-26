@@ -18,12 +18,12 @@ export function Modal({ open, title, onClose, children, wide = false }) {
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : 'Dialog'}
-        className={`max-h-[90vh] overflow-y-auto rounded-xl border border-line bg-card p-5 ${wide ? 'w-full max-w-3xl' : 'w-full max-w-lg'}`}
+        className={`max-h-[90vh] overflow-y-auto rounded-xl border border-line bg-card p-5 ${wide === 'xl' ? 'w-full max-w-5xl' : wide ? 'w-full max-w-3xl' : 'w-full max-w-lg'}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">{typeof title === 'string' ? <h2 className="text-lg font-semibold text-ink">{title}</h2> : title}</div>
-          <button type="button" onClick={onClose} className="shrink-0 rounded-lg border border-line px-2 py-1 text-sm hover:bg-paper">
+          <button type="button" onClick={onClose} className="inline-flex shrink-0 items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
             Close
           </button>
         </div>

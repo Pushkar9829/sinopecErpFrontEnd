@@ -2,18 +2,34 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { salesSettingsApi } from '../api/salesSettings.api';
 import { PermissionGate } from '../components/PermissionGate';
-import { ActiveBadge, Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
-import { Tabs } from '../components/ui/Tabs';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 import { OPTION_GROUPS, OPTION_LIST_SECTIONS, routeLabel } from '../lib/sales';
 
-const WORD_PAGE_SIZE = 8;
+const PAGE_SIZE = 8;
+
+const VIEW_OPTIONS = [
+  { id: 'templates', label: 'Saved products', chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  { id: 'lists', label: 'Quick-pick words', chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+];
+
+const STATUS_OPTIONS = [
+  { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
+  { id: 'active', label: 'Active', chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+  { id: 'inactive', label: 'Inactive', chip: 'border-rose-300 bg-rose-100 text-rose-800', dot: 'bg-rose-600' },
+];
+
+const SECTION_TONES = {
+  product: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  size: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  factory: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  print: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+  finish: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+};
 
 function groupMeta(id, groups) {
   const local = OPTION_GROUPS.find((item) => item.id === id);
@@ -22,10 +38,230 @@ function groupMeta(id, groups) {
   return { ...local, ...fromApi, hint: local?.hint || fromApi?.hint || '' };
 }
 
+function sectionOf(groupId) {
+  return OPTION_LIST_SECTIONS.find((section) => section.groups.includes(groupId));
+}
+
+function Chevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function useMenu() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+  return [open, setOpen];
+}
+
+function ViewMenu({ value, counts, onChange }) {
+  const [open, setOpen] = useMenu();
+  const current = VIEW_OPTIONS.find((item) => item.id === value) || VIEW_OPTIONS[0];
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Product setup view"
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${current.chip}`}
+      >
+        <span className={`h-2 w-2 rounded-full ${current.dot}`} />
+        {current.label} · {counts[current.id] ?? 0}
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-1 w-52 rounded-lg border border-line bg-white p-1 shadow-md">
+          {VIEW_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onChange(item.id);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                item.id === value ? item.chip : 'text-ink hover:bg-paper'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${item.dot}`} />
+              <span className="flex-1">{item.label}</span>
+              <span className="text-xs">{counts[item.id] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusMenu({ value, counts, onChange }) {
+  const [open, setOpen] = useMenu();
+  const current = STATUS_OPTIONS.find((item) => item.id === value) || STATUS_OPTIONS[0];
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Status"
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${current.chip}`}
+      >
+        <span className={`h-2 w-2 rounded-full ${current.dot}`} />
+        {current.label} · {counts[current.id] ?? 0}
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-1 w-44 rounded-lg border border-line bg-white p-1 shadow-md">
+          {STATUS_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onChange(item.id);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                item.id === value ? item.chip : 'text-ink hover:bg-paper'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${item.dot}`} />
+              <span className="flex-1">{item.label}</span>
+              <span className="text-xs">{counts[item.id] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ListMenu({ groups, value, counts, onChange }) {
+  const [open, setOpen] = useMenu();
+  const current = groupMeta(value, groups);
+  const section = sectionOf(value);
+  const tone = SECTION_TONES[section?.id] || SECTION_TONES.product;
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Word list"
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className={`inline-flex max-w-56 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${tone.chip}`}
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+        <span className="truncate">{current?.label || 'List'} · {counts[value] || 0}</span>
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-1 max-h-80 w-64 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
+          {OPTION_LIST_SECTIONS.map((sectionItem) => {
+            const visible = sectionItem.groups.map((id) => groupMeta(id, groups)).filter(Boolean);
+            if (!visible.length) return null;
+            const itemTone = SECTION_TONES[sectionItem.id] || tone;
+            return (
+              <div key={sectionItem.id} className="py-1">
+                <p className="px-2 py-1 text-xs font-medium text-steel">{sectionItem.label}</p>
+                {visible.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(item.id);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                      item.id === value ? itemTone.chip : 'text-ink hover:bg-paper'
+                    }`}
+                  >
+                    <span className={`h-2 w-2 rounded-full ${itemTone.dot}`} />
+                    <span className="flex-1">{item.label}</span>
+                    <span className="text-xs">{counts[item.id] || 0}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function IconButton({ label, className = '', children, ...props }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M12.5 3.5l4 4L7 17H3v-4L12.5 3.5z" strokeLinejoin="round" />
+      <path d="M10.5 5.5l4 4" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M4 6h12" strokeLinecap="round" />
+      <path d="M8 6V4h4v2" />
+      <path d="M6 6l.7 10h6.6L14 6" strokeLinejoin="round" />
+      <path d="M8.5 9v5M11.5 9v5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <rect x="7" y="7" width="9" height="9" rx="1.5" />
+      <path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function SalesSettings() {
   const navigate = useNavigate();
   const { can } = usePermission();
   const canEdit = can('sales:update');
+  const canCreate = can('sales:create');
+  const canDelete = can('sales:delete');
   const [tab, setTab] = useState('templates');
   const [templates, setTemplates] = useState([]);
   const [optionRows, setOptionRows] = useState([]);
@@ -33,8 +269,7 @@ export function SalesSettings() {
   const [group, setGroup] = useState('material');
   const [newValue, setNewValue] = useState('');
   const [query, setQuery] = useState('');
-  const [wordQuery, setWordQuery] = useState('');
-  const [wordStatus, setWordStatus] = useState('all');
+  const [status, setStatus] = useState('all');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -52,17 +287,12 @@ export function SalesSettings() {
     load().catch((err) => setError(err.message));
   }, []);
 
-  const filteredTemplates = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return templates;
-    return templates.filter((template) =>
-      [template.name, template.code, template.product, template.material, template.size].some((value) =>
-        String(value || '').toLowerCase().includes(q)
-      )
-    );
-  }, [templates, query]);
+  const viewCounts = useMemo(
+    () => ({ templates: templates.length, lists: optionRows.length }),
+    [templates.length, optionRows.length]
+  );
 
-  const counts = useMemo(() => {
+  const listCounts = useMemo(() => {
     const next = {};
     for (const row of optionRows) {
       next[row.group] = (next[row.group] || 0) + 1;
@@ -70,18 +300,40 @@ export function SalesSettings() {
     return next;
   }, [optionRows]);
 
+  const filteredTemplates = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return templates.filter((template) => {
+      const active = template.isActive !== false;
+      if (status === 'active' && !active) return false;
+      if (status === 'inactive' && active) return false;
+      if (!q) return true;
+      return [template.name, template.code, template.product, template.material, template.size].some((value) =>
+        String(value || '').toLowerCase().includes(q)
+      );
+    });
+  }, [templates, query, status]);
+
+  const templateStatusCounts = useMemo(
+    () => ({
+      all: templates.length,
+      active: templates.filter((template) => template.isActive !== false).length,
+      inactive: templates.filter((template) => template.isActive === false).length,
+    }),
+    [templates]
+  );
+
+  const templateList = usePagedList(filteredTemplates, { pageSize: PAGE_SIZE, resetKey: `${query}|${status}` });
+
   const selectedGroup = groupMeta(group, groups);
-  const searchingWords = wordQuery.trim().length > 0;
 
   const scopedWords = useMemo(() => {
-    const q = wordQuery.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
     return optionRows.filter((option) => {
-      if (!q && option.group !== group) return false;
+      if (option.group !== group) return false;
       if (!q) return true;
-      const listName = groupMeta(option.group, groups)?.label || option.group;
-      return [option.value, listName].some((value) => String(value || '').toLowerCase().includes(q));
+      return String(option.value || '').toLowerCase().includes(q);
     });
-  }, [optionRows, group, wordQuery, groups]);
+  }, [optionRows, group, query]);
 
   const wordStatusCounts = useMemo(
     () => ({
@@ -96,14 +348,14 @@ export function SalesSettings() {
     return scopedWords
       .filter((option) => {
         const active = option.isActive !== false;
-        if (wordStatus === 'active') return active;
-        if (wordStatus === 'inactive') return !active;
+        if (status === 'active') return active;
+        if (status === 'inactive') return !active;
         return true;
       })
       .sort((a, b) => String(a.value).localeCompare(String(b.value)));
-  }, [scopedWords, wordStatus]);
+  }, [scopedWords, status]);
 
-  const wordList = usePagedList(filteredWords, { pageSize: WORD_PAGE_SIZE, resetKey: `${group}|${wordQuery}|${wordStatus}` });
+  const wordList = usePagedList(filteredWords, { pageSize: PAGE_SIZE, resetKey: `${group}|${query}|${status}` });
 
   async function addOption(event) {
     event.preventDefault();
@@ -113,7 +365,7 @@ export function SalesSettings() {
       await salesSettingsApi.addOption({ group, value: newValue });
       setNewValue('');
       await load();
-      setNotice(`Added “${newValue.trim()}” to ${selectedGroup?.label || 'the list'}.`);
+      setNotice(`Added “${newValue.trim()}”.`);
     } catch (err) {
       setError(err.message);
     }
@@ -130,8 +382,19 @@ export function SalesSettings() {
     }
   }
 
+  async function toggleTemplate(template, isActive) {
+    setError('');
+    setNotice('');
+    try {
+      await salesSettingsApi.updateTemplate(template.id, { isActive });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function removeOption(option) {
-    if (!window.confirm(`Remove “${option.value}” from ${selectedGroup?.label || 'this list'}?`)) return;
+    if (!window.confirm(`Remove “${option.value}”?`)) return;
     setError('');
     try {
       await salesSettingsApi.removeOption(option.id);
@@ -141,8 +404,40 @@ export function SalesSettings() {
     }
   }
 
+  function nextCopyName(name) {
+    const base = String(name || 'Product').replace(/ copy( \d+)?$/i, '');
+    const taken = new Set(templates.map((item) => String(item.name || '').toLowerCase()));
+    let candidate = `${base} copy`;
+    let count = 2;
+    while (taken.has(candidate.toLowerCase())) {
+      candidate = `${base} copy ${count}`;
+      count += 1;
+    }
+    return candidate;
+  }
+
+  async function duplicateTemplate(template) {
+    setError('');
+    setNotice('');
+    try {
+      const source = await salesSettingsApi.getTemplate(template.id);
+      const name = nextCopyName(source.name);
+      const created = await salesSettingsApi.createTemplate({
+        ...source,
+        name,
+        product: source.product && source.product !== source.name ? source.product : name,
+        code: '',
+        productCode: source.productCode && source.productCode !== source.code ? source.productCode : '',
+      });
+      setNotice(`Copied “${source.name}”.`);
+      navigate(`/sales-settings/templates/${created.id}`);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function removeTemplate(template) {
-    if (!window.confirm(`Delete saved product “${template.name}”? Orders already created are not changed.`)) return;
+    if (!window.confirm(`Delete saved product “${template.name}”?`)) return;
     setError('');
     try {
       await salesSettingsApi.removeTemplate(template.id);
@@ -153,279 +448,199 @@ export function SalesSettings() {
     }
   }
 
+  const statusCounts = tab === 'templates' ? templateStatusCounts : wordStatusCounts;
+
   return (
-    <div className={tab === 'lists' ? 'flex h-[calc(100dvh-2rem)] flex-col gap-4 overflow-hidden' : 'space-y-5'}>
-      <div className="shrink-0">
-      <PageHeader
-        title="Product setup"
-        subtitle="Save what you sell often. On a sales order, pick it from a list — or still type something new."
-        search={
-          tab === 'templates' ? <SearchField value={query} onChange={setQuery} placeholder="Find a saved product" /> : null
-        }
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Link to="/sales-orders/new" className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-paper">
-              New sales order
-            </Link>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+        <h1 className="px-1 text-lg font-semibold">Product setup</h1>
+        <ViewMenu value={tab} counts={viewCounts} onChange={setTab} />
+        <StatusMenu value={status} counts={statusCounts} onChange={setStatus} />
+        {tab === 'lists' ? (
+          <ListMenu
+            groups={groups}
+            value={group}
+            counts={listCounts}
+            onChange={(next) => {
+              setGroup(next);
+              setQuery('');
+              setStatus('all');
+            }}
+          />
+        ) : null}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            placeholder={tab === 'templates' ? 'Search products' : 'Search words'}
+          />
+          {tab === 'templates' ? (
             <PermissionGate permission="sales:create">
               <Link
                 to="/sales-settings/templates/new"
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-dark"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
               >
-                Save a product
+                <PlusIcon />
+                Add product
               </Link>
             </PermissionGate>
-          </div>
-        }
-        extra={
-          <Tabs
-            tabs={[
-              { id: 'templates', label: 'Saved products', count: templates.length, tone: 'accent' },
-              { id: 'lists', label: 'Quick-pick words', count: optionRows.length, tone: 'info' },
-            ]}
-            value={tab}
-            onChange={setTab}
-          />
-        }
-      />
+          ) : canEdit ? (
+            <form onSubmit={addOption} className="flex items-center gap-2">
+              <input
+                required
+                value={newValue}
+                onChange={(event) => setNewValue(event.target.value)}
+                placeholder={selectedGroup?.label ? `Add ${selectedGroup.label.toLowerCase()}` : 'Add a word'}
+                className="w-40 rounded-lg border border-line bg-white px-3 py-1.5 text-sm outline-none focus:border-accent"
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
+              >
+                <PlusIcon />
+                Add
+              </button>
+            </form>
+          ) : null}
+        </div>
       </div>
 
-      {error ? <p className="shrink-0 text-sm text-red-700">{error}</p> : null}
-      {notice ? <p className="shrink-0 text-sm text-emerald-700">{notice}</p> : null}
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
       {tab === 'templates' ? (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <section className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-orange-900">1. Saved products</p>
-              <p className="mt-1 text-sm text-slate">
-                One card = one product you sell again and again. Size, material, print, holes, and route are stored together.
-              </p>
-            </section>
-            <section className="rounded-xl border border-sky-200 bg-sky-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-sky-900">2. On the sales order</p>
-              <p className="mt-1 text-sm text-slate">
-                Open a line, choose <span className="font-medium text-ink">Use saved template</span>, then only change quantity or anything special for that customer.
-              </p>
-            </section>
-          </div>
-
-          {filteredTemplates.length === 0 ? (
-            <div className="rounded-xl border border-line bg-card">
-              <EmptyState
-                title={query ? 'No saved product matches' : 'No saved products yet'}
-                hint={query ? 'Clear search or save a new product.' : 'Start with a bag or film roll you make every week.'}
-              />
-              {!query ? (
-                <div className="pb-5 text-center">
-                  <PermissionGate permission="sales:create">
-                    <Link
-                      to="/sales-settings/templates/new"
-                      className="inline-flex rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-dark"
-                    >
-                      Save your first product
-                    </Link>
-                  </PermissionGate>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {filteredTemplates.map((template) => (
-                <article
+        <div className="overflow-hidden rounded-xl border border-line bg-card">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-ink text-paper">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Product</th>
+                <th className="px-4 py-3 font-semibold">Code</th>
+                <th className="px-4 py-3 font-semibold">Details</th>
+                <th className="px-4 py-3 font-semibold">Route</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templateList.paged.map((template) => (
+                <tr
                   key={template.id}
-                  className="cursor-pointer rounded-xl border border-line bg-card p-4 hover:border-accent"
+                  tabIndex={0}
                   onClick={() => navigate(`/sales-settings/templates/${template.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      navigate(`/sales-settings/templates/${template.id}`);
+                    }
+                  }}
+                  className="cursor-pointer border-t border-line hover:bg-paper/70"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="font-medium">{template.name}</h2>
-                      <p className="text-xs text-slate">{template.code || 'No code'}</p>
-                    </div>
-                    <ActiveBadge active={template.isActive !== false} />
-                  </div>
-                  <p className="mt-3 text-sm">
-                    {template.product || 'No product name'}
-                    {template.size ? ` · ${template.size}` : ''}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {template.material ? <Badge tone="info">{template.material}</Badge> : null}
-                    {template.color ? <Badge tone="teal">{template.color}</Badge> : null}
-                    {template.thickness ? <Badge tone="warning">{template.thickness}</Badge> : null}
-                    {template.productionRoute ? <Badge tone="accent">{routeLabel(template.productionRoute)}</Badge> : null}
-                  </div>
-                  <div className="mt-4 flex gap-3 text-sm">
-                    <button
-                      type="button"
-                      className="text-ink hover:underline"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate(`/sales-settings/templates/${template.id}`);
-                      }}
-                    >
-                      Edit
-                    </button>
-                    {can('sales:delete') ? (
-                      <button
-                        type="button"
-                        className="text-red-700 hover:underline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          removeTemplate(template);
-                        }}
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{template.name}</p>
+                    <p className="text-xs text-slate">{template.product || '—'}</p>
+                  </td>
+                  <td className="px-4 py-3 text-slate">{template.code || '—'}</td>
+                  <td className="px-4 py-3 text-slate">
+                    {[template.material, template.size, template.color].filter(Boolean).join(' · ') || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-slate">{template.productionRoute ? routeLabel(template.productionRoute) : '—'}</td>
+                  <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                    <StatusToggle
+                      checked={template.isActive !== false}
+                      disabled={!canEdit}
+                      onChange={(isActive) => toggleTemplate(template, isActive)}
+                    />
+                  </td>
+                  <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                    <div className="flex items-center gap-1.5">
+                      <IconButton
+                        label="Edit product"
+                        className="text-ink hover:bg-paper"
+                        onClick={() => navigate(`/sales-settings/templates/${template.id}`)}
                       >
-                        Delete
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
+                        <PencilIcon />
+                      </IconButton>
+                      {canCreate ? (
+                        <IconButton
+                          label="Duplicate product"
+                          className="text-ink hover:bg-paper"
+                          onClick={() => duplicateTemplate(template)}
+                        >
+                          <CopyIcon />
+                        </IconButton>
+                      ) : null}
+                      {canDelete ? (
+                        <IconButton
+                          label="Delete product"
+                          className="text-red-700 hover:bg-red-50"
+                          onClick={() => removeTemplate(template)}
+                        >
+                          <TrashIcon />
+                        </IconButton>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
               ))}
-            </div>
+            </tbody>
+          </table>
+          {templateList.total === 0 ? (
+            <EmptyState title="No saved products found" hint="Add a product you sell again." />
+          ) : (
+            <Pagination
+              page={templateList.page}
+              totalPages={templateList.totalPages}
+              total={templateList.total}
+              pageSize={templateList.pageSize}
+              onPage={templateList.setPage}
+            />
           )}
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden lg:grid-cols-[17.5rem_1fr] lg:grid-rows-none">
-          <aside className="flex max-h-52 min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-card lg:max-h-none">
-            <p className="shrink-0 border-b border-line px-3 py-2 text-xs font-medium uppercase tracking-wide text-steel">
-              Lists
-            </p>
-            <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto p-2">
-              {OPTION_LIST_SECTIONS.map((section) => {
-                const visibleGroups = section.groups.map((id) => groupMeta(id, groups)).filter(Boolean);
-                if (!visibleGroups.length) return null;
-                return (
-                  <div key={section.id}>
-                    <p className="mb-1 px-2 text-xs font-medium uppercase tracking-wide text-steel">{section.label}</p>
-                    <div className="space-y-1">
-                      {visibleGroups.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setGroup(item.id);
-                            setWordQuery('');
-                            setWordStatus('all');
-                          }}
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm ${
-                            group === item.id ? 'bg-ink text-paper' : 'text-slate hover:bg-paper'
-                          }`}
-                        >
-                          <span>{item.label}</span>
-                          <span className={group === item.id ? 'text-white/70' : 'text-steel'}>{counts[item.id] || 0}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </nav>
-          </aside>
-
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-card">
-            <div className="shrink-0 border-b border-line px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="font-medium">{searchingWords ? 'Search results' : selectedGroup?.label || 'List'}</h2>
-                  <p className="mt-0.5 text-sm text-slate">
-                    {searchingWords
-                      ? 'Matching words across every list'
-                      : selectedGroup?.hint
-                        ? `Examples: ${selectedGroup.hint}`
-                        : 'These words appear on the sales order'}
-                  </p>
-                </div>
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                  <SearchField
-                    value={wordQuery}
-                    onChange={setWordQuery}
-                    placeholder="Search words"
-                    className="w-52"
-                  />
-                  {canEdit ? (
-                    <form onSubmit={addOption} className="flex items-center gap-2">
-                      <input
-                        required
-                        value={newValue}
-                        onChange={(event) => setNewValue(event.target.value)}
-                        placeholder={selectedGroup?.label ? `Add ${selectedGroup.label.toLowerCase()}` : 'Add a word'}
-                        className="h-9 w-44 rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-accent"
-                      />
-                      <button
-                        type="submit"
-                        className="h-9 shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white hover:bg-accent-dark"
-                      >
-                        Add
-                      </button>
-                    </form>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-3">
-                <Tabs
-                  tabs={[
-                    { id: 'all', label: 'All', count: wordStatusCounts.all },
-                    { id: 'active', label: 'Active', count: wordStatusCounts.active, tone: 'success' },
-                    { id: 'inactive', label: 'Inactive', count: wordStatusCounts.inactive, tone: 'danger' },
-                  ]}
-                  value={wordStatus}
-                  onChange={setWordStatus}
-                />
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="sticky top-0 bg-ink text-paper">
-                  <tr>
-                    <th className="w-16 px-4 py-3 font-medium">#</th>
-                    <th className="px-4 py-3 font-medium">Word</th>
-                    <th className="px-4 py-3 font-medium">List</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    {canEdit ? <th className="w-28 px-4 py-3 font-medium">Actions</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {wordList.paged.map((option, index) => (
-                    <tr key={option.id} className="border-t border-line hover:bg-paper/70">
-                      <td className="px-4 py-3 text-slate">{(wordList.page - 1) * wordList.pageSize + index + 1}</td>
-                      <td className="px-4 py-3 font-medium">{option.value}</td>
-                      <td className="px-4 py-3 text-slate">{groupMeta(option.group, groups)?.label || option.group}</td>
-                      <td className="px-4 py-3">
-                        <StatusToggle
-                          checked={option.isActive !== false}
-                          disabled={!canEdit}
-                          onChange={(isActive) => toggleOption(option, isActive)}
-                        />
-                      </td>
-                      {canEdit ? (
-                        <td className="px-4 py-3">
-                          <button type="button" onClick={() => removeOption(option)} className="text-red-700 hover:underline">
-                            Remove
-                          </button>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {wordList.total === 0 ? (
-                <EmptyState
-                  title={wordQuery ? 'No word matches' : 'Nothing in this list yet'}
-                  hint={wordQuery ? 'Try another word, or pick a list on the left.' : 'Add the words your team types most often.'}
-                />
-              ) : null}
-            </div>
-
-            {wordList.total > 0 ? (
-              <Pagination
-                page={wordList.page}
-                totalPages={wordList.totalPages}
-                total={wordList.total}
-                pageSize={wordList.pageSize}
-                onPage={wordList.setPage}
-              />
-            ) : null}
-          </section>
+        <div className="overflow-hidden rounded-xl border border-line bg-card">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-ink text-paper">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Word</th>
+                <th className="px-4 py-3 font-semibold">List</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {wordList.paged.map((option) => (
+                <tr key={option.id} className="border-t border-line hover:bg-paper/70">
+                  <td className="px-4 py-3 font-semibold">{option.value}</td>
+                  <td className="px-4 py-3 text-slate">{groupMeta(option.group, groups)?.label || option.group}</td>
+                  <td className="px-4 py-3">
+                    <StatusToggle
+                      checked={option.isActive !== false}
+                      disabled={!canEdit}
+                      onChange={(isActive) => toggleOption(option, isActive)}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    {canEdit ? (
+                      <IconButton label="Delete word" className="text-red-700 hover:bg-red-50" onClick={() => removeOption(option)}>
+                        <TrashIcon />
+                      </IconButton>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {wordList.total === 0 ? (
+            <EmptyState title="No words found" hint="Add a word for this list." />
+          ) : (
+            <Pagination
+              page={wordList.page}
+              totalPages={wordList.totalPages}
+              total={wordList.total}
+              pageSize={wordList.pageSize}
+              onPage={wordList.setPage}
+            />
+          )}
         </div>
       )}
     </div>

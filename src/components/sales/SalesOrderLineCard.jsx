@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ComboField } from '../ui/ComboField';
 import { Field, Grid, inputClass } from '../ui/FormField';
 import { mediaApi } from '../../api/media.api';
@@ -6,11 +7,133 @@ import {
   PRODUCTION_ROUTES,
   applyRoute,
   applyTemplate,
+  itemFromApi,
+  routeHasCut,
+  routeHasPrint,
+  routeLabel,
   setPath,
 } from '../../lib/sales';
 
+const PRODUCT_TONES = [
+  { badge: 'bg-orange-600 text-white', shell: 'border-orange-300 bg-orange-50/80', title: 'text-orange-800' },
+  { badge: 'bg-sky-600 text-white', shell: 'border-sky-300 bg-sky-50/80', title: 'text-sky-800' },
+  { badge: 'bg-violet-600 text-white', shell: 'border-violet-300 bg-violet-50/80', title: 'text-violet-800' },
+  { badge: 'bg-teal-600 text-white', shell: 'border-teal-300 bg-teal-50/80', title: 'text-teal-800' },
+  { badge: 'bg-emerald-600 text-white', shell: 'border-emerald-300 bg-emerald-50/80', title: 'text-emerald-800' },
+  { badge: 'bg-amber-500 text-white', shell: 'border-amber-300 bg-amber-50/80', title: 'text-amber-900' },
+];
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M4 6h12" strokeLinecap="round" />
+      <path d="M8 6V4h4v2" />
+      <path d="M6 6l.7 10h6.6L14 6" strokeLinejoin="round" />
+      <path d="M8.5 9v5M11.5 9v5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function productLabel(template) {
+  const name = template.name || template.product || 'Product';
+  return template.code ? `${name} · ${template.code}` : name;
+}
+
+function SavedProductMenu({ templates, value, disabled, onChange }) {
+  const [open, setOpen] = useState(false);
+  const current = templates.find((template) => template.id === value);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  return (
+    <div className="relative mt-1" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Saved product"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((next) => !next)}
+        className="flex w-full items-center gap-2 rounded-lg border border-line bg-white px-3 py-2 text-left text-sm font-normal text-ink disabled:cursor-not-allowed disabled:bg-paper disabled:opacity-60"
+      >
+        <span className={`min-w-0 flex-1 truncate ${current ? '' : 'text-slate'}`}>
+          {current ? productLabel(current) : 'Select any'}
+        </span>
+        <svg
+          viewBox="0 0 20 20"
+          className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden="true"
+        >
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
+          {templates.length === 0 ? (
+            <p className="px-2 py-1.5 text-sm text-slate">No saved products</p>
+          ) : (
+            templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => {
+                  onChange(template.id);
+                  setOpen(false);
+                }}
+                className={`flex w-full rounded-md px-2 py-1.5 text-left text-sm ${
+                  template.id === value ? 'bg-paper font-semibold text-ink' : 'text-ink hover:bg-paper'
+                }`}
+              >
+                {productLabel(template)}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function opts(options, key) {
   return options?.[key] || [];
+}
+
+function SpecSection({ title, dot, children, defaultOpen = false, titleClass = 'text-ink' }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-white">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left"
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+        <h2 className={`min-w-0 flex-1 truncate text-base font-semibold ${titleClass}`}>{title}</h2>
+        <svg
+          viewBox="0 0 20 20"
+          className={`h-4 w-4 shrink-0 text-slate transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden="true"
+        >
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? <div className="space-y-3 border-t border-line px-4 py-3">{children}</div> : null}
+    </section>
+  );
 }
 
 export function SalesOrderLineCard({
@@ -34,12 +157,18 @@ export function SalesOrderLineCard({
   }
 
   function selectTemplate(templateId) {
-    if (!templateId) {
-      onChange({ ...item, templateId: '' });
+    const template = templates.find((row) => row.id === templateId);
+    if (!template) return;
+    if (hideTemplate) {
+      const next = itemFromApi(template);
+      next.templateId = '';
+      next.id = item.id;
+      if (!next.product) next.product = template.name || '';
+      if (!next.productCode) next.productCode = template.code || '';
+      onChange(next);
       return;
     }
-    const template = templates.find((row) => row.id === templateId);
-    if (template) onChange(applyTemplate(item, template));
+    onChange(applyTemplate(item, template));
   }
 
   async function onImagePick(event) {
@@ -79,41 +208,36 @@ export function SalesOrderLineCard({
     });
   }
 
+  const [open, setOpen] = useState(index === 0);
   const preview = resolveMediaUrl(item.image?.url || item.image?.dataUrl || '');
+  const showPrint = routeHasPrint(item.productionRoute);
+  const showCut = routeHasCut(item.productionRoute);
+  const tone = PRODUCT_TONES[index % PRODUCT_TONES.length];
+  const canRemove = canEdit && !hideTemplate && (removable ?? index > 0);
+  const summary = [item.productCode, item.quantity ? `${item.quantity} ${item.unit || ''}`.trim() : '', routeLabel(item.productionRoute)]
+    .filter(Boolean)
+    .join(' · ');
+  const productLabel = item.product?.trim() || `Product ${index + 1}`;
+  const titleClass = hideTemplate ? 'text-ink' : tone.title;
+  function sectionTitle(name) {
+    if (hideTemplate) return name;
+    if (name === 'Product') return productLabel;
+    return `${productLabel} · ${name}`;
+  }
 
-  return (
-    <div className="space-y-4 rounded-lg border border-line p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-medium">{hideTemplate ? 'Template spec' : `Product ${index + 1}`}</p>
-        {canEdit && !hideTemplate && (removable ?? index > 0) ? (
-          <button type="button" onClick={onRemove} className="text-sm text-red-700 hover:underline">
-            Remove
-          </button>
-        ) : null}
-      </div>
-
+  const sections = (
+    <div className="space-y-3">
+      <SpecSection title={sectionTitle('Product')} dot="bg-orange-600" defaultOpen titleClass={titleClass}>
       <Grid>
-        {!hideTemplate ? (
-          <Field label="Use saved template">
-            <select
-              value={item.templateId || ''}
-              disabled={!canEdit}
-              onChange={(event) => selectTemplate(event.target.value)}
-              className={inputClass}
-            >
-              <option value="">Manual entry</option>
-              {templates
-                .filter((template) => template.isActive !== false)
-                .map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                    {template.code ? ` (${template.code})` : ''}
-                  </option>
-                ))}
-            </select>
-          </Field>
-        ) : null}
-        <Field label="Production flow" className={hideTemplate ? 'sm:col-span-2' : ''}>
+        <Field label="Saved product">
+          <SavedProductMenu
+            templates={templates.filter((template) => template.isActive !== false)}
+            value={hideTemplate ? '' : item.templateId || ''}
+            disabled={!canEdit}
+            onChange={selectTemplate}
+          />
+        </Field>
+        <Field label="Production flow">
           <select required value={item.productionRoute} disabled={!canEdit} onChange={(e) => updateRoute(e.target.value)} className={inputClass}>
             {PRODUCTION_ROUTES.map((route) => (
               <option key={route.id} value={route.id}>
@@ -123,8 +247,6 @@ export function SalesOrderLineCard({
           </select>
         </Field>
       </Grid>
-
-      <p className="text-sm font-medium text-ink">Product</p>
       <Grid>
         <ComboField label="Product" value={item.product} options={templates.map((template) => template.product)} disabled={!canEdit} onChange={(value) => update('product', value)} />
         <Field label="Product code">
@@ -145,20 +267,26 @@ export function SalesOrderLineCard({
           </Field>
         ) : null}
       </Grid>
+      </SpecSection>
 
-      <p className="text-sm font-medium text-ink">Product image</p>
+      <SpecSection title={sectionTitle('Product image')} dot="bg-slate-500" titleClass={titleClass}>
       <div className="flex flex-wrap items-start gap-4">
         <Field label="Attach image">
           <input type="file" accept="image/*" disabled={!canEdit} onChange={onImagePick} className="block w-full text-sm text-slate file:mr-3 file:rounded-lg file:border-0 file:bg-paper file:px-3 file:py-1.5" />
-          <p className="mt-1 text-xs text-slate">Uploaded to S3 when configured (else local uploads). PNG/JPG up to 15 MB.</p>
+          <p className="mt-1 text-sm font-normal text-slate">Uploaded to S3 when configured (else local uploads). PNG/JPG up to 15 MB.</p>
         </Field>
         {preview ? (
           <div className="space-y-2">
             <img src={preview} alt={item.image.originalName || 'Product'} className="h-28 w-28 rounded-lg border border-line object-cover" />
-            <div className="flex items-center gap-2 text-xs text-slate">
+            <div className="flex items-center gap-2 text-sm font-normal text-slate">
               <span className="truncate max-w-[10rem]">{item.image.originalName || 'Attached'}</span>
               {canEdit ? (
-                <button type="button" onClick={clearImage} className="text-red-700 hover:underline">
+                <button
+                  type="button"
+                  onClick={clearImage}
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-sm font-semibold text-red-700 hover:bg-red-50"
+                >
+                  <TrashIcon />
                   Remove
                 </button>
               ) : null}
@@ -166,8 +294,9 @@ export function SalesOrderLineCard({
           </div>
         ) : null}
       </div>
+      </SpecSection>
 
-      <p className="text-sm font-medium text-ink">Rolling requirement</p>
+      <SpecSection title={sectionTitle('Rolling requirement')} dot="bg-orange-600" titleClass={titleClass}>
       <Grid>
         <ComboField label="Raw material" value={item.manufacturing.rawMaterial} options={opts(options, 'rawMaterial')} disabled={!canEdit} onChange={(value) => update('manufacturing.rawMaterial', value)} />
         <ComboField label="Material type" value={item.manufacturing.materialType} options={opts(options, 'materialType')} disabled={!canEdit} onChange={(value) => update('manufacturing.materialType', value)} />
@@ -175,13 +304,17 @@ export function SalesOrderLineCard({
         <Field label="Required weight">
           <input value={item.manufacturing.requiredWeight} disabled={!canEdit} onChange={(e) => update('manufacturing.requiredWeight', e.target.value)} className={inputClass} />
         </Field>
-        <Field label="Required quantity">
-          <input value={item.manufacturing.requiredQuantity} disabled={!canEdit} onChange={(e) => update('manufacturing.requiredQuantity', e.target.value)} className={inputClass} />
-        </Field>
+        {hideTemplate ? null : (
+          <Field label="Required quantity">
+            <input value={item.manufacturing.requiredQuantity} disabled={!canEdit} onChange={(e) => update('manufacturing.requiredQuantity', e.target.value)} className={inputClass} />
+          </Field>
+        )}
         <ComboField label="Width" value={item.manufacturing.width} options={opts(options, 'width')} disabled={!canEdit} onChange={(value) => update('manufacturing.width', value)} />
         <ComboField label="Length" value={item.manufacturing.length} options={opts(options, 'length')} disabled={!canEdit} onChange={(value) => update('manufacturing.length', value)} />
         <ComboField label="Thickness" value={item.manufacturing.thickness} options={opts(options, 'thickness')} disabled={!canEdit} onChange={(value) => update('manufacturing.thickness', value)} />
-        <ComboField label="Colour" value={item.manufacturing.color} options={opts(options, 'color')} disabled={!canEdit} onChange={(value) => update('manufacturing.color', value)} />
+        {hideTemplate ? null : (
+          <ComboField label="Colour" value={item.manufacturing.color} options={opts(options, 'color')} disabled={!canEdit} onChange={(value) => update('manufacturing.color', value)} />
+        )}
         <ComboField label="Additives" value={item.manufacturing.additives} options={opts(options, 'additive')} disabled={!canEdit} onChange={(value) => update('manufacturing.additives', value)} />
         <ComboField
           label="Special requirements"
@@ -192,8 +325,9 @@ export function SalesOrderLineCard({
           className="sm:col-span-2 lg:col-span-3"
         />
       </Grid>
+      </SpecSection>
 
-      <p className="text-sm font-medium text-ink">Roll output</p>
+      <SpecSection title={sectionTitle('Roll output')} dot="bg-sky-600" titleClass={titleClass}>
       <Grid cols="sm:grid-cols-2 lg:grid-cols-4">
         <ComboField label="Roll width" value={item.roll.width} options={opts(options, 'width')} disabled={!canEdit} onChange={(value) => update('roll.width', value)} />
         <ComboField label="Roll length" value={item.roll.length} options={opts(options, 'length')} disabled={!canEdit} onChange={(value) => update('roll.length', value)} />
@@ -202,8 +336,10 @@ export function SalesOrderLineCard({
         </Field>
         <ComboField label="Roll size" value={item.roll.size} options={opts(options, 'size')} disabled={!canEdit} onChange={(value) => update('roll.size', value)} />
       </Grid>
+      </SpecSection>
 
-      <p className="text-sm font-medium text-ink">Printing requirement</p>
+      {showPrint ? (
+      <SpecSection title={sectionTitle('Printing requirement')} dot="bg-sky-600" titleClass={titleClass}>
       <Grid>
         <ComboField label="Impression" value={item.printing.impressions} options={opts(options, 'printImpression')} disabled={!canEdit} onChange={(value) => update('printing.impressions', value)} />
         <ComboField label="Printing colours" value={item.printing.colors} options={opts(options, 'printColor')} disabled={!canEdit} onChange={(value) => update('printing.colors', value)} />
@@ -214,7 +350,7 @@ export function SalesOrderLineCard({
         <Field label="Artwork note">
           <input value={item.printing.artwork} disabled={!canEdit} onChange={(e) => update('printing.artwork', e.target.value)} className={inputClass} />
         </Field>
-        <Field label="Printing requirement">
+        <Field label="Note">
           <input value={item.printing.requirement} disabled={!canEdit} onChange={(e) => update('printing.requirement', e.target.value)} className={inputClass} />
         </Field>
         <ComboField
@@ -226,8 +362,12 @@ export function SalesOrderLineCard({
           className="sm:col-span-2"
         />
       </Grid>
+      </SpecSection>
+      ) : null}
 
-      <p className="text-sm font-medium text-ink">Cutting / bag requirement</p>
+      {showCut ? (
+      <>
+      <SpecSection title={sectionTitle('Cutting / bag requirement')} dot="bg-violet-600" titleClass={titleClass}>
       <Grid cols="sm:grid-cols-2 lg:grid-cols-4">
         <ComboField label="Bag width" value={item.bag.width} options={opts(options, 'width')} disabled={!canEdit} onChange={(value) => update('bag.width', value)} />
         <ComboField label="Bag length" value={item.bag.length} options={opts(options, 'length')} disabled={!canEdit} onChange={(value) => update('bag.length', value)} />
@@ -236,8 +376,9 @@ export function SalesOrderLineCard({
         </Field>
         <ComboField label="Poly bag size" value={item.bag.size} options={opts(options, 'size')} disabled={!canEdit} onChange={(value) => update('bag.size', value)} />
       </Grid>
+      </SpecSection>
 
-      <p className="text-sm font-medium text-ink">Holes</p>
+      <SpecSection title={sectionTitle('Holes')} dot="bg-violet-600" titleClass={titleClass}>
       <Grid>
         <Field label="Hole required">
           <select
@@ -266,8 +407,9 @@ export function SalesOrderLineCard({
           </>
         ) : null}
       </Grid>
+      </SpecSection>
 
-      <p className="text-sm font-medium text-ink">Tape</p>
+      <SpecSection title={sectionTitle('Tape')} dot="bg-teal-600" titleClass={titleClass}>
       <Grid cols="sm:grid-cols-2">
         <Field label="Tape required">
           <select
@@ -284,6 +426,46 @@ export function SalesOrderLineCard({
           <ComboField label="Tape type" value={item.tape.type} options={opts(options, 'tapeType')} disabled={!canEdit} onChange={(value) => update('tape.type', value)} />
         ) : null}
       </Grid>
+      </SpecSection>
+      </>
+      ) : null}
     </div>
+  );
+
+  if (hideTemplate) return sections;
+
+  return (
+    <section className={`overflow-hidden rounded-xl border-2 ${tone.shell}`}>
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${tone.badge}`}>{index + 1}</span>
+          <span className="min-w-0">
+            <span className="block truncate text-base font-semibold text-ink">{item.product || `Product ${index + 1}`}</span>
+            {summary ? <span className="block truncate text-sm font-normal text-slate">{summary}</span> : null}
+          </span>
+          <svg
+            viewBox="0 0 20 20"
+            className={`ml-auto h-4 w-4 shrink-0 text-ink transition-transform ${open ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {canRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+          >
+            <TrashIcon />
+            Remove
+          </button>
+        ) : null}
+      </div>
+      {open ? <div className="border-t border-line/80 bg-card p-3">{sections}</div> : null}
+    </section>
   );
 }

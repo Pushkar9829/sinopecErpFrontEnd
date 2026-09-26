@@ -45,10 +45,23 @@ export function SearchMultiSelect({ options, value, onChange, placeholder = 'Sel
       <button
         type="button"
         disabled={disabled}
+        aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="w-full truncate rounded-md border border-line bg-white px-2 py-1.5 text-left text-sm disabled:bg-paper"
+        className={`flex w-full items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 text-left text-sm font-semibold hover:bg-paper disabled:bg-paper ${
+          selected.length ? 'text-ink' : 'text-slate'
+        }`}
       >
-        {summary}
+        <span className="min-w-0 flex-1 truncate">{summary}</span>
+        <svg
+          viewBox="0 0 20 20"
+          className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden="true"
+        >
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
       {open ? (
         <div className="absolute z-30 mt-1 w-64 rounded-lg border border-line bg-card shadow-lg">

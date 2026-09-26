@@ -57,7 +57,7 @@ export function Login() {
         <h1 className="mt-2 text-xl font-semibold text-ink">Sign in</h1>
         <p className="mt-1 text-sm text-slate">Use your username and password.</p>
 
-        <label className="mt-6 block text-sm font-medium text-slate">
+        <label className="mt-6 block text-base font-semibold text-ink">
           Username
           <input
             value={username}
@@ -67,7 +67,7 @@ export function Login() {
           />
         </label>
 
-        <label className="mt-4 block text-sm font-medium text-slate">
+        <label className="mt-4 block text-base font-semibold text-ink">
           Password
           <input
             type="password"
@@ -83,7 +83,7 @@ export function Login() {
         <button
           type="submit"
           disabled={submitting}
-          className="mt-6 w-full rounded-lg bg-accent px-4 py-2.5 font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+          className="mt-6 w-full rounded-lg bg-accent px-4 py-2.5 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
         >
           {submitting ? 'Signing in...' : 'Sign in'}
         </button>

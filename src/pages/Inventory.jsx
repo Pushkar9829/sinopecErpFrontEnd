@@ -3,11 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
 import { PermissionGate } from '../components/PermissionGate';
 import { EmptyState } from '../components/ui/EmptyState';
-import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { CategoryBadge } from '../components/ui/Badge';
-import { Tabs } from '../components/ui/Tabs';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 
@@ -18,6 +16,108 @@ const CATEGORY_LABELS = {
   output: 'Output',
   waste: 'Waste',
 };
+
+const CATEGORY_OPTIONS = [
+  { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
+  { id: 'raw', label: 'Raw', chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  { id: 'output', label: 'Output', chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+  { id: 'waste', label: 'Waste', chip: 'border-amber-300 bg-amber-100 text-amber-900', dot: 'bg-amber-500' },
+];
+
+function CategoryMenu({ value, counts, onChange }) {
+  const [open, setOpen] = useState(false);
+  const current = CATEGORY_OPTIONS.find((item) => item.id === value) || CATEGORY_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Category"
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${current.chip}`}
+      >
+        <span className={`h-2 w-2 rounded-full ${current.dot}`} />
+        {current.label} · {counts[current.id]}
+        <svg viewBox="0 0 20 20" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-1 w-44 rounded-lg border border-line bg-white p-1 shadow-md">
+          {CATEGORY_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onChange(item.id);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                item.id === value ? item.chip : 'text-ink hover:bg-paper'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${item.dot}`} />
+              <span className="flex-1">{item.label}</span>
+              <span className="text-xs">{counts[item.id]}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function IconButton({ label, className = '', children, ...props }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M12.5 3.5l4 4L7 17H3v-4L12.5 3.5z" strokeLinejoin="round" />
+      <path d="M10.5 5.5l4 4" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M4 6h12" strokeLinecap="round" />
+      <path d="M8 6V4h4v2" />
+      <path d="M6 6l.7 10h6.6L14 6" strokeLinejoin="round" />
+      <path d="M8.5 9v5M11.5 9v5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function Inventory() {
   const navigate = useNavigate();
@@ -73,38 +173,25 @@ export function Inventory() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Inventory"
-        subtitle="Raw stock, stage output, and stage waste. Types, units, and stages are open-ended."
-        search={<SearchField value={query} onChange={setQuery} placeholder="Search name, type, unit, or stage" />}
-        actions={
-          <div className="flex gap-2">
-            <Link to="/stages" className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-paper">
-              Stages
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+        <h1 className="px-1 text-lg font-semibold">Inventory</h1>
+        <CategoryMenu value={tab} counts={counts} onChange={setTab} />
+        <div className="ml-auto flex items-center gap-2">
+          <SearchField value={query} onChange={setQuery} placeholder="Search name, type, unit, or stage" />
+          <Link to="/stages" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
+            Stages
+          </Link>
+          <PermissionGate permission="inventory:create">
+            <Link
+              to="/inventory/new"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
+            >
+              <PlusIcon />
+              Add material
             </Link>
-            <PermissionGate permission="inventory:create">
-              <Link
-                to="/inventory/new"
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-dark"
-              >
-                Add material
-              </Link>
-            </PermissionGate>
-          </div>
-        }
-        extra={
-          <Tabs
-            tabs={[
-              { id: 'all', label: 'All', count: counts.all },
-              { id: 'raw', label: 'Raw', count: counts.raw, tone: 'info' },
-              { id: 'output', label: 'Output', count: counts.output, tone: 'success' },
-              { id: 'waste', label: 'Waste', count: counts.waste, tone: 'warning' },
-            ]}
-            value={tab}
-            onChange={setTab}
-          />
-        }
-      />
+          </PermissionGate>
+        </div>
+      </div>
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
@@ -113,12 +200,12 @@ export function Inventory() {
         <table className="min-w-full text-left text-sm">
           <thead className="bg-ink text-paper">
             <tr>
-              <th className="px-4 py-3 font-medium">Material</th>
-              <th className="px-4 py-3 font-medium">Kind</th>
-              <th className="px-4 py-3 font-medium">Stage</th>
-              <th className="px-4 py-3 font-medium">Stock</th>
-              <th className="px-4 py-3 font-medium">Unit price</th>
-              <th className="px-4 py-3 font-medium">Actions</th>
+              <th className="px-4 py-3 font-semibold">Material</th>
+              <th className="px-4 py-3 font-semibold">Kind</th>
+              <th className="px-4 py-3 font-semibold">Stage</th>
+              <th className="px-4 py-3 font-semibold">Stock</th>
+              <th className="px-4 py-3 font-semibold">Unit price</th>
+              <th className="px-4 py-3 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -152,29 +239,15 @@ export function Inventory() {
                 <td className="px-4 py-3 text-slate">
                   {item.category === 'waste' || item.unitPrice == null ? '—' : item.unitPrice}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        navigate(`/inventory/${item.id}`);
-                      }}
-                      className="text-ink hover:underline"
-                    >
-                      Open
-                    </button>
+                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                  <div className="flex items-center gap-1.5">
+                    <IconButton label="Edit material" className="text-ink hover:bg-paper" onClick={() => navigate(`/inventory/${item.id}`)}>
+                      <PencilIcon />
+                    </IconButton>
                     {can('inventory:delete') ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDelete(item.id);
-                        }}
-                        className="text-red-700 hover:underline"
-                      >
-                        Delete
-                      </button>
+                      <IconButton label="Delete material" className="text-red-700 hover:bg-red-50" onClick={() => handleDelete(item.id)}>
+                        <TrashIcon />
+                      </IconButton>
                     ) : null}
                   </div>
                 </td>

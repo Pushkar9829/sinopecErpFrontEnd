@@ -3,11 +3,29 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { customersApi } from '../api/customers.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
 import { SalesOrderLineCard } from '../components/sales/SalesOrderLineCard';
+import { BackButton } from '../components/ui/BackButton';
 import { Field, Grid, Section, inputClass } from '../components/ui/FormField';
-import { PageHeader } from '../components/ui/PageHeader';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePermission } from '../hooks/usePermission';
 import { emptyLineItem, itemFromApi, itemToPayload } from '../lib/sales';
+
+function FormBar({ title, extra }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+      <BackButton fallback="/customers" />
+      <h1 className="px-1 text-lg font-semibold">{title}</h1>
+      {extra ? <span className="text-sm text-slate">{extra}</span> : null}
+    </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 const emptyForm = {
   name: '',
@@ -101,16 +119,7 @@ export function CustomerForm() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title={isEdit ? 'Edit customer' : 'Add customer'}
-        subtitle={
-          isEdit
-            ? `Code ${code}. Attach products so they fill into new sales orders automatically.`
-            : 'Code is assigned automatically. Attach products this customer usually orders.'
-        }
-        backTo="/customers"
-        backLabel="Customers"
-      />
+      <FormBar title={isEdit ? form.name || 'Customer' : 'Add customer'} extra={isEdit && code ? code : ''} />
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <Section title="Customer">
@@ -151,7 +160,10 @@ export function CustomerForm() {
             </Field>
           </div>
           {isEdit ? (
-            <StatusToggle checked={form.isActive} disabled={!canSave} onChange={(isActive) => update('isActive', isActive)} />
+            <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
+              <span className="text-base font-semibold text-ink">Status</span>
+              <StatusToggle checked={form.isActive} disabled={!canSave} onChange={(isActive) => update('isActive', isActive)} />
+            </div>
           ) : null}
         </Section>
 
@@ -162,17 +174,16 @@ export function CustomerForm() {
               <button
                 type="button"
                 onClick={() => setProducts((prev) => [...prev, emptyLineItem()])}
-                className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-paper"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper"
               >
+                <PlusIcon />
                 Add product
               </button>
             ) : null
           }
         >
           {products.length === 0 ? (
-            <p className="text-sm text-slate">
-              No products attached yet. Add the SKUs this customer usually buys — they will auto-fill when you create a sales order.
-            </p>
+            <p className="text-sm text-slate">No products attached yet.</p>
           ) : (
             <div className="space-y-4">
               {products.map((item, index) => (
@@ -195,15 +206,18 @@ export function CustomerForm() {
 
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-        {canSave ? (
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark disabled:opacity-60"
-          >
-            {saving ? 'Saving…' : isEdit ? 'Save customer' : 'Create customer'}
-          </button>
-        ) : null}
+        <div className="flex gap-2">
+          {canSave ? (
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : isEdit ? 'Save customer' : 'Create customer'}
+            </button>
+          ) : null}
+          <BackButton fallback="/customers" label="Back to list" />
+        </div>
       </form>
     </div>
   );

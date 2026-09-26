@@ -4,12 +4,11 @@ import { analyticsApi } from '../api/analytics.api';
 import { BarChart, CHART_COLORS, StackedBarChart } from '../components/charts/BarChart';
 import { Badge, StatusBadge, orderStatusTone, panelTones, stepTone, valueTones } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Field, inputClass, Section } from '../components/ui/FormField';
+import { Section } from '../components/ui/FormField';
 import { Modal } from '../components/ui/Modal';
-import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
-import { Tabs } from '../components/ui/Tabs';
+import { StageMenu } from '../components/ui/StageMenu';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 import {
@@ -31,8 +30,28 @@ const RANGES = [
   { id: 'custom', label: 'Custom dates' },
 ];
 
-const ORDER_TABS = [
-  { id: 'all', label: 'All' },
+const TONE_CHIPS = {
+  muted: { chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
+  accent: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  info: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  purple: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  teal: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+  success: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+  warning: { chip: 'border-amber-300 bg-amber-100 text-amber-900', dot: 'bg-amber-500' },
+  danger: { chip: 'border-rose-300 bg-rose-100 text-rose-800', dot: 'bg-rose-600' },
+};
+
+const VIEWS = [
+  { id: 'overview', label: 'Overview', tone: 'accent' },
+  { id: 'operators', label: 'Operators', tone: 'info' },
+  { id: 'stages', label: 'Stages', tone: 'purple' },
+  { id: 'products', label: 'Products', tone: 'success' },
+  { id: 'orders', label: 'Orders', tone: 'teal' },
+  { id: 'waste', label: 'Waste', tone: 'warning' },
+];
+
+const ORDER_FILTERS = [
+  { id: 'all', label: 'All', tone: 'muted' },
   { id: 'at_risk', label: 'At risk', tone: 'danger' },
   { id: 'in_production', label: 'In production', tone: 'accent' },
   { id: 'dispatched', label: 'Dispatched', tone: 'teal' },
@@ -90,9 +109,71 @@ function stageColor(id) {
   return CHART_COLORS[id] || CHART_COLORS.muted;
 }
 
+function ChipMenu({ label, value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((item) => item.id === value) || options[0];
+  const tone = TONE_CHIPS[current?.tone] || TONE_CHIPS.muted;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  if (!current) return null;
+
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className={`inline-flex max-w-64 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold ${tone.chip}`}
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+        <span className="truncate">
+          {current.label}
+          {current.count != null ? ` · ${current.count}` : ''}
+        </span>
+        <svg viewBox="0 0 20 20" className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-1 max-h-80 w-56 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
+          {options.map((item) => {
+            const itemTone = TONE_CHIPS[item.tone] || TONE_CHIPS.muted;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onChange(item.id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                  item.id === value ? itemTone.chip : 'text-ink hover:bg-paper'
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${itemTone.dot}`} />
+                <span className="flex-1 font-semibold">{item.label}</span>
+                {item.count != null ? <span className="text-xs font-normal">{item.count}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Legend({ items }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs text-slate">
+    <div className="flex flex-wrap items-center gap-3 text-sm font-normal text-slate">
       {items.map((item) => (
         <span key={item.label} className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-sm" style={{ background: item.color }} />
@@ -104,12 +185,12 @@ function Legend({ items }) {
 }
 
 function Kpi({ label, value, hint, tone = 'muted', onClick }) {
-  const className = `rounded-xl border p-3 ${panelTones[tone]} ${onClick ? 'cursor-pointer text-left hover:brightness-95' : ''}`;
+  const className = `rounded-xl border px-4 py-3 text-left ${panelTones[tone]} ${onClick ? 'cursor-pointer hover:brightness-95' : ''}`;
   const body = (
     <>
-      <p className="text-[11px] uppercase tracking-wide text-steel">{label}</p>
-      <p className={`mt-1 text-lg font-semibold ${valueTones[tone]}`}>{value}</p>
-      {hint ? <p className="mt-0.5 text-xs text-slate">{hint}</p> : null}
+      <p className="text-sm font-semibold text-ink">{label}</p>
+      <p className={`mt-1 text-xl font-semibold ${valueTones[tone]}`}>{value}</p>
+      {hint ? <p className="mt-0.5 text-sm font-normal text-slate">{hint}</p> : null}
     </>
   );
   if (onClick) {
@@ -128,13 +209,13 @@ function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
     return empty || <EmptyState title="Nothing to show" />;
   }
   return (
-    <div className="overflow-hidden rounded-lg border border-line">
+      <div className="overflow-hidden rounded-xl border border-line bg-card">
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-paper text-[11px] uppercase tracking-wide text-steel">
+          <thead className="bg-ink text-paper">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className={`px-3 py-2 ${column.align === 'right' ? 'text-right' : ''}`}>
+                <th key={column.key} className={`px-4 py-3 font-semibold ${column.align === 'right' ? 'text-right' : ''}`}>
                   {column.label}
                 </th>
               ))}
@@ -144,11 +225,11 @@ function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
             {list.paged.map((row, index) => (
               <tr
                 key={row.id || row.key || index}
-                className={`border-t border-line ${onRowClick ? 'cursor-pointer hover:bg-paper' : ''}`}
+                className={`border-t border-line ${onRowClick ? 'cursor-pointer hover:bg-paper/70' : ''}`}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
               >
                 {columns.map((column) => (
-                  <td key={column.key} className={`px-3 py-2 ${column.align === 'right' ? 'text-right' : ''}`}>
+                  <td key={column.key} className={`px-4 py-3 font-normal ${column.align === 'right' ? 'text-right' : ''}`}>
                     {column.render ? column.render(row) : row[column.key]}
                   </td>
                 ))}
@@ -177,13 +258,13 @@ function WorkTable({ rows, canOpenOrder, onClose }) {
       render: (row) => (
         <div>
           {canOpenOrder ? (
-            <Link to={`/sales-orders/${row.orderId}`} className="font-medium text-accent hover:underline" onClick={onClose}>
+            <Link to={`/sales-orders/${row.orderId}`} className="font-semibold text-accent hover:underline" onClick={onClose}>
               {row.number}
             </Link>
           ) : (
-            <p className="font-medium">{row.number}</p>
+            <p className="font-semibold">{row.number}</p>
           )}
-          <p className="text-xs text-slate">{row.productCode || row.product}</p>
+          <p className="text-sm font-normal text-slate">{row.productCode || row.product}</p>
         </div>
       ),
     },
@@ -332,14 +413,16 @@ export function Analytics() {
     value: row.output,
   }));
 
-  const tabs = [
-    { id: 'overview', label: 'Overview', tone: 'accent' },
-    { id: 'operators', label: 'Operators', count: data?.kpis?.operators, tone: 'info' },
-    { id: 'stages', label: 'Stages', tone: 'purple' },
-    { id: 'products', label: 'Products', count: data?.byProduct?.length, tone: 'info' },
-    { id: 'orders', label: 'Orders', count: data?.orders?.length, tone: 'teal' },
-    { id: 'waste', label: 'Waste', tone: 'warning' },
-  ];
+  const views = VIEWS.map((item) => {
+    if (item.id === 'operators') return { ...item, count: data?.kpis?.operators ?? 0 };
+    if (item.id === 'stages') return { ...item, count: data?.byStage?.length ?? 0 };
+    if (item.id === 'products') return { ...item, count: data?.byProduct?.length ?? 0 };
+    if (item.id === 'orders') return { ...item, count: data?.orders?.length ?? 0 };
+    if (item.id === 'waste') return { ...item, count: data?.waste?.inventory?.length ?? 0 };
+    return item;
+  });
+  const ranges = RANGES.map((item) => ({ ...item, tone: 'muted' }));
+  const stages = [{ id: 'all', label: 'All stages' }, ...PRODUCTION_STAGES];
 
   const orderCounts = {
     all: data?.orders?.length || 0,
@@ -356,64 +439,33 @@ export function Analytics() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Analytics"
-        subtitle={
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+        <h1 className="px-1 text-lg font-semibold">Analytics</h1>
+        <ChipMenu label="View" value={tab} options={views} onChange={setTab} />
+        <ChipMenu label="Range" value={preset} options={ranges} onChange={setPreset} />
+        <StageMenu stages={stages} value={stage} onChange={setStage} />
+        {preset === 'custom' ? (
           <>
-            <span>
-              {formatDate(bounds.from)} – {formatDate(bounds.to)}
-            </span>
-            <Badge tone={stage === 'all' ? 'muted' : stepTone(stage)}>
-              {stage === 'all' ? 'All stages' : stageLabel(stage)}
-            </Badge>
-            {loading ? <span className="text-steel">Updating…</span> : null}
+            <input
+              type="date"
+              aria-label="From"
+              className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent"
+              value={customFrom || bounds.from}
+              onChange={(event) => setCustomFrom(event.target.value)}
+            />
+            <input
+              type="date"
+              aria-label="To"
+              className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent"
+              value={customTo || bounds.to}
+              onChange={(event) => setCustomTo(event.target.value)}
+            />
           </>
-        }
-        actions={
-          <div className="flex flex-wrap items-end gap-2">
-            <Field label="Range" className="w-40">
-              <select className={inputClass} value={preset} onChange={(event) => setPreset(event.target.value)}>
-                {RANGES.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {preset === 'custom' ? (
-              <>
-                <Field label="From" className="w-36">
-                  <input
-                    type="date"
-                    className={inputClass}
-                    value={customFrom || bounds.from}
-                    onChange={(event) => setCustomFrom(event.target.value)}
-                  />
-                </Field>
-                <Field label="To" className="w-36">
-                  <input
-                    type="date"
-                    className={inputClass}
-                    value={customTo || bounds.to}
-                    onChange={(event) => setCustomTo(event.target.value)}
-                  />
-                </Field>
-              </>
-            ) : null}
-            <Field label="Stage" className="w-40">
-              <select className={inputClass} value={stage} onChange={(event) => setStage(event.target.value)}>
-                <option value="all">All stages</option>
-                {PRODUCTION_STAGES.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        }
-        extra={<Tabs tabs={tabs} value={tab} onChange={setTab} />}
-      />
+        ) : null}
+        <p className="ml-auto text-sm font-normal text-slate">
+          {loading ? 'Updating…' : `${formatDate(bounds.from)} – ${formatDate(bounds.to)}`}
+        </p>
+      </div>
 
       {error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p> : null}
 
@@ -483,13 +535,12 @@ export function Analytics() {
                 data={daily}
                 onBarClick={(row) => openDrill({ type: 'date', key: row.date, title: formatDate(row.date) })}
               />
-              <p className="text-xs text-slate">Click a day to see its shifts.</p>
             </Section>
             <div className="grid gap-4">
-              <Section title="By shift" actions={<p className="text-xs text-slate">Morning / afternoon / night</p>}>
+              <Section title="By shift">
                 <BarChart data={shiftBars} onBarClick={(row) => openDrill({ type: 'shift', key: row.id, title: row.label })} />
               </Section>
-              <Section title="By stage" actions={<p className="text-xs text-slate">Click a stage for detail</p>}>
+              <Section title="By stage">
                 <BarChart
                   data={stageBars}
                   onBarClick={(row) => openDrill({ type: 'stage', key: row.id, title: row.label })}
@@ -512,7 +563,7 @@ export function Analytics() {
               onRowClick={(row) => openDrill({ type: 'operator', key: row.name, title: row.name })}
               rows={operators.map((row) => ({ ...row, id: row.name }))}
               columns={[
-                { key: 'name', label: 'Operator' },
+                { key: 'name', label: 'Operator', render: (row) => <span className="font-semibold">{row.name}</span> },
                 {
                   key: 'stages',
                   label: 'Stages',
@@ -534,13 +585,12 @@ export function Analytics() {
               ]}
             />
             <div className="rounded-lg border border-line bg-paper p-3">
-              <p className="mb-2 text-xs uppercase tracking-wide text-steel">Output</p>
+              <p className="mb-2 text-sm font-semibold text-ink">Output</p>
               <BarChart
                 data={operatorBars}
                 color={CHART_COLORS.printing}
                 onBarClick={(row) => openDrill({ type: 'operator', key: row.name, title: row.name })}
               />
-              <p className="mt-2 text-xs text-slate">Click a row or bar for that operator’s shifts.</p>
             </div>
           </div>
         </Section>
@@ -576,7 +626,7 @@ export function Analytics() {
                 onRowClick={(row) => openDrill({ type: 'machine', key: row.name, title: row.name })}
                 rows={(data?.byMachine || []).map((row) => ({ ...row, id: row.name }))}
                 columns={[
-                  { key: 'name', label: 'Machine' },
+                  { key: 'name', label: 'Machine', render: (row) => <span className="font-semibold">{row.name}</span> },
                   {
                     key: 'stages',
                     label: 'Stage',
@@ -617,8 +667,8 @@ export function Analytics() {
                   label: 'Product',
                   render: (row) => (
                     <div>
-                      <p className="font-medium">{row.code}</p>
-                      <p className="text-xs text-slate">{row.name}</p>
+                      <p className="font-semibold">{row.code}</p>
+                      <p className="text-sm font-normal text-slate">{row.name}</p>
                     </div>
                   ),
                 },
@@ -629,13 +679,12 @@ export function Analytics() {
               ]}
             />
             <div className="rounded-lg border border-line bg-paper p-3">
-              <p className="mb-2 text-xs uppercase tracking-wide text-steel">Output</p>
+              <p className="mb-2 text-sm font-semibold text-ink">Output</p>
               <BarChart
                 data={productBars}
                 color={CHART_COLORS.cutting}
                 onBarClick={(row) => openDrill({ type: 'product', key: row.code, title: row.name || row.code })}
               />
-              <p className="mt-2 text-xs text-slate">Click a SKU to see its shifts.</p>
             </div>
           </div>
         </Section>
@@ -667,14 +716,19 @@ export function Analytics() {
             ))}
           </div>
           <Section
-            title="Floor orders"
-            actions={<SearchField value={orderQuery} onChange={setOrderQuery} placeholder="Search order or customer" className="w-56" />}
+            title="Orders"
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <ChipMenu
+                  label="Order status"
+                  value={orderTab}
+                  options={ORDER_FILTERS.map((item) => ({ ...item, count: orderCounts[item.id] }))}
+                  onChange={setOrderTab}
+                />
+                <SearchField value={orderQuery} onChange={setOrderQuery} placeholder="Search order or customer" className="w-56" />
+              </div>
+            }
           >
-            <Tabs
-              tabs={ORDER_TABS.map((item) => ({ ...item, count: orderCounts[item.id] }))}
-              value={orderTab}
-              onChange={setOrderTab}
-            />
             <DataTable
               resetKey={`${orderTab}|${orderQuery}`}
               empty={<EmptyState title="No matching orders" hint="Delivered, dispatched, and in-production orders appear here." />}
@@ -686,11 +740,11 @@ export function Analytics() {
                   label: 'Order',
                   render: (row) =>
                     canOpenOrder ? (
-                      <Link to={`/sales-orders/${row.id}`} className="font-medium text-accent hover:underline" onClick={(event) => event.stopPropagation()}>
+                      <Link to={`/sales-orders/${row.id}`} className="font-semibold text-accent hover:underline" onClick={(event) => event.stopPropagation()}>
                         {row.number}
                       </Link>
                     ) : (
-                      <span className="font-medium">{row.number}</span>
+                      <span className="font-semibold">{row.number}</span>
                     ),
                 },
                 { key: 'customer', label: 'Customer' },
@@ -713,7 +767,6 @@ export function Analytics() {
                   : []),
               ]}
             />
-            <p className="text-xs text-slate">Click a row to see that order’s shifts in this range.</p>
           </Section>
         </div>
       ) : null}
@@ -746,7 +799,7 @@ export function Analytics() {
                 empty={<EmptyState title="No waste lots in inventory" />}
                 rows={wasteLots}
                 columns={[
-                  { key: 'name', label: 'Lot' },
+                  { key: 'name', label: 'Lot', render: (row) => <span className="font-semibold">{row.name}</span> },
                   {
                     key: 'stage',
                     label: 'Stage',

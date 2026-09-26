@@ -4,8 +4,9 @@ import { customersApi } from '../api/customers.api';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
 import { SalesOrderLineCard } from '../components/sales/SalesOrderLineCard';
+import { BackButton } from '../components/ui/BackButton';
+import { StepProgress, stepMark } from '../components/ui/StepProgress';
 import { Field, Grid, Section, inputClass } from '../components/ui/FormField';
-import { PageHeader } from '../components/ui/PageHeader';
 import { usePermission } from '../hooks/usePermission';
 import {
   PAYMENT_METHODS,
@@ -24,6 +25,73 @@ import {
 
 function todayInput() {
   return toDateInput(new Date());
+}
+
+const FLOW_CHIPS = {
+  roll_dispatch: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  roll_print_dispatch: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  roll_print_cut_dispatch: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  roll_cut_dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+};
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FlowMenu({ disabled, onPick }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  return (
+    <div className="relative" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="Set flow on all products"
+        aria-expanded={open}
+        onClick={() => setOpen((next) => !next)}
+        className="inline-flex max-w-72 items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper disabled:opacity-60"
+      >
+        <span className="truncate">Set flow on all products</span>
+        <svg viewBox="0 0 20 20" className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-1 w-80 rounded-lg border border-line bg-white p-1 shadow-md">
+          {PRODUCTION_ROUTES.map((route) => {
+            const tone = FLOW_CHIPS[route.id] || FLOW_CHIPS.roll_dispatch;
+            return (
+              <button
+                key={route.id}
+                type="button"
+                onClick={() => {
+                  onPick(route.id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-semibold ${tone.chip}`}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+                <span>{route.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 const emptyHeader = {
@@ -188,7 +256,6 @@ export function SalesOrderForm() {
     0,
     steps.findIndex((step) => step.id === tab)
   );
-  const currentStep = steps[stepIndex] || steps[0];
   const isFirstStep = stepIndex <= 0;
   const isLastStep = stepIndex >= steps.length - 1;
 
@@ -203,79 +270,16 @@ export function SalesOrderForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <PageHeader
-        title={isEdit ? `Edit ${number}` : 'New sales order'}
-        subtitle="Follow the steps: Order → Product → Delivery → Total. Save as draft anytime."
-        backTo={isEdit ? `/sales-orders/${id}` : '/sales-orders'}
-        backLabel={isEdit ? number : 'Sales orders'}
-        actions={
-          canSave ? (
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-dark disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : isEdit ? 'Save draft' : 'Create draft'}
-            </button>
-          ) : null
-        }
-      />
-
-      <div className="rounded-xl border border-line bg-card p-3 sm:p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-2">
-          {steps.map((step, index) => {
-            const active = step.id === tab;
-            const done = index < stepIndex;
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => setTab(step.id)}
-                className={`flex flex-1 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
-                  active
-                    ? 'border-accent bg-accent/10'
-                    : done
-                      ? 'border-emerald-200 bg-emerald-50/70 hover:border-accent'
-                      : 'border-line bg-paper/60 hover:border-accent'
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                    active
-                      ? 'bg-accent text-white'
-                      : done
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-white text-slate border border-line'
-                  }`}
-                >
-                  {done ? '✓' : step.number}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-xs uppercase tracking-wide text-slate">
-                    Step {step.number}
-                  </span>
-                  <span className="block truncate text-sm font-medium text-ink">
-                    {step.label}
-                    {step.count != null ? ` (${step.count})` : ''}
-                  </span>
-                  <span className="hidden text-xs text-slate sm:block">{step.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-3 text-sm text-slate">
-          <span className="font-medium text-ink">
-            Step {currentStep.number}: {currentStep.label}
-          </span>
-          {' — '}
-          {currentStep.hint}
-        </p>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+        <BackButton fallback={isEdit ? `/sales-orders/${id}` : '/sales-orders'} />
+        <h1 className="px-1 text-lg font-semibold">{isEdit ? number || 'Sales order' : 'New sales order'}</h1>
       </div>
+
+      <StepProgress steps={steps} value={tab} onChange={setTab} />
 
         {tab === 'order' ? (
         <>
-        <Section title={`Step ${steps.find((s) => s.id === 'order')?.number || 1} · Order`}>
+        <Section title="Order" mark={{ ...stepMark('order'), number: steps.find((s) => s.id === 'order')?.number || 1 }}>
           <Grid>
             {isEdit ? (
               <Field label="Sales order no.">
@@ -351,41 +355,26 @@ export function SalesOrderForm() {
 
         {tab === 'products' ? (
         <Section
-          title={`Step ${steps.find((s) => s.id === 'products')?.number || 2} · Product`}
+          title="Product" mark={{ ...stepMark('products'), number: steps.find((s) => s.id === 'products')?.number || 2 }}
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                value=""
+              <FlowMenu
                 disabled={!canSave}
-                onChange={(event) => {
-                  const route = event.target.value;
-                  if (!route) return;
-                  setItems((prev) => prev.map((item) => applyRoute(item, route)));
-                }}
-                className={`${inputClass} mt-0 w-64`}
-              >
-                <option value="">Set flow on all products</option>
-                {PRODUCTION_ROUTES.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {route.label}
-                  </option>
-                ))}
-              </select>
+                onPick={(route) => setItems((prev) => prev.map((item) => applyRoute(item, route)))}
+              />
               {canSave ? (
                 <button
                   type="button"
                   onClick={() => setItems((prev) => [...prev, emptyLineItem()])}
-                  className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-paper"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
                 >
+                  <PlusIcon />
                   Add product
                 </button>
               ) : null}
             </div>
           }
         >
-          <p className="mb-3 text-xs text-slate">
-            Customer products load automatically when you pick a customer. New products added here are saved onto that customer for next time.
-          </p>
           <div className="space-y-4">
             {items.map((item, index) => (
               <SalesOrderLineCard
@@ -406,7 +395,7 @@ export function SalesOrderForm() {
         ) : null}
 
         {tab === 'delivery' ? (
-        <Section title={`Step ${steps.find((s) => s.id === 'delivery')?.number || 3} · Delivery`}>
+        <Section title="Delivery" mark={{ ...stepMark('delivery'), number: steps.find((s) => s.id === 'delivery')?.number || 3 }}>
           <Grid>
             {showCommercial ? (
               <>
@@ -435,7 +424,7 @@ export function SalesOrderForm() {
                   <input type="number" min="0" step="any" value={header.advanceAmount} disabled={!canSave} onChange={(e) => updateHeader('advanceAmount', e.target.value)} className={inputClass} />
                 </Field>
                 <Field label="Remaining amount">
-                  <input readOnly value={formatMoney(totals.remaining)} className={inputClass} />
+                  <input readOnly value={formatMoney(totals.remaining)} className={`${inputClass} font-semibold!`} />
                 </Field>
                 <Field label="Payment remarks">
                   <input value={header.paymentRemarks} disabled={!canSave} onChange={(e) => updateHeader('paymentRemarks', e.target.value)} className={inputClass} />
@@ -467,7 +456,7 @@ export function SalesOrderForm() {
         ) : null}
 
         {tab === 'totals' && showCommercial ? (
-          <Section title={`Step ${steps.find((s) => s.id === 'totals')?.number || 4} · Total`}>
+          <Section title="Total" mark={{ ...stepMark('totals'), number: steps.find((s) => s.id === 'totals')?.number || 4 }}>
             <Grid cols="sm:grid-cols-2 lg:grid-cols-5">
               <Field label="Subtotal">
                 <input readOnly value={formatMoney(totals.subtotal)} className={inputClass} />
@@ -479,10 +468,10 @@ export function SalesOrderForm() {
                 <input readOnly value={formatMoney(totals.tax)} className={inputClass} />
               </Field>
               <Field label="Grand total">
-                <input readOnly value={formatMoney(totals.grandTotal)} className={inputClass} />
+                <input readOnly value={formatMoney(totals.grandTotal)} className={`${inputClass} font-semibold!`} />
               </Field>
               <Field label="Remaining">
-                <input readOnly value={formatMoney(totals.remaining)} className={inputClass} />
+                <input readOnly value={formatMoney(totals.remaining)} className={`${inputClass} font-semibold!`} />
               </Field>
             </Grid>
           </Section>
@@ -495,7 +484,7 @@ export function SalesOrderForm() {
             type="button"
             disabled={isFirstStep}
             onClick={() => goStep(-1)}
-            className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-paper disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink hover:bg-paper disabled:cursor-not-allowed disabled:opacity-40"
           >
             ← Previous
           </button>
@@ -504,7 +493,7 @@ export function SalesOrderForm() {
               <button
                 type="button"
                 onClick={() => goStep(1)}
-                className="rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent hover:bg-accent/10"
+                className="rounded-lg border border-accent px-4 py-2 text-sm font-semibold text-accent hover:bg-accent/10"
               >
                 Next: Step {stepIndex + 2} · {steps[stepIndex + 1]?.label} →
               </button>
@@ -513,14 +502,14 @@ export function SalesOrderForm() {
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
               >
                 {saving ? 'Saving…' : isEdit ? 'Save draft' : 'Create draft'}
               </button>
             ) : null}
           </div>
         </div>
-        <p className="text-xs text-slate">Attachments can be added after the draft is saved.</p>
+        <p className="text-sm font-normal text-slate">Attachments can be added after the draft is saved.</p>
     </form>
   );
 }

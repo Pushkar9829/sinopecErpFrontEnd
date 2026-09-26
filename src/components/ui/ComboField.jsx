@@ -71,8 +71,27 @@ export function ComboField({ label, value, options = [], onChange, disabled, req
             setHighlight(0);
           }}
           onKeyDown={onKeyDown}
-          className={inputClass}
+          className={`${inputClass} pr-9!`}
         />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled || unique.length === 0}
+          aria-label="Show options"
+          onClick={() => !disabled && unique.length > 0 && setOpen((value) => !value)}
+          className="absolute right-2 top-[calc(50%+0.125rem)] -translate-y-1/2 text-ink disabled:opacity-40"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
         {open && !disabled && filtered.length > 0 ? (
           <ul
             ref={listRef}

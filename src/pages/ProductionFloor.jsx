@@ -1,159 +1,62 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import { BackButton } from '../components/ui/BackButton';
+import { StageMenu } from '../components/ui/StageMenu';
 import { productionApi } from '../api/production.api';
-import { EmptyState } from '../components/ui/EmptyState';
-import { Field, Grid, inputClass } from '../components/ui/FormField';
-import { PageHeader } from '../components/ui/PageHeader';
-import { Tabs } from '../components/ui/Tabs';
-import { Badge, PriorityBadge, panelTones, stepTone, valueTones } from '../components/ui/Badge';
+import { salesOrdersApi } from '../api/salesOrders.api';
 import { usePermission } from '../hooks/usePermission';
-import { DELIVERY_PARTNERS, PRODUCTION_SHIFTS, PRODUCTION_STAGES, STEP_LABELS, formatDate, formatQty, routeLabel, toDateInput } from '../lib/sales';
+import { DELIVERY_PARTNERS, PRODUCTION_SHIFTS, PRODUCTION_STAGES, formatDate, formatQty, routeStages, statusLabel, toDateInput } from '../lib/sales';
 
-function Value({ label, children }) {
-  if (children == null || children === '') return null;
-  return (
-    <div>
-      <p className="text-xs uppercase tracking-wide text-steel">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm">{children}</p>
-    </div>
-  );
-}
+const BOOK = {
+  rolling: {
+    title: 'Rolling register',
+    made: 'Made',
+    left: 'Left',
+    take: 'Take material',
+    write: 'Write in book',
+    empty: 'No order is waiting for rolling.',
+    done: 'Rolling for this order is finished.',
+  },
+  printing: {
+    title: 'Printing register',
+    made: 'Printed',
+    left: 'Left',
+    take: 'Take roll',
+    write: 'Write in book',
+    empty: 'No roll is waiting for printing.',
+    done: 'Printing for this order is finished.',
+  },
+  cutting: {
+    title: 'Cutting register',
+    made: 'Cut',
+    left: 'Left',
+    take: 'Take film',
+    write: 'Write in book',
+    empty: 'No film is waiting for cutting.',
+    done: 'Cutting for this order is finished.',
+  },
+  dispatch: {
+    title: 'Dispatch register',
+    made: 'Sent inside',
+    left: 'Left',
+    take: 'Take goods',
+    write: 'Write in book',
+    empty: 'No goods are waiting for dispatch.',
+    done: 'This order is ready for delivery.',
+  },
+  delivery: {
+    title: 'Delivery register',
+    made: 'Delivered',
+    left: 'Left',
+    take: 'Send out',
+    write: 'Write in book',
+    empty: 'Nothing is waiting to send.',
+    done: 'This order is delivered.',
+  },
+};
 
-function stageGuide(stage) {
-  const guides = {
-    rolling: {
-      listTitle: 'Waiting to roll',
-      listEmpty: 'Work appears when an order is planned and raw material is in the store.',
-      produced: 'Rolled',
-      remaining: 'Still to roll',
-      pickTitle: '1. Take granules from the store',
-      pickHint: 'Pick a raw lot, then log what this shift rolled.',
-      pickButton: 'Start rolling',
-      workTitle: '2. Log this rolling shift',
-      workButton: 'Save rolling',
-      finishButton: 'Finish rolling',
-      historyTitle: 'Already rolled',
-      doneHint: 'Output goes to rolling inventory for the next stage.',
-    },
-    printing: {
-      listTitle: 'Waiting to print',
-      listEmpty: 'Work appears when rolling output is waiting in inventory.',
-      produced: 'Printed',
-      remaining: 'Still to print',
-      pickTitle: '1. Take rolled film',
-      pickHint: 'Pick rolling output, then log this printing shift.',
-      pickButton: 'Start printing',
-      workTitle: '2. Log this printing shift',
-      workButton: 'Save printing',
-      finishButton: 'Finish printing',
-      historyTitle: 'Already printed',
-      doneHint: 'Output goes to printing inventory for the next stage.',
-    },
-    cutting: {
-      listTitle: 'Waiting to cut',
-      listEmpty: 'Work appears when previous-stage output is waiting in inventory.',
-      produced: 'Cut',
-      remaining: 'Still to cut',
-      pickTitle: '1. Take film to cut',
-      pickHint: 'Pick previous-stage output, then log this cutting shift.',
-      pickButton: 'Start cutting',
-      workTitle: '2. Log this cutting shift',
-      workButton: 'Save cutting',
-      finishButton: 'Finish cutting',
-      historyTitle: 'Already cut',
-      doneHint: 'Output goes to cutting inventory for dispatch.',
-    },
-    dispatch: {
-      listTitle: 'Ready to dispatch',
-      listEmpty: 'Work appears when finished goods are waiting in inventory.',
-      produced: 'Dispatched',
-      remaining: 'Still to dispatch',
-      pickTitle: '1. Take finished goods',
-      pickHint: 'Pick previous-stage output, then move it into delivery.',
-      pickButton: 'Start dispatch',
-      workTitle: '2. Move to delivery',
-      workButton: 'Save dispatch',
-      finishButton: 'Finish dispatch',
-      historyTitle: 'Already dispatched',
-      doneHint: 'Dispatched lots wait on the Delivery tab to send out.',
-    },
-    delivery: {
-      listTitle: 'Ready to send',
-      listEmpty: 'Work appears after dispatch. Send a lot to mark it delivered.',
-      produced: 'Delivered',
-      remaining: 'Still to send',
-      pickTitle: 'Send this lot',
-      pickHint: 'Enter vehicle, person, and shipping partner, then send. The order moves to Delivered when the full quantity is sent.',
-      pickButton: 'Send to delivered',
-      historyTitle: 'Already sent',
-      doneHint: 'This lot is marked delivered.',
-    },
-  };
-  return guides[stage] || guides.rolling;
-}
-
-function RequirementPanel({ stage, req = {} }) {
-  if (stage === 'rolling') {
-    return (
-      <Grid>
-        <Value label="Product">{req.product}</Value>
-        <Value label="Size">{req.size}</Value>
-        <Value label="Order qty">{req.quantity ? `${req.quantity} ${req.unit || ''}` : ''}</Value>
-        <Value label="Raw material">{req.rawMaterial}</Value>
-        <Value label="Type / grade">{[req.materialType, req.materialGrade].filter(Boolean).join(' / ')}</Value>
-        <Value label="Required weight">{req.requiredWeight}</Value>
-        <Value label="Width × length">{[req.width, req.length].filter(Boolean).join(' × ')}</Value>
-        <Value label="Thickness">{req.thickness}</Value>
-        <Value label="Color">{req.color}</Value>
-        <Value label="Roll">{[req.roll?.width, req.roll?.length, req.roll?.weight].filter(Boolean).join(' · ')}</Value>
-        <Value label="Additives">{req.additives}</Value>
-        <Value label="Special">{req.specialRequirements}</Value>
-      </Grid>
-    );
-  }
-
-  if (stage === 'printing') {
-    return (
-      <Grid>
-        <Value label="Product">{req.product}</Value>
-        <Value label="Size">{req.size}</Value>
-        <Value label="Order qty">{req.quantity ? `${req.quantity} ${req.unit || ''}` : ''}</Value>
-        <Value label="Artwork">{req.printing?.artwork}</Value>
-        <Value label="Colours">{[req.printing?.colorCount, req.printing?.colors].filter(Boolean).join(' · ')}</Value>
-        <Value label="Design">{req.printing?.design}</Value>
-        <Value label="Impressions">{req.printing?.impressions}</Value>
-        <Value label="Print need">{req.printing?.requirement}</Value>
-        <Value label="Special">{req.specialRequirements}</Value>
-      </Grid>
-    );
-  }
-
-  if (stage === 'cutting') {
-    return (
-      <Grid>
-        <Value label="Product">{req.product}</Value>
-        <Value label="Size">{req.size}</Value>
-        <Value label="Order qty">{req.quantity ? `${req.quantity} ${req.unit || ''}` : ''}</Value>
-        <Value label="Bag">{[req.bag?.width, req.bag?.length, req.bag?.gusset].filter(Boolean).join(' · ')}</Value>
-        <Value label="Holes">
-          {req.holes?.required ? [req.holes.count, req.holes.type, req.holes.size, req.holes.position].filter(Boolean).join(' · ') : 'No'}
-        </Value>
-        <Value label="Tape">{req.tape?.required ? req.tape.type || 'Yes' : 'No'}</Value>
-        <Value label="Special">{req.specialRequirements}</Value>
-      </Grid>
-    );
-  }
-
-  return (
-    <Grid>
-      <Value label="Product">{req.product}</Value>
-      <Value label="Order qty">{req.quantity ? `${req.quantity} ${req.unit || ''}` : ''}</Value>
-      <Value label="Customer">{req.customer}</Value>
-      <Value label="Delivery date">{formatDate(req.deliveryDate)}</Value>
-      <Value label="Location">{req.deliveryLocation}</Value>
-      <Value label="Instructions">{req.deliveryInstructions}</Value>
-    </Grid>
-  );
+function bookOf(stage) {
+  return BOOK[stage] || BOOK.rolling;
 }
 
 function todayShift() {
@@ -163,24 +66,21 @@ function todayShift() {
   return 'night';
 }
 
-function jobFlag(job) {
-  if (job.pickup?.qty) return 'working';
-  if (job.readyQty) return 'ready';
-  return 'waiting';
+function specParts(stage, req = {}) {
+  const qty = req.quantity ? `${formatQty(req.quantity)} ${req.unit || ''}`.trim() : '';
+  if (stage === 'rolling') return [req.size, req.rawMaterial, req.thickness, req.color, qty].filter(Boolean);
+  if (stage === 'printing') return [req.size, req.printing?.colors, req.printing?.artwork, qty].filter(Boolean);
+  if (stage === 'cutting') return [req.size, [req.bag?.width, req.bag?.length].filter(Boolean).join(' × '), qty].filter(Boolean);
+  return [req.customer, req.deliveryLocation, qty].filter(Boolean);
 }
 
-function StatCard({ label, value, tone = 'muted' }) {
-  return (
-    <div className={`rounded-lg border px-2 py-2 ${panelTones[tone] || panelTones.muted}`}>
-      <p className="text-xs text-steel">{label}</p>
-      <p className={`font-medium ${valueTones[tone] || valueTones.muted}`}>{value}</p>
-    </div>
-  );
-}
+const cell = 'border border-stone-300 px-2 py-1.5 align-middle text-sm';
+const head = 'border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
+const box = 'mt-1 w-full rounded-lg border border-stone-400 bg-white px-3 py-2 text-base font-normal text-ink outline-none focus:border-accent';
 
 export function ProductionFloor() {
+  const [searchParams] = useSearchParams();
   const { can } = usePermission();
-  const canOpenOrder = can('sales:read') || can('production:read') || can('inventory:read');
   const [stage, setStage] = useState('');
   const [queue, setQueue] = useState({ stages: [], jobs: [], shifts: PRODUCTION_SHIFTS });
   const [machines, setMachines] = useState([]);
@@ -198,10 +98,14 @@ export function ProductionFloor() {
     deliveryPartner: '',
   });
   const [pickQty, setPickQty] = useState({});
+  const [lotId, setLotId] = useState('');
   const [pickingId, setPickingId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState('orders');
+  const [orders, setOrders] = useState([]);
+  const [orderId, setOrderId] = useState('');
 
   const selected = useMemo(() => queue.jobs.find((job) => job.id === selectedId) || null, [queue.jobs, selectedId]);
   const canWork = selected
@@ -213,9 +117,11 @@ export function ProductionFloor() {
   const sourceLots = selected?.sourceLots || [];
   const shifts = queue.shifts?.length ? queue.shifts : PRODUCTION_SHIFTS;
   const partners = queue.deliveryPartners?.length ? queue.deliveryPartners : DELIVERY_PARTNERS;
-  const guide = stageGuide(stage || selected?.stage);
+  const book = bookOf(stage || selected?.stage);
   const isDelivery = selected?.stage === 'delivery';
+  const isDispatch = selected?.stage === 'dispatch';
   const handoverReady = Boolean(work.deliveryPartner && work.handoverPerson.trim() && work.vehicleNumber.trim());
+  const chosenLot = sourceLots.find((lot) => lot.id === lotId) || sourceLots[0] || null;
 
   async function load(nextStage) {
     const data = await productionApi.queue(nextStage);
@@ -230,8 +136,14 @@ export function ProductionFloor() {
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err.message));
-  }, []);
+    const requested = searchParams.get('stage') || undefined;
+    const jobId = searchParams.get('job') || '';
+    load(requested)
+      .then(() => {
+        if (jobId) setSelectedId(jobId);
+      })
+      .catch((err) => setError(err.message));
+  }, [searchParams]);
 
   useEffect(() => {
     setWork((current) => ({
@@ -247,6 +159,7 @@ export function ProductionFloor() {
       handoverPerson: '',
       deliveryPartner: '',
     }));
+    setLotId('');
   }, [selected?.id]);
 
   useEffect(() => {
@@ -256,12 +169,14 @@ export function ProductionFloor() {
       inputQty: suggest,
       outputQty: selected?.stage === 'dispatch' || selected?.stage === 'delivery' ? suggest : current.outputQty,
     }));
+    const lots = selected?.sourceLots || [];
     const next = {};
-    for (const lot of sourceLots) {
+    for (const lot of lots) {
       next[lot.id] = String(Math.min(Number(lot.quantity) || 0, remaining || Number(lot.quantity) || 0));
     }
     setPickQty(next);
-  }, [selected?.id, pickup?.qty, remaining, selected?.readyQty, selected?.stage]);
+    setLotId((current) => (current && lots.some((lot) => lot.id === current) ? current : lots[0]?.id || ''));
+  }, [selected?.id, pickup?.qty, remaining, selected?.readyQty, selected?.stage, selected?.sourceLots]);
 
   async function changeStage(next) {
     setError('');
@@ -274,7 +189,7 @@ export function ProductionFloor() {
   }
 
   async function pickLot(lot) {
-    if (!selected) return;
+    if (!selected || !lot) return;
     const qty = Number(pickQty[lot.id]);
     setError('');
     setNotice('');
@@ -299,9 +214,9 @@ export function ProductionFloor() {
       await load(stage);
       if (selected.stage === 'delivery') {
         const left = remaining - qty;
-        setNotice(left > 0.0001 ? `Sent this lot. ${left} still left to deliver.` : 'Delivery finished. Order moved to Delivered.');
+        setNotice(left > 0.0001 ? `Sent. ${formatQty(left)} still left.` : 'Sent. Order is delivered.');
       } else {
-        setNotice(`Marked ${formatQty(qty)} ${lot.unit} from “${lot.name}” for working.`);
+        setNotice('');
       }
     } catch (err) {
       setError(err.message);
@@ -322,7 +237,7 @@ export function ProductionFloor() {
         stage: selected.stage,
       });
       await load(stage);
-      setNotice('Returned the picked lot back to inventory.');
+      setNotice('Material put back.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -352,7 +267,7 @@ export function ProductionFloor() {
       const used = Number(work.outputQty || work.inputQty) || 0;
       const left = remaining - used;
       await load(stage);
-      setNotice(left > 0.0001 ? `Shift saved. ${left} still left on ${guide.remaining.toLowerCase()}.` : guide.doneHint);
+      setNotice(left > 0.0001 ? `Written. ${formatQty(left)} still left.` : book.done);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -360,443 +275,478 @@ export function ProductionFloor() {
     }
   }
 
+  const stages = queue.stages.length ? queue.stages : PRODUCTION_STAGES;
+  const registerOnly = Boolean(searchParams.get('job'));
+  const isAdminFloor = can('production:read') && !registerOnly;
+  const pickedOrder = orders.find((order) => order.id === orderId) || null;
+  const orderStageIds = useMemo(() => {
+    const ids = [];
+    for (const item of pickedOrder?.items || []) {
+      for (const id of routeStages(item.productionRoute)) {
+        if (!ids.includes(id)) ids.push(id);
+      }
+    }
+    return ids;
+  }, [pickedOrder]);
+  const stageChoices = isAdminFloor && mode === 'orders' && orderStageIds.length
+    ? PRODUCTION_STAGES.filter((item) => orderStageIds.includes(item.id))
+    : stages;
+  const visibleJobs = isAdminFloor && mode === 'orders' && orderId
+    ? queue.jobs.filter((job) => job.orderId === orderId)
+    : queue.jobs;
+  const showJobTable = !registerOnly && (!isAdminFloor || mode === 'stages' || Boolean(orderId));
+
+  useEffect(() => {
+    if (!isAdminFloor || mode !== 'orders') return;
+    salesOrdersApi.list().then(setOrders).catch((err) => setError(err.message));
+  }, [isAdminFloor, mode]);
+
+  useEffect(() => {
+    if (!(isAdminFloor && mode === 'orders' && orderId)) return;
+    const match = queue.jobs.filter((job) => job.orderId === orderId);
+    setSelectedId((current) => (match.some((job) => job.id === current) ? current : match[0]?.id || ''));
+  }, [queue.jobs, orderId, mode, isAdminFloor]);
+
   return (
-    <div className="flex h-[calc(100dvh-2rem)] flex-col gap-4 overflow-hidden">
-      <div className="shrink-0">
-        <PageHeader
-          title="Production floor"
-          subtitle="Each tab is one station. Pick stock, do the work, then the next station can take it. Delivery sends a lot out and marks the order Delivered."
-          extra={
-            <Tabs
-              tabs={(queue.stages.length ? queue.stages : PRODUCTION_STAGES).map((item) => ({
-                id: item.id,
-                label: item.label,
-                count: item.count,
-                tone: stepTone(item.id),
-              }))}
-              value={stage}
-              onChange={changeStage}
-            />
-          }
-        />
-      </div>
-
-      {error ? <p className="shrink-0 text-sm text-red-700">{error}</p> : null}
-      {notice ? <p className="shrink-0 text-sm text-emerald-700">{notice}</p> : null}
-
-      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[22rem_1fr]">
-        <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-card">
-          <p className="shrink-0 border-b border-line px-3 py-2 text-xs font-medium uppercase tracking-wide text-steel">
-            {guide.listTitle}
-          </p>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {queue.jobs.length === 0 ? (
-              <EmptyState title="Nothing waiting" hint={guide.listEmpty} />
-            ) : (
-              queue.jobs.map((job) => {
-                const flag = jobFlag(job);
-                return (
-                  <button
-                    key={job.id}
-                    type="button"
-                    onClick={() => setSelectedId(job.id)}
-                    className={`block w-full border-b border-line px-3 py-3 text-left border-l-4 ${
-                      flag === 'working'
-                        ? 'border-l-orange-600'
-                        : flag === 'ready'
-                          ? 'border-l-sky-600'
-                          : 'border-l-transparent'
-                    } ${
-                      selectedId === job.id
-                        ? flag === 'working'
-                          ? 'bg-orange-50'
-                          : flag === 'ready'
-                            ? 'bg-sky-50'
-                            : 'bg-paper'
-                        : 'hover:bg-paper/70'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <p className="truncate text-sm font-medium">{job.number}</p>
-                        {flag === 'working' ? <Badge tone="accent">Working</Badge> : null}
-                        {flag === 'ready' ? <Badge tone="info">Ready</Badge> : null}
-                      </div>
-                      <PriorityBadge priority={job.priority} />
-                    </div>
-                    <p className="mt-1 text-sm">{job.product}</p>
-                    <p className={`text-xs ${flag === 'working' ? 'text-orange-900' : flag === 'ready' ? 'text-sky-800' : 'text-slate'}`}>
-                      {job.progress?.output || 0}/{job.quantity} {job.unit} {guide.produced.toLowerCase()}
-                      {flag === 'working'
-                        ? ` · ${formatQty(job.pickup.qty)} from ${job.pickup.fromStageLabel || 'store'}`
-                        : flag === 'ready'
-                          ? ` · ${formatQty(job.readyQty)} to pick`
-                          : ''}
-                    </p>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </aside>
-
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-card">
-          {!selected ? (
-            <EmptyState title="Pick a job" hint="Select a sales order on the left." />
+    <div className="-mx-5 -my-4 flex h-dvh min-h-0 flex-col md:-mx-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-stone-800 bg-[#fffdf6]">
+        <div className="flex items-center justify-between border-b-2 border-stone-800 bg-[#f6f1e4] px-4 py-2">
+          {registerOnly ? (
+            <BackButton fallback={`/?stage=${stage || 'rolling'}`} />
           ) : (
-            <>
-              <div className="shrink-0 border-b border-line px-4 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="flex flex-wrap items-center gap-2 font-medium">
-                      {selected.number} · {selected.product}
-                      {pickup ? <Badge tone="accent">Working</Badge> : selected.readyQty ? <Badge tone="info">Ready</Badge> : null}
-                    </h2>
-                    <p className="mt-0.5 text-sm text-slate">
-                      {routeLabel(selected.productionRoute)} · due {formatDate(selected.deliveryDate)}
-                    </p>
-                  </div>
-                  {canOpenOrder ? (
-                    <Link to={`/sales-orders/${selected.orderId}`} className="text-sm text-ink hover:underline">
-                      Full order
-                    </Link>
-                  ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {isAdminFloor ? (
+                <div className="flex overflow-hidden rounded-sm border border-stone-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('orders');
+                      setOrderId('');
+                    }}
+                    className={`px-3 py-1 text-sm font-semibold ${mode === 'orders' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
+                  >
+                    Sales order
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('stages');
+                      setOrderId('');
+                    }}
+                    className={`px-3 py-1 text-sm font-semibold ${mode === 'stages' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
+                  >
+                    Stages
+                  </button>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
-                  <StatCard label={guide.produced} tone="success" value={`${produced} / ${selected.quantity} ${selected.unit}`} />
-                  <StatCard label={guide.remaining} tone="warning" value={`${remaining} ${selected.unit}`} />
-                  <StatCard
-                    label={isDelivery ? 'Ready to send' : pickup ? 'Marked for working' : 'Ready to pick'}
-                    tone={pickup ? 'accent' : selected.readyQty ? 'info' : 'muted'}
-                    value={
-                      pickup
-                        ? `${formatQty(pickup.qty)} ${pickup.unit}`
-                        : selected.readyQty
-                          ? `${formatQty(selected.readyQty)} ${selected.unit}`
-                          : 'None yet'
-                    }
-                  />
+              ) : null}
+              {isAdminFloor && mode === 'orders' && orderId ? (
+                <button type="button" onClick={() => setOrderId('')} className="text-sm font-semibold text-stone-800 underline">
+                  All orders
+                </button>
+              ) : null}
+              {!isAdminFloor || mode === 'stages' || orderId ? (
+                <StageMenu
+                  stages={stageChoices.map((item) => ({
+                    ...item,
+                    count: stages.find((row) => row.id === item.id)?.count,
+                  }))}
+                  value={stage}
+                  onChange={changeStage}
+                />
+              ) : null}
+            </div>
+          )}
+          <p className="text-sm font-semibold text-stone-900">{formatDate(new Date())}</p>
+        </div>
+
+        {error ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-base text-red-800">{error}</p> : null}
+        {notice ? <p className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-base text-emerald-900">{notice}</p> : null}
+
+        {isAdminFloor && mode === 'orders' && !orderId ? (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th className={head}>No</th>
+                  <th className={head}>Order</th>
+                  <th className={head}>Party</th>
+                  <th className={head}>Status</th>
+                  <th className={head}>Due</th>
+                  <th className={head}>Lines</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.length === 0 ? (
+                  <tr>
+                    <td className={`${cell} text-stone-500`} colSpan={6}>
+                      No sales orders.
+                    </td>
+                  </tr>
+                ) : (
+                  orders.map((order, index) => (
+                    <tr
+                      key={order.id}
+                      onClick={() => {
+                        const ids = [];
+                        for (const item of order.items || []) {
+                          for (const id of routeStages(item.productionRoute)) {
+                            if (!ids.includes(id)) ids.push(id);
+                          }
+                        }
+                        setOrderId(order.id);
+                        changeStage(ids[0] || 'rolling');
+                      }}
+                      className={`cursor-pointer ${index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'} hover:bg-amber-50`}
+                    >
+                      <td className={`${cell} w-12 text-stone-500`}>{index + 1}</td>
+                      <td className={`${cell} font-semibold`}>{order.number}</td>
+                      <td className={cell}>{order.customer?.name || '—'}</td>
+                      <td className={cell}>{statusLabel(order.status)}</td>
+                      <td className={cell}>{formatDate(order.deliveryDate)}</td>
+                      <td className={cell}>{(order.items || []).length}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {showJobTable ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="w-full table-fixed border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className={head}>No</th>
+                <th className={head}>Order</th>
+                <th className={head}>Party</th>
+                <th className={head}>Item</th>
+                <th className={head}>Order qty</th>
+                <th className={head}>{book.made}</th>
+                <th className={head}>{book.left}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleJobs.length === 0 ? (
+                <tr>
+                  <td className={`${cell} text-stone-500`} colSpan={7}>
+                    {book.empty}
+                  </td>
+                </tr>
+              ) : (
+                visibleJobs.map((job, index) => {
+                  const open = job.id === selectedId;
+                  return (
+                    <tr
+                      key={job.id}
+                      onClick={() => setSelectedId(job.id)}
+                      className={`cursor-pointer ${open ? 'bg-amber-100' : index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'} hover:bg-amber-50`}
+                    >
+                      <td className={`${cell} w-12 text-stone-500`}>{index + 1}</td>
+                      <td className={`${cell} font-semibold`}>{job.number}</td>
+                      <td className={cell}>{job.customer || '—'}</td>
+                      <td className={cell}>{job.product}</td>
+                      <td className={cell}>
+                        {formatQty(job.quantity)} {job.unit}
+                      </td>
+                      <td className={cell}>{formatQty(job.progress?.output || 0)}</td>
+                      <td className={`${cell} font-semibold`}>{formatQty(job.progress?.remaining ?? job.quantity)}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        ) : null}
+
+        {selected && (showJobTable || registerOnly) ? (
+          <div className={`flex min-h-0 flex-1 flex-col overflow-auto bg-white ${registerOnly ? '' : 'border-t-4 border-double border-stone-800'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-stone-300 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-red-800">Write this line</p>
+                <p className="mt-1 truncate text-base font-semibold text-ink">
+                  {selected.number}
+                  <span className="font-normal text-stone-600"> · {selected.product}</span>
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {specParts(selected.stage, selected.requirements).map((part) => (
+                    <span key={part} className="rounded-md border border-stone-200 bg-[#fff8ee] px-2 py-0.5 text-sm font-normal text-stone-700">
+                      {part}
+                    </span>
+                  ))}
                 </div>
               </div>
-
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                 <div>
-                  <p className="mb-2 text-sm font-medium">What this station needs</p>
-                  <RequirementPanel stage={selected.stage} req={selected.requirements} />
+                  <p className="text-xs font-semibold text-stone-500">{book.made}</p>
+                  <p className="text-base font-semibold text-ink">{formatQty(produced)}</p>
                 </div>
-
-                {isDelivery ? (
-                  <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <div className="hidden h-8 w-px bg-stone-200 sm:block" />
+                <div>
+                  <p className="text-xs font-semibold text-stone-500">{book.left}</p>
+                  <p className="text-base font-semibold text-ink">{formatQty(remaining)} {selected.unit}</p>
+                </div>
+                {pickup && !isDelivery ? (
+                  <>
+                    <div className="hidden h-8 w-px bg-stone-200 sm:block" />
                     <div>
-                      <p className="text-sm font-medium text-emerald-900">{guide.pickTitle}</p>
-                      <p className="mt-0.5 text-xs text-slate">{guide.pickHint}</p>
+                      <p className="text-xs font-semibold text-amber-800">In hand</p>
+                      <p className="text-base font-semibold text-ink">{formatQty(pickup.qty)} {pickup.unit}</p>
+                      <p className="max-w-48 truncate text-sm font-normal text-stone-500">{pickup.lotName}</p>
                     </div>
-                    <Grid cols="sm:grid-cols-2 lg:grid-cols-3">
-                      <Field label="Shipping partner">
-                        <select
-                          required
-                          value={work.deliveryPartner}
-                          onChange={(event) => setWork((current) => ({ ...current, deliveryPartner: event.target.value }))}
-                          className={inputClass}
-                          disabled={!canWork}
-                        >
-                          <option value="">In-house, Delhivery, or Customer</option>
-                          {partners.map((partner) => (
-                            <option key={partner} value={partner}>
-                              {partner}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Person taking it">
-                        <input
-                          required
-                          value={work.handoverPerson}
-                          onChange={(event) => setWork((current) => ({ ...current, handoverPerson: event.target.value }))}
-                          className={inputClass}
-                          placeholder="Driver or customer name"
-                          disabled={!canWork}
-                        />
-                      </Field>
-                      <Field label="Vehicle number">
-                        <input
-                          required
-                          value={work.vehicleNumber}
-                          onChange={(event) => setWork((current) => ({ ...current, vehicleNumber: event.target.value }))}
-                          className={inputClass}
-                          placeholder="MH 12 AB 1234"
-                          disabled={!canWork}
-                        />
-                      </Field>
-                    </Grid>
-                    {!handoverReady && canWork ? (
-                      <p className="text-xs text-slate">Fill partner, person, and vehicle, then send a lot below.</p>
+                    {canWork ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={returnPickup}
+                        className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper disabled:opacity-50"
+                      >
+                        Put back
+                      </button>
                     ) : null}
-                  </div>
+                  </>
                 ) : null}
+              </div>
+            </div>
 
-                <div className="space-y-3 rounded-lg border border-line p-4">
-                  {!isDelivery ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium">{guide.pickTitle}</p>
-                      <p className="text-xs text-slate">{guide.pickHint}</p>
-                    </div>
-                  ) : (
-                    <p className="text-sm font-medium">Lots waiting from dispatch</p>
-                  )}
+            {!canWork ? <p className="px-4 py-3 text-base text-stone-600">You can read this book. You cannot write in it.</p> : null}
 
-                  {pickup ? (
-                    <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-3">
-                      <p className="text-xs uppercase tracking-wide text-orange-900">Working now</p>
-                      <p className="mt-1 font-medium text-ink">{pickup.lotName}</p>
-                      <p className="mt-1 text-sm text-slate">
-                        {formatQty(pickup.qty)} {pickup.unit} from {pickup.fromStageLabel}
-                        {pickup.pickedByName ? ` · picked by ${pickup.pickedByName}` : ''}
-                      </p>
-                      {canWork ? (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={returnPickup}
-                          className="mt-2 text-sm text-ink hover:underline disabled:opacity-60"
-                        >
-                          Return to inventory
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
+            {isDelivery && canWork ? (
+              <div className="grid gap-3 border-b border-stone-300 px-4 py-4 sm:grid-cols-3">
+                <label className="text-sm font-semibold text-stone-800">
+                  Who is sending
+                  <select
+                    value={work.deliveryPartner}
+                    onChange={(event) => setWork((current) => ({ ...current, deliveryPartner: event.target.value }))}
+                    className={box}
+                  >
+                    <option value="">Choose</option>
+                    {partners.map((partner) => (
+                      <option key={partner} value={partner}>
+                        {partner}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  Person name
+                  <input
+                    value={work.handoverPerson}
+                    onChange={(event) => setWork((current) => ({ ...current, handoverPerson: event.target.value }))}
+                    className={box}
+                    placeholder="Name"
+                  />
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  Vehicle no.
+                  <input
+                    value={work.vehicleNumber}
+                    onChange={(event) => setWork((current) => ({ ...current, vehicleNumber: event.target.value }))}
+                    className={box}
+                    placeholder="MH 12 AB 1234"
+                  />
+                </label>
+              </div>
+            ) : null}
 
-                  {sourceLots.length ? (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-left text-sm">
-                        <thead className="text-slate">
-                          <tr>
-                            <th className="py-1 pr-3 font-medium">Lot</th>
-                            <th className="py-1 pr-3 font-medium">Available</th>
-                            <th className="py-1 pr-3 font-medium">Qty</th>
-                            <th className="py-1 font-medium"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sourceLots.map((lot) => (
-                            <tr key={lot.id} className="border-t border-line">
-                              <td className="py-2 pr-3">
-                                <p className="font-medium">{lot.name}</p>
-                                {lot.notes ? <p className="text-xs text-slate">{lot.notes}</p> : null}
-                              </td>
-                              <td className={`py-2 pr-3 font-medium ${valueTones.info}`}>
-                                {formatQty(lot.quantity)} {lot.unit}
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  max={lot.quantity}
-                                  value={pickQty[lot.id] ?? ''}
-                                  onChange={(event) =>
-                                    setPickQty((current) => ({ ...current, [lot.id]: event.target.value }))
-                                  }
-                                  className={inputClass}
-                                  disabled={!canWork}
-                                />
-                              </td>
-                              <td className="py-2">
-                                {canWork ? (
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      busy ||
-                                      pickingId === lot.id ||
-                                      !(Number(pickQty[lot.id]) > 0) ||
-                                      (isDelivery && !handoverReady)
-                                    }
-                                    onClick={() => pickLot(lot)}
-                                    className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-paper hover:bg-slate disabled:opacity-60"
-                                  >
-                                    {pickingId === lot.id
-                                      ? isDelivery
-                                        ? 'Sending…'
-                                        : 'Picking…'
-                                      : isDelivery
-                                        ? guide.pickButton
-                                        : guide.pickButton}
-                                  </button>
-                                ) : null}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate">
-                      {pickup
-                        ? 'All available lots are already marked for working.'
-                        : selected.previousStage
-                          ? `No ${selected.previousStageLabel} output is waiting in inventory yet.`
-                          : 'No matching raw material is in the store.'}
-                    </p>
-                  )}
-                </div>
+            {canWork && !pickup ? (
+              <div className="grid gap-3 border-b border-stone-300 px-4 py-4 md:grid-cols-[1fr_10rem_auto] md:items-end">
+                <label className="text-sm font-semibold text-stone-800">
+                  {isDelivery ? 'Lot to send' : 'Material'}
+                  <select
+                    value={chosenLot?.id || ''}
+                    onChange={(event) => setLotId(event.target.value)}
+                    className={box}
+                    disabled={!sourceLots.length}
+                  >
+                    {sourceLots.length === 0 ? <option value="">Nothing in store</option> : null}
+                    {sourceLots.map((lot) => (
+                      <option key={lot.id} value={lot.id}>
+                        {lot.name} — {formatQty(lot.quantity)} {lot.unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  How much
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={chosenLot ? pickQty[chosenLot.id] ?? '' : ''}
+                    onChange={(event) =>
+                      chosenLot && setPickQty((current) => ({ ...current, [chosenLot.id]: event.target.value }))
+                    }
+                    className={box}
+                    disabled={!chosenLot}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !chosenLot || !(Number(pickQty[chosenLot?.id]) > 0) || (isDelivery && !handoverReady)}
+                  onClick={() => pickLot(chosenLot)}
+                  className="h-9 rounded-sm bg-stone-900 px-4 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {pickingId ? 'Saving…' : book.take}
+                </button>
+              </div>
+            ) : null}
 
-                {!isDelivery && canWork && pickup ? (
-                  <form onSubmit={saveShift} className="space-y-3 rounded-lg border border-line p-4">
-                    <p className="text-sm font-medium">{guide.workTitle}</p>
-                    <Grid cols="sm:grid-cols-2 lg:grid-cols-4">
-                      <Field label="Date">
-                        <input
-                          required
-                          type="date"
-                          value={work.workDate}
-                          onChange={(event) => setWork((current) => ({ ...current, workDate: event.target.value }))}
-                          className={inputClass}
-                        />
-                      </Field>
-                      <Field label="Shift">
-                        <select
-                          value={work.shift}
-                          onChange={(event) => setWork((current) => ({ ...current, shift: event.target.value }))}
-                          className={inputClass}
-                        >
-                          {shifts.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.label}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      {machines.length ? (
-                        <Field label="Machine">
-                          <select
-                            value={work.machineId}
-                            onChange={(event) => setWork((current) => ({ ...current, machineId: event.target.value }))}
-                            className={inputClass}
-                          >
-                            <option value="">Select machine</option>
-                            {machines.map((machine) => (
-                              <option key={machine.id} value={machine.id}>
-                                {machine.name}
-                                {machine.code ? ` (${machine.code})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                      ) : null}
-                      <Field label={`Use from working lot (max ${formatQty(pickup.qty)})`}>
-                        <input
-                          required
-                          type="number"
-                          min="0"
-                          step="any"
-                          max={pickup.qty}
-                          value={work.inputQty}
-                          onChange={(event) => setWork((current) => ({ ...current, inputQty: event.target.value }))}
-                          className={inputClass}
-                        />
-                      </Field>
-                      <Field label={selected.stage === 'dispatch' ? 'Qty to delivery' : 'Output this shift'}>
-                        <input
-                          required
-                          type="number"
-                          min="0"
-                          step="any"
-                          max={remaining}
-                          value={work.outputQty}
-                          onChange={(event) => setWork((current) => ({ ...current, outputQty: event.target.value }))}
-                          className={inputClass}
-                        />
-                      </Field>
-                      {selected.stage === 'dispatch' ? null : (
-                        <Field label="Waste">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={work.wasteQty}
-                            onChange={(event) => setWork((current) => ({ ...current, wasteQty: event.target.value }))}
-                            className={inputClass}
-                          />
-                        </Field>
-                      )}
-                      <Field label="Notes" className="sm:col-span-2">
-                        <input
-                          value={work.notes}
-                          onChange={(event) => setWork((current) => ({ ...current, notes: event.target.value }))}
-                          className={inputClass}
-                          placeholder="Optional"
-                        />
-                      </Field>
-                    </Grid>
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+            {!isDelivery && canWork && pickup ? (
+              <form onSubmit={saveShift} className="grid grid-cols-2 items-end gap-3 border-b border-stone-300 px-4 py-3 md:grid-cols-4 xl:grid-cols-8">
+                <label className="text-sm font-semibold text-stone-800">
+                  Date
+                  <input
+                    required
+                    type="date"
+                    value={work.workDate}
+                    onChange={(event) => setWork((current) => ({ ...current, workDate: event.target.value }))}
+                    className={box}
+                  />
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  Shift
+                  <select
+                    value={work.shift}
+                    onChange={(event) => setWork((current) => ({ ...current, shift: event.target.value }))}
+                    className={box}
+                  >
+                    {shifts.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {machines.length ? (
+                  <label className="text-sm font-semibold text-stone-800">
+                    Machine
+                    <select
+                      value={work.machineId}
+                      onChange={(event) => setWork((current) => ({ ...current, machineId: event.target.value }))}
+                      className={box}
                     >
-                      {busy
-                        ? 'Saving…'
-                        : remaining - (Number(work.outputQty) || 0) > 0.0001
-                          ? guide.workButton
-                          : guide.finishButton}
-                    </button>
-                  </form>
-                ) : !isDelivery && canWork ? (
-                  <p className="text-sm text-slate">Pick a lot above before you log this shift.</p>
-                ) : !canWork ? (
-                  <p className="text-sm text-slate">You can view this queue, but you cannot record work.</p>
+                      <option value="">Choose</option>
+                      {machines.map((machine) => (
+                        <option key={machine.id} value={machine.id}>
+                          {machine.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 ) : null}
+                <label className="text-sm font-semibold text-stone-800">
+                  Used
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    step="any"
+                    max={pickup.qty}
+                    value={work.inputQty}
+                    onChange={(event) => setWork((current) => ({ ...current, inputQty: event.target.value }))}
+                    className={box}
+                  />
+                </label>
+                <label className="text-sm font-semibold text-stone-800">
+                  {isDispatch ? 'Qty out' : 'Made'}
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    step="any"
+                    max={remaining}
+                    value={work.outputQty}
+                    onChange={(event) => setWork((current) => ({ ...current, outputQty: event.target.value }))}
+                    className={box}
+                  />
+                </label>
+                {isDispatch ? null : (
+                  <label className="text-sm font-semibold text-stone-800">
+                    Waste
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={work.wasteQty}
+                      onChange={(event) => setWork((current) => ({ ...current, wasteQty: event.target.value }))}
+                      className={box}
+                    />
+                  </label>
+                )}
+                <label className="text-sm font-semibold text-stone-800 xl:col-span-1">
+                  Remark
+                  <input
+                    value={work.notes}
+                    onChange={(event) => setWork((current) => ({ ...current, notes: event.target.value }))}
+                    className={box}
+                    placeholder="Optional"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="h-11 rounded-lg bg-[#9a3412] px-3 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-50"
+                >
+                  {busy ? 'Saving…' : book.write}
+                </button>
+              </form>
+            ) : !isDelivery && canWork ? (
+              <p className="px-4 py-3 text-base text-stone-600">Take material first. Then write how much you made.</p>
+            ) : null}
 
-                {(selected.history || []).length ? (
-                  <div>
-                    <p className="mb-2 text-sm font-medium">{guide.historyTitle}</p>
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="bg-paper text-slate">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">Date</th>
-                          {isDelivery ? null : <th className="px-3 py-2 font-medium">Shift</th>}
-                          <th className="px-3 py-2 font-medium">From</th>
-                          {isDelivery ? null : <th className="px-3 py-2 font-medium">In</th>}
-                          <th className="px-3 py-2 font-medium">{isDelivery ? 'Sent' : 'Out'}</th>
-                          {isDelivery ? null : <th className="px-3 py-2 font-medium">Waste</th>}
+            {(selected.history || []).length ? (
+              <div className="flex min-h-0 flex-1 flex-col border-t border-stone-300">
+                <p className="bg-stone-100 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-stone-700">
+                  Already written
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr>
+                        <th className={head}>Date</th>
+                        {isDelivery ? null : <th className={head}>Shift</th>}
+                        <th className={head}>From</th>
+                        {isDelivery ? null : <th className={head}>Used</th>}
+                        <th className={head}>{isDelivery ? 'Sent' : 'Made'}</th>
+                        {isDelivery ? null : <th className={head}>Waste</th>}
+                        {isDelivery ? (
+                          <>
+                            <th className={head}>Who</th>
+                            <th className={head}>Person</th>
+                            <th className={head}>Vehicle</th>
+                          </>
+                        ) : null}
+                        <th className={head}>By</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.history.map((row, index) => (
+                        <tr key={`${row.completedAt}-${index}`} className={index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'}>
+                          <td className={cell}>{formatDate(row.workDate)}</td>
+                          {isDelivery ? null : <td className={`${cell} capitalize`}>{row.shift || '—'}</td>}
+                          <td className={cell}>{row.pickedLotName || '—'}</td>
+                          {isDelivery ? null : <td className={cell}>{formatQty(row.inputQty)}</td>}
+                          <td className={`${cell} font-semibold`}>{formatQty(row.outputQty)}</td>
+                          {isDelivery ? null : <td className={cell}>{formatQty(row.wasteQty)}</td>}
                           {isDelivery ? (
                             <>
-                              <th className="px-3 py-2 font-medium">Partner</th>
-                              <th className="px-3 py-2 font-medium">Person</th>
-                              <th className="px-3 py-2 font-medium">Vehicle</th>
+                              <td className={cell}>{row.deliveryPartner || '—'}</td>
+                              <td className={cell}>{row.handoverPerson || '—'}</td>
+                              <td className={cell}>{row.vehicleNumber || '—'}</td>
                             </>
                           ) : null}
-                          <th className="px-3 py-2 font-medium">By</th>
+                          <td className={cell}>{row.operatorName || '—'}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {selected.history.map((row, index) => (
-                          <tr key={`${row.completedAt}-${index}`} className="border-t border-line">
-                            <td className="px-3 py-2">{formatDate(row.workDate)}</td>
-                            {isDelivery ? null : <td className="px-3 py-2 capitalize">{row.shift || '—'}</td>}
-                            <td className="px-3 py-2">{row.pickedLotName || STEP_LABELS[row.fromStage] || row.fromStage || '—'}</td>
-                            {isDelivery ? null : <td className="px-3 py-2">{row.inputQty}</td>}
-                            <td className={`px-3 py-2 ${valueTones.success}`}>{row.outputQty}</td>
-                            {isDelivery ? null : (
-                              <td className={`px-3 py-2 ${row.wasteQty ? valueTones.warning : ''}`}>{row.wasteQty}</td>
-                            )}
-                            {isDelivery ? (
-                              <>
-                                <td className="px-3 py-2">{row.deliveryPartner || '—'}</td>
-                                <td className="px-3 py-2">{row.handoverPerson || '—'}</td>
-                                <td className="px-3 py-2">{row.vehicleNumber || '—'}</td>
-                              </>
-                            ) : null}
-                            <td className="px-3 py-2">{row.operatorName || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </>
-          )}
-        </section>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

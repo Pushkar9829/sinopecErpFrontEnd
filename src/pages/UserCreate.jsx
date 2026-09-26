@@ -2,10 +2,20 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { rolesApi } from '../api/roles.api';
 import { usersApi } from '../api/users.api';
-import { PageHeader } from '../components/ui/PageHeader';
+import { BackButton } from '../components/ui/BackButton';
+import { RoleMenu } from '../components/ui/RoleMenu';
 import { StatusToggle } from '../components/ui/StatusToggle';
 
 const inputClass = 'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 outline-none focus:border-accent';
+
+function FormBar({ title }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+      <BackButton fallback="/users" />
+      <h1 className="px-1 text-lg font-semibold">{title}</h1>
+    </div>
+  );
+}
 
 export function UserCreate() {
   const navigate = useNavigate();
@@ -50,18 +60,18 @@ export function UserCreate() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Add user" subtitle="Create an account and assign one role." backTo="/users" backLabel="Users" />
+      <FormBar title="Add user" />
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-xl border border-line bg-card p-5">
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Full name
           <input required value={form.fullName} onChange={(event) => update('fullName', event.target.value)} className={inputClass} />
         </label>
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Username
           <input required value={form.username} onChange={(event) => update('username', event.target.value)} className={inputClass} />
         </label>
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Password
           <input
             required
@@ -72,18 +82,12 @@ export function UserCreate() {
             className={inputClass}
           />
         </label>
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Role
-          <select required value={form.roleId} onChange={(event) => update('roleId', event.target.value)} className={inputClass}>
-            {roles.map((role) => (
-              <option key={role._id} value={role._id}>
-                {role.name}
-              </option>
-            ))}
-          </select>
+          <RoleMenu roles={roles} value={form.roleId} onChange={(roleId) => update('roleId', roleId)} />
         </label>
         <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
-          <span className="text-sm text-slate">Account status</span>
+          <span className="text-base font-semibold text-ink">Account status</span>
           <StatusToggle checked={form.isActive} onChange={(isActive) => update('isActive', isActive)} />
         </div>
 
@@ -93,13 +97,11 @@ export function UserCreate() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+            className="rounded-lg bg-accent px-4 py-2 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
           >
             {saving ? 'Creating...' : 'Create user'}
           </button>
-          <button type="button" onClick={() => navigate('/users')} className="rounded-lg border border-line px-4 py-2">
-            Cancel
-          </button>
+          <BackButton fallback="/users" label="Cancel" />
         </div>
       </form>
     </div>

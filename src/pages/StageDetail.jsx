@@ -1,15 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
 import { machinesApi } from '../api/machines.api';
 import { usersApi } from '../api/users.api';
-import { PageHeader } from '../components/ui/PageHeader';
+import { BackButton } from '../components/ui/BackButton';
 import { SearchField } from '../components/ui/SearchField';
 import { usePermission } from '../hooks/usePermission';
 
+const STAGE_COLORS = {
+  rolling: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  printing: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  cutting: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+  delivery: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+  packing: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+};
+
+function FormBar({ title, slug }) {
+  const tone = STAGE_COLORS[slug] || { chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' };
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+      <BackButton fallback="/stages" />
+      <h1 className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 text-lg font-semibold ${tone.chip}`}>
+        <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+        {title}
+      </h1>
+    </div>
+  );
+}
+
 export function StageDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { can } = usePermission();
   const canEdit = can('production:update') || can('inventory:update');
   const [stage, setStage] = useState(null);
@@ -77,7 +98,7 @@ export function StageDetail() {
   if (!stage) {
     return (
       <div className="space-y-3">
-        <PageHeader title="Stage" backTo="/stages" backLabel="Stages" />
+        <FormBar title="Stage" />
         <p className="text-sm text-red-700">{error}</p>
       </div>
     );
@@ -85,15 +106,10 @@ export function StageDetail() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title={stage.name}
-        subtitle="Assign machines and users who work on this stage."
-        backTo="/stages"
-        backLabel="Stages"
-      />
+      <FormBar title={name || stage.name} slug={stage.slug} />
 
       <form onSubmit={handleSave} className="space-y-5">
-        <label className="block max-w-xl text-sm text-slate">
+        <label className="block max-w-xl text-base font-semibold text-ink">
           Stage name
           <input
             required
@@ -105,41 +121,56 @@ export function StageDetail() {
         </label>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          <section className="rounded-xl border border-line bg-card p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-medium">Machines</h2>
-              <div className="flex items-center gap-2">
-                <SearchField value={machineQuery} onChange={setMachineQuery} placeholder="Search machines" />
-                <span className="text-xs text-steel">{machineIds.length} selected</span>
+          <section className="overflow-hidden rounded-xl border border-line bg-card">
+            <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+              <h2 className="text-sm font-semibold">Machines</h2>
+              <span className="rounded-lg border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                {machineIds.length} selected
+              </span>
+              <div className="ml-auto">
+                <SearchField value={machineQuery} onChange={setMachineQuery} placeholder="Search machines" className="w-44" />
               </div>
             </div>
-            <div className="mt-3 max-h-80 space-y-1 overflow-y-auto">
-              {visibleMachines.map((machine) => (
-                <label key={machine.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-paper">
-                  <input
-                    type="checkbox"
-                    disabled={!canEdit}
-                    checked={machineIds.includes(machine.id)}
-                    onChange={() => toggle(machineIds, setMachineIds, machine.id)}
-                  />
-                  <span>
-                    <span className="font-medium">{machine.name}</span>
-                    {machine.code ? <span className="ml-2 text-xs text-steel">{machine.code}</span> : null}
-                  </span>
-                </label>
-              ))}
+            <div className="max-h-80 space-y-1 overflow-y-auto p-2">
+              {visibleMachines.map((machine) => {
+                const selected = machineIds.includes(machine.id);
+                return (
+                  <label
+                    key={machine.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm ${
+                      selected ? 'border-line bg-paper' : 'border-transparent hover:bg-paper'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!canEdit}
+                      checked={selected}
+                      onChange={() => toggle(machineIds, setMachineIds, machine.id)}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium">{machine.name}</span>
+                    {machine.code ? (
+                      <span className="shrink-0 rounded-md border border-line bg-white px-2 py-0.5 text-xs tracking-wide text-slate">
+                        {machine.code}
+                      </span>
+                    ) : null}
+                  </label>
+                );
+              })}
             </div>
           </section>
 
-          <section className="rounded-xl border border-line bg-card p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-medium">Users</h2>
-              <div className="flex items-center gap-2">
-                <SearchField value={userQuery} onChange={setUserQuery} placeholder="Search users" />
-                <span className="text-xs text-steel">{userIds.length} selected</span>
+          <section className="overflow-hidden rounded-xl border border-line bg-card">
+            <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+              <h2 className="text-sm font-semibold">Users</h2>
+              <span className="rounded-lg border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                {userIds.length} selected
+              </span>
+              <div className="ml-auto">
+                <SearchField value={userQuery} onChange={setUserQuery} placeholder="Search users" className="w-44" />
               </div>
             </div>
-            <div className="mt-3 max-h-80 space-y-1 overflow-y-auto">
+            <div className="max-h-80 space-y-1 overflow-y-auto p-2">
               {visibleUsers.map((user) => (
                 <label key={user.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-paper">
                   <input
@@ -150,7 +181,7 @@ export function StageDetail() {
                   />
                   <span>
                     <span className="font-medium">{user.fullName}</span>
-                    <span className="ml-2 text-xs text-steel">{user.role?.name}</span>
+                    {user.role?.name ? <span className="block text-xs text-steel">{user.role.name}</span> : null}
                   </span>
                 </label>
               ))}
@@ -166,14 +197,12 @@ export function StageDetail() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
             >
               {saving ? 'Saving...' : 'Save assignments'}
             </button>
           ) : null}
-          <button type="button" onClick={() => navigate('/stages')} className="rounded-lg border border-line px-4 py-2">
-            Back to list
-          </button>
+          <BackButton fallback="/stages" label="Back to list" />
         </div>
       </form>
     </div>

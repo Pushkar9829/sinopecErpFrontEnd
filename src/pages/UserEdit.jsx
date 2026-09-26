@@ -3,12 +3,34 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { rolesApi } from '../api/roles.api';
 import { usersApi } from '../api/users.api';
 import { PermissionGate } from '../components/PermissionGate';
-import { PageHeader } from '../components/ui/PageHeader';
+import { BackButton } from '../components/ui/BackButton';
+import { RoleMenu } from '../components/ui/RoleMenu';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
 
 const inputClass = 'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 outline-none focus:border-accent disabled:bg-paper';
+
+function FormBar({ title, extra }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+      <BackButton fallback="/users" />
+      <h1 className="px-1 text-lg font-semibold">{title}</h1>
+      {extra ? <span className="text-sm text-slate">{extra}</span> : null}
+    </div>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M4 6h12" strokeLinecap="round" />
+      <path d="M8 6V4h4v2" />
+      <path d="M6 6l.7 10h6.6L14 6" strokeLinejoin="round" />
+      <path d="M8.5 9v5M11.5 9v5" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function UserEdit() {
   const { id } = useParams();
@@ -82,7 +104,7 @@ export function UserEdit() {
   if (!form) {
     return (
       <div className="space-y-3">
-        <PageHeader title="User" backTo="/users" backLabel="Users" />
+        <FormBar title="User" />
         <p className="text-sm text-red-700">{error}</p>
       </div>
     );
@@ -90,10 +112,10 @@ export function UserEdit() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title={form.fullName} subtitle={`@${form.username}`} backTo="/users" backLabel="Users" />
+      <FormBar title={form.fullName} extra={`@${form.username}`} />
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-xl border border-line bg-card p-5">
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Full name
           <input
             required
@@ -103,7 +125,7 @@ export function UserEdit() {
             className={inputClass}
           />
         </label>
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Username
           <input
             required
@@ -114,7 +136,7 @@ export function UserEdit() {
           />
         </label>
         {canEdit ? (
-          <label className="block text-sm text-slate">
+          <label className="block text-base font-semibold text-ink">
             New password
             <input
               type="password"
@@ -126,24 +148,12 @@ export function UserEdit() {
             />
           </label>
         ) : null}
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Role
-          <select
-            required
-            disabled={!canEdit}
-            value={form.roleId}
-            onChange={(event) => update('roleId', event.target.value)}
-            className={inputClass}
-          >
-            {roles.map((role) => (
-              <option key={role._id} value={role._id}>
-                {role.name}
-              </option>
-            ))}
-          </select>
+          <RoleMenu roles={roles} value={form.roleId} disabled={!canEdit} onChange={(roleId) => update('roleId', roleId)} />
         </label>
         <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
-          <span className="text-sm text-slate">Account status</span>
+          <span className="text-base font-semibold text-ink">Account status</span>
           <StatusToggle checked={form.isActive} disabled={!canEdit} onChange={(isActive) => update('isActive', isActive)} />
         </div>
 
@@ -155,22 +165,22 @@ export function UserEdit() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+              className="rounded-lg bg-accent px-4 py-2 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
             >
               {saving ? 'Saving...' : 'Save changes'}
             </button>
           ) : null}
-          <button type="button" onClick={() => navigate('/users')} className="rounded-lg border border-line px-4 py-2">
-            Back to list
-          </button>
+          <BackButton fallback="/users" label="Back to list" />
           <PermissionGate permission="users:delete">
             <button
               type="button"
+              title="Delete user"
+              aria-label="Delete user"
               disabled={id === currentUser?.id}
               onClick={handleDelete}
-              className="ml-auto rounded-lg px-4 py-2 text-red-700 hover:underline disabled:opacity-40"
+              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Delete user
+              <TrashIcon />
             </button>
           </PermissionGate>
         </div>

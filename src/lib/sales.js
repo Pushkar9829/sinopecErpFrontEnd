@@ -386,6 +386,7 @@ export function itemToPayload(item) {
     rate: Number(item.rate) || 0,
     discount: Number(item.discount) || 0,
     taxPercent: Number(item.taxPercent) || 0,
+    templateId: item.templateId || '',
     productionRoute: item.productionRoute,
     manufacturing: item.manufacturing,
     roll: item.roll,

@@ -1,10 +1,167 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
-import { PageHeader } from '../components/ui/PageHeader';
+import { BackButton } from '../components/ui/BackButton';
 import { usePermission } from '../hooks/usePermission';
 
 const inputClass = 'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 outline-none focus:border-accent disabled:bg-paper';
+
+const KIND_OPTIONS = [
+  { id: 'raw', label: 'Raw', chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  { id: 'output', label: 'Output', chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+  { id: 'waste', label: 'Waste', chip: 'border-amber-300 bg-amber-100 text-amber-900', dot: 'bg-amber-500' },
+];
+
+const STAGE_COLORS = {
+  rolling: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  printing: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  cutting: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+  delivery: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
+  packing: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+};
+
+function Chevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function KindMenu({ value, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const current = KIND_OPTIONS.find((item) => item.id === value) || KIND_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  return (
+    <div className="relative mt-1" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Kind"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((next) => !next)}
+        className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${current.chip}`}
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${current.dot}`} />
+        <span className="flex-1">{current.label}</span>
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 z-20 mt-1 rounded-lg border border-line bg-white p-1 shadow-md">
+          {KIND_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onChange(item.id);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                item.id === value ? item.chip : 'text-ink hover:bg-paper'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${item.dot}`} />
+              <span className="flex-1">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StageMenuField({ stages, value, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const current = stages.find((stage) => stage.id === value);
+  const tone = STAGE_COLORS[current?.slug] || { chip: 'border-slate-300 bg-white text-ink', dot: 'bg-slate-500' };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  return (
+    <div className="relative mt-1" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Production stage"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((next) => !next)}
+        className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${tone.chip}`}
+      >
+        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+        <span className="min-w-0 flex-1 truncate">{current?.name || 'Choose a stage'}</span>
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
+          {stages.map((stage) => {
+            const itemTone = STAGE_COLORS[stage.slug] || tone;
+            const selected = stage.id === value;
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                onClick={() => {
+                  onChange(stage.id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                  selected ? itemTone.chip : 'text-ink hover:bg-paper'
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${itemTone.dot}`} />
+                <span className="flex-1">{stage.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FormBar({ title }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+      <BackButton fallback="/inventory" />
+      <h1 className="px-1 text-lg font-semibold">{title}</h1>
+    </div>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M4 6h12" strokeLinecap="round" />
+      <path d="M8 6V4h4v2" />
+      <path d="M6 6l.7 10h6.6L14 6" strokeLinejoin="round" />
+      <path d="M8.5 9v5M11.5 9v5" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 const UNIT_PRESETS = ['kg', 'g', 'm', 'mm', 'cm', 'litre', 'ml', 'pcs', 'roll', 'sheet'];
 
@@ -130,42 +287,15 @@ export function InventoryForm() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title={title}
-        subtitle={
-          hidePrice
-            ? 'Waste is stored by type, unit, and quantity. No price.'
-            : 'Type, unit, and price are free-form. Use kg, meter, or any other metric.'
-        }
-        backTo="/inventory"
-        backLabel="Inventory"
-      />
+      <FormBar title={title} />
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-xl border border-line bg-card p-5">
-        <div>
-          <p className="text-sm text-slate">Kind</p>
-          <div className="mt-1 grid grid-cols-3 gap-1 rounded-lg bg-paper p-1">
-            {[
-              { id: 'raw', label: 'Raw' },
-              { id: 'output', label: 'Output' },
-              { id: 'waste', label: 'Waste' },
-            ].map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                disabled={!canSave}
-                onClick={() => update('category', option.id)}
-                className={`rounded-md px-3 py-1.5 text-sm ${
-                  form.category === option.id ? 'bg-ink text-paper' : 'text-slate hover:bg-white'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <label className="block text-base font-semibold text-ink">
+          Kind
+          <KindMenu value={form.category} disabled={!canSave} onChange={(category) => update('category', category)} />
+        </label>
 
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Name
           <input
             required
@@ -177,7 +307,7 @@ export function InventoryForm() {
           />
         </label>
 
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Type
           <input
             required
@@ -196,26 +326,19 @@ export function InventoryForm() {
         </label>
 
         {needsStage ? (
-          <label className="block text-sm text-slate">
+          <label className="block text-base font-semibold text-ink">
             Production stage
-            <select
-              required
-              disabled={!canSave}
+            <StageMenuField
+              stages={stages}
               value={form.stageId}
-              onChange={(event) => update('stageId', event.target.value)}
-              className={inputClass}
-            >
-              {stages.map((stage) => (
-                <option key={stage.id} value={stage.id}>
-                  {stage.name}
-                </option>
-              ))}
-            </select>
+              disabled={!canSave}
+              onChange={(stageId) => update('stageId', stageId)}
+            />
           </label>
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm text-slate">
+          <label className="block text-base font-semibold text-ink">
             Quantity
             <input
               required
@@ -228,7 +351,7 @@ export function InventoryForm() {
               className={inputClass}
             />
           </label>
-          <label className="block text-sm text-slate">
+          <label className="block text-base font-semibold text-ink">
             Unit
             <input
               required
@@ -250,7 +373,7 @@ export function InventoryForm() {
         {hidePrice ? (
           <p className="rounded-lg bg-paper px-3 py-2 text-sm text-slate">Waste has no unit price.</p>
         ) : (
-          <label className="block text-sm text-slate">
+          <label className="block text-base font-semibold text-ink">
             Unit price
             <input
               required
@@ -265,7 +388,7 @@ export function InventoryForm() {
           </label>
         )}
 
-        <label className="block text-sm text-slate">
+        <label className="block text-base font-semibold text-ink">
           Notes
           <textarea
             disabled={!canSave}
@@ -284,17 +407,21 @@ export function InventoryForm() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-dark disabled:opacity-60"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
             >
               {saving ? 'Saving...' : isEdit ? 'Save changes' : 'Save material'}
             </button>
           ) : null}
-          <button type="button" onClick={() => navigate('/inventory')} className="rounded-lg border border-line px-4 py-2">
-            Back to list
-          </button>
+          <BackButton fallback="/inventory" label="Back to list" />
           {isEdit && can('inventory:delete') ? (
-            <button type="button" onClick={handleDelete} className="ml-auto px-4 py-2 text-red-700 hover:underline">
-              Delete
+            <button
+              type="button"
+              title="Delete material"
+              aria-label="Delete material"
+              onClick={handleDelete}
+              className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-red-700 hover:bg-red-50"
+            >
+              <TrashIcon />
             </button>
           ) : null}
         </div>
