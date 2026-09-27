@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { salesOrdersApi } from '../api/salesOrders.api';
 import { StageRegister } from '../components/register/StageRegister';
-import { BackButton } from '../components/ui/BackButton';
+import { registersApi } from '../api/registers.api';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
-import { FLOOR_STATUSES, PRODUCTION_STAGES, formatDate, statusLabel } from '../lib/sales';
+import { PRODUCTION_STAGES, formatDate, statusLabel } from '../lib/sales';
 
-const cell = 'border border-stone-300 px-2 py-1.5 align-middle text-sm';
-const head = 'border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
+const cell = 'whitespace-nowrap border border-stone-300 px-2 py-1.5 align-middle text-sm';
+const head = 'whitespace-nowrap border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
 
-export function ProductionFloor() {
+export function Registers() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { can } = usePermission();
   const isAdmin =
     can('production:read') ||
@@ -22,15 +21,14 @@ export function ProductionFloor() {
     can('accounts:read') ||
     can('inventory:read') ||
     can('production:packing:read');
+  const view = isAdmin && searchParams.get('view') === 'orders' ? 'orders' : 'stage';
+  const stage = searchParams.get('stage') || '';
+  const presetJob = searchParams.get('job') || '';
   const stages = useMemo(
     () => (isAdmin ? PRODUCTION_STAGES : PRODUCTION_STAGES.filter((item) => can(item.read))),
     [can, isAdmin]
   );
-  const view = isAdmin && searchParams.get('view') === 'orders' ? 'orders' : 'stage';
-  const stage = searchParams.get('stage') || '';
-  const presetJob = searchParams.get('job') || '';
-  const openedFromJob = useRef(Boolean(presetJob));
-  const [orders, setOrders] = useState([]);
+  const [rows, setRows] = useState([]);
   const [error, setError] = useState('');
   const [entryAction, setEntryAction] = useState(null);
   const onEntryState = useCallback((next) => setEntryAction(next), []);
@@ -44,14 +42,10 @@ export function ProductionFloor() {
   }, [view, stage, stages, isAdmin, setSearchParams]);
 
   useEffect(() => {
-    if (!isAdmin || view !== 'orders') return;
+    if (view !== 'orders') return;
     setError('');
-    salesOrdersApi.list().then(setOrders).catch((err) => setError(err.message));
-  }, [isAdmin, view]);
-
-  const bookOrders = orders.filter(
-    (order) => FLOOR_STATUSES.includes(order.status) || order.status === 'delivered' || order.status === 'completed'
-  );
+    registersApi.list().then(setRows).catch((err) => setError(err.message));
+  }, [view]);
 
   function setView(next) {
     if (next === 'orders') {
@@ -61,12 +55,8 @@ export function ProductionFloor() {
     setSearchParams({ view: 'stage', stage: stage || stages[0]?.id || 'rolling' });
   }
 
-  function showStages(nextStage) {
-    setSearchParams({ view: 'stage', stage: nextStage || stage || stages[0]?.id || 'rolling' });
-  }
-
   function clearJob() {
-    const next = { stage: stage || stages[0]?.id || 'rolling' };
+    const next = { stage: stage || '' };
     if (isAdmin) next.view = 'stage';
     setSearchParams(next, { replace: true });
   }
@@ -76,8 +66,7 @@ export function ProductionFloor() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-stone-800 bg-[#fffdf6]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-4 py-2">
           <div className="flex flex-wrap items-center gap-2">
-            {openedFromJob.current ? <BackButton fallback={`/?stage=${stage || 'rolling'}`} /> : null}
-            <h1 className="text-lg font-semibold text-stone-900">Production floor</h1>
+            <h1 className="text-lg font-semibold text-stone-900">Register</h1>
             {isAdmin ? (
               <div className="flex overflow-hidden rounded-sm border border-stone-800">
                 <button
@@ -97,7 +86,11 @@ export function ProductionFloor() {
               </div>
             ) : null}
             {view === 'stage' && stages.length ? (
-              <StageMenu stages={stages} value={stage || stages[0].id} onChange={showStages} />
+              <StageMenu
+                stages={stages}
+                value={stage || stages[0].id}
+                onChange={(id) => setSearchParams(isAdmin ? { view: 'stage', stage: id } : { stage: id })}
+              />
             ) : null}
           </div>
           <div className="flex items-center gap-3">
@@ -127,29 +120,29 @@ export function ProductionFloor() {
                     <th className={head}>Party</th>
                     <th className={head}>Status</th>
                     <th className={head}>Due</th>
-                    <th className={head}>Lines</th>
+                    <th className={head}>Stages</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {bookOrders.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td className={`${cell} text-stone-500`} colSpan={6}>
-                        No sales order has a register yet.
+                        No sales order is on the register yet.
                       </td>
                     </tr>
                   ) : (
-                    bookOrders.map((order, index) => (
+                    rows.map((row, index) => (
                       <tr
-                        key={order.id}
-                        onClick={() => navigate(`/registers/${order.id}?from=floor`)}
+                        key={row.orderId}
+                        onClick={() => navigate(`/registers/${row.orderId}`)}
                         className={`cursor-pointer ${index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'} hover:bg-amber-50`}
                       >
                         <td className={`${cell} w-12 text-stone-500`}>{index + 1}</td>
-                        <td className={`${cell} font-semibold`}>{order.number}</td>
-                        <td className={cell}>{order.customer?.name || '—'}</td>
-                        <td className={cell}>{statusLabel(order.status)}</td>
-                        <td className={cell}>{formatDate(order.deliveryDate)}</td>
-                        <td className={cell}>{(order.items || []).length}</td>
+                        <td className={`${cell} font-semibold`}>{row.orderNumber}</td>
+                        <td className={cell}>{row.customerName || '—'}</td>
+                        <td className={cell}>{statusLabel(row.status)}</td>
+                        <td className={cell}>{formatDate(row.deliveryDate)}</td>
+                        <td className={cell}>{(row.stages || []).map((item) => item.label).join(' · ') || '—'}</td>
                       </tr>
                     ))
                   )}

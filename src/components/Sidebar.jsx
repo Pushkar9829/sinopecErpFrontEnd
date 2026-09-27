@@ -12,6 +12,7 @@ const pageLinks = [
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
   { to: '/production', label: 'Production floor', anyOf: PRODUCTION_VIEW_KEYS },
+  { to: '/registers', label: 'Register', anyOf: [...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS] },
   { to: '/roles', label: 'Roles', permission: 'roles:read' },
   { to: '/sales-orders', label: 'Sales Orders', anyOf: SALES_ORDER_VIEW_KEYS },
   { to: '/stages', label: 'Stages', anyOf: ['production:read', 'inventory:read'] },

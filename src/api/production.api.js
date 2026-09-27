@@ -6,4 +6,5 @@ export const productionApi = {
   pickup: (payload) => api.post('/api/production/pickup', payload),
   release: (payload) => api.post('/api/production/release', payload),
   complete: (payload) => api.post('/api/production/complete', payload),
+  enter: (payload) => api.post('/api/production/enter', payload),
 };

@@ -225,9 +225,9 @@ export function SalesOrderDetail() {
                 Move to production
               </button>
             ) : null}
-            {['production_planned', 'in_production', 'ready_for_dispatch', 'dispatched'].includes(order.status) ? (
-              <Link to="/production" className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
-                Open production floor
+            {['production_planned', 'in_production', 'ready_for_packing', 'packed', 'ready_for_dispatch', 'dispatched', 'delivered', 'completed'].includes(order.status) ? (
+              <Link to={`/registers/${order.id}`} className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
+                Open register
               </Link>
             ) : null}
             {canAdvance ? (
@@ -302,8 +302,8 @@ export function SalesOrderDetail() {
               ))}
             </Section>
           ))}
-          <Link to="/production" className="inline-flex rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark">
-            Open production floor
+          <Link to={`/registers/${order.id}`} className="inline-flex rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark">
+            Open register
           </Link>
         </div>
       ) : null}

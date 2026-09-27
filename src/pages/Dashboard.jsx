@@ -7,7 +7,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
-import { PRODUCTION_STAGES, canViewAnalytics, canViewSalesOrders, formatDate, formatQty } from '../lib/sales';
+import { PRODUCTION_STAGES, PRODUCTION_VIEW_KEYS, canViewAnalytics, canViewSalesOrders, formatDate, formatQty } from '../lib/sales';
 
 const DONE_LABEL = {
   rolling: 'Rolled',
@@ -27,10 +27,10 @@ function FloorDashboard() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { can } = usePermission();
-  const stages = useMemo(
-    () => PRODUCTION_STAGES.filter((item) => can(item.read) || can('production:read')),
-    [can]
-  );
+  const stages = useMemo(() => {
+    if (can('production:read') || can('production:packing:read')) return PRODUCTION_STAGES;
+    return PRODUCTION_STAGES.filter((item) => can(item.read));
+  }, [can]);
   const [stage, setStage] = useState('');
   const [jobs, setJobs] = useState([]);
   const [error, setError] = useState('');
@@ -61,7 +61,10 @@ function FloorDashboard() {
     <section className="-mx-5 -my-4 flex h-dvh min-h-0 flex-col md:-mx-6">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-card px-4 py-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold">Sales orders</h1>
+          <h1 className="text-lg font-semibold">{PRODUCTION_STAGES.find((item) => item.id === stage)?.label || 'Stage'}</h1>
+          <Link to={stage ? `/registers?stage=${stage}` : '/registers'} className="text-sm font-semibold text-ink underline">
+            Register
+          </Link>
           {stages.length > 1 ? (
             <StageMenu
               stages={stages}
@@ -189,12 +192,7 @@ function AdminDashboard() {
     can('users:read') ||
     can('roles:read');
 
-  const showFloor =
-    can('production:read') ||
-    can('production:rolling:read') ||
-    can('production:printing:read') ||
-    can('production:cutting:read') ||
-    can('dispatch:read');
+  const showFloor = PRODUCTION_VIEW_KEYS.some((key) => can(key));
 
   return (
     <div className="space-y-5">
@@ -219,6 +217,11 @@ function AdminDashboard() {
           {showFloor ? (
             <Link to="/production" className={outlineLink}>
               Production floor
+            </Link>
+          ) : null}
+          {showFloor || showSales ? (
+            <Link to="/registers" className={outlineLink}>
+              Register
             </Link>
           ) : null}
           {can('inventory:read') ? (
@@ -290,7 +293,7 @@ export function Dashboard() {
     user?.role?.slug !== 'super_admin' &&
     !can('sales:read') &&
     !can('users:read') &&
-    PRODUCTION_STAGES.some((item) => can(item.read) || can('production:read'));
+    PRODUCTION_VIEW_KEYS.some((key) => can(key));
 
   if (floorOnly) return <FloorDashboard />;
   return <AdminDashboard />;

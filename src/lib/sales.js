@@ -35,6 +35,7 @@ export const PRODUCTION_VIEW_KEYS = [
   'production:rolling:read',
   'production:printing:read',
   'production:cutting:read',
+  'production:packing:read',
   'dispatch:read',
 ];
 
@@ -168,7 +169,14 @@ export function statusLabel(id) {
   return STATUS_LABELS[id] || id || '—';
 }
 
-export const FLOOR_STATUSES = ['production_planned', 'in_production', 'ready_for_dispatch', 'dispatched'];
+export const FLOOR_STATUSES = [
+  'production_planned',
+  'in_production',
+  'ready_for_packing',
+  'packed',
+  'ready_for_dispatch',
+  'dispatched',
+];
 
 export function isFloorStatus(status) {
   return FLOOR_STATUSES.includes(status);
