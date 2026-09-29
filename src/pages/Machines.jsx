@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { machinesApi } from '../api/machines.api';
@@ -127,8 +128,12 @@ export function Machines() {
     setMachines(await machinesApi.list());
   }
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    load()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const counts = useMemo(
@@ -163,7 +168,7 @@ export function Machines() {
   }
 
   async function handleDelete(machine) {
-    if (!window.confirm(`Delete machine “${machine.name}”?`)) return;
+    if (!(await confirmAction({ message: `Delete machine “${machine.name}”?`, confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await machinesApi.remove(machine.id);
@@ -195,8 +200,8 @@ export function Machines() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
-        <table className="min-w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-card">
+        <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
           <thead className="bg-ink text-paper">
             <tr>
               <th className="px-4 py-3 font-semibold">Machine</th>
@@ -244,7 +249,9 @@ export function Machines() {
             ))}
           </tbody>
         </table>
-        {list.total === 0 ? (
+        {!loaded ? (
+          <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+        ) : list.total === 0 ? (
           <EmptyState title="No machines found" hint="Add a machine, then assign it on a stage." />
         ) : (
           <Pagination

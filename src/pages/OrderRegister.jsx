@@ -3,11 +3,11 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
 import { badgeTones, stepTone, tabActiveTones } from '../components/ui/Badge';
-import { OPERATOR_LABEL, STAGE_COLUMNS, savedValue } from '../lib/registerBooks';
+import { OPERATOR_LABEL, STAGE_COLUMNS, frozenColumns, savedValue } from '../lib/registerBooks';
 import { formatDate, formatQty, statusLabel } from '../lib/sales';
 
-const cell = 'whitespace-nowrap border border-stone-300 px-2 py-1.5 align-middle text-sm';
-const head = 'whitespace-nowrap border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
+const cell = 'whitespace-nowrap border-b border-r border-stone-300 px-2 py-1.5 align-middle text-sm';
+const head = 'whitespace-nowrap border-b border-r border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
 
 function qtyOf(value, unit) {
   return `${formatQty(value)} ${unit || ''}`.trim();
@@ -17,8 +17,10 @@ function byNewest(a, b) {
   return new Date(b.workDate || b.markedAt) - new Date(a.workDate || a.markedAt);
 }
 
-function StageBook({ stage, customerName, orderNumber, fromFloor }) {
+function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
   const columns = STAGE_COLUMNS[stage.id];
+  const isDispatch = stage.id === 'dispatch';
+  const backTo = `/registers/${orderId}?stage=${stage.id}${fromFloor ? '&from=floor' : ''}`;
   const entries = [];
   const openLines = [];
   const blocked = [];
@@ -36,17 +38,21 @@ function StageBook({ stage, customerName, orderNumber, fromFloor }) {
   }
   entries.sort(byNewest);
   const showMark = openLines.length > 0;
+  const frozen = columns ? frozenColumns(columns) : {};
+  const headAt = (key) => (frozen[key] ? { className: `${head} ${frozen[key].className} z-20`, style: frozen[key].style } : { className: head });
+  const cellAt = (key, extra = '') =>
+    frozen[key] ? { className: `${cell} ${extra} ${frozen[key].className} bg-inherit`, style: frozen[key].style } : { className: `${cell} ${extra}` };
 
   return (
     <section>
-      <table className="w-full border-collapse text-sm">
-        <thead>
+      <table className="w-full border-separate border-spacing-0 border-l border-t border-stone-300 text-sm">
+        <thead className="sticky top-0 z-20">
           <tr>
-            <th className={head}>No</th>
-            <th className={head}>Date</th>
+            <th {...headAt('no')}>No</th>
+            <th {...headAt('date')}>Date</th>
             {columns ? (
               columns.map((column) => (
-                <th key={column.key} className={head}>
+                <th key={column.key} {...headAt(column.key)}>
                   {column.label}
                 </th>
               ))
@@ -55,9 +61,19 @@ function StageBook({ stage, customerName, orderNumber, fromFloor }) {
                 <th className={head}>Party</th>
                 <th className={head}>Product</th>
                 <th className={head}>Production</th>
-                <th className={head}>Who</th>
-                <th className={head}>Person</th>
-                <th className={head}>Vehicle</th>
+                {isDispatch ? (
+                  <>
+                    <th className={head}>Used</th>
+                    <th className={head}>Waste</th>
+                    <th className={head}>From</th>
+                  </>
+                ) : (
+                  <>
+                    <th className={head}>Who</th>
+                    <th className={head}>Person</th>
+                    <th className={head}>Vehicle</th>
+                  </>
+                )}
               </>
             )}
             <th className={head}>{columns ? OPERATOR_LABEL[stage.id] : 'Operator'}</th>
@@ -74,11 +90,11 @@ function StageBook({ stage, customerName, orderNumber, fromFloor }) {
           ) : null}
           {openLines.map((line) => (
             <tr key={line.jobId} className="bg-amber-50">
-              <td className={`${cell} text-stone-500`} />
-              <td className={cell}>{formatDate(new Date())}</td>
+              <td {...cellAt('no', 'text-stone-500')} />
+              <td {...cellAt('date')}>{formatDate(new Date())}</td>
               {columns ? (
                 columns.map((column) => (
-                  <td key={column.key} className={cell}>
+                  <td key={column.key} {...cellAt(column.key)}>
                     {column.edit ? '—' : savedValue({ ...line, orderNumber, customerName, details: line.specs }, column.key, customerName) || '—'}
                   </td>
                 ))
@@ -95,7 +111,7 @@ function StageBook({ stage, customerName, orderNumber, fromFloor }) {
               <td className={cell}>—</td>
               <td className={cell}>
                 <Link
-                  to={`/registers?view=stage&stage=${stage.id}&job=${encodeURIComponent(line.jobId)}${fromFloor ? '&from=floor' : ''}`}
+                  to={`/registers?view=stage&stage=${stage.id}&job=${encodeURIComponent(line.jobId)}&back=${encodeURIComponent(backTo)}`}
                   className="font-semibold text-ink underline"
                 >
                   Enter
@@ -112,11 +128,11 @@ function StageBook({ stage, customerName, orderNumber, fromFloor }) {
           ))}
           {entries.map((entry, index) => (
             <tr key={entry.id} className={index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'}>
-              <td className={`${cell} text-stone-500`}>{index + 1}</td>
-              <td className={cell}>{formatDate(entry.workDate || entry.markedAt)}</td>
+              <td {...cellAt('no', 'text-stone-500')}>{index + 1}</td>
+              <td {...cellAt('date')}>{formatDate(entry.workDate || entry.markedAt)}</td>
               {columns ? (
                 columns.map((column) => (
-                  <td key={column.key} className={cell}>
+                  <td key={column.key} {...cellAt(column.key)}>
                     {savedValue(entry, column.key, customerName) || '—'}
                   </td>
                 ))
@@ -125,9 +141,19 @@ function StageBook({ stage, customerName, orderNumber, fromFloor }) {
                   <td className={cell}>{customerName || '—'}</td>
                   <td className={cell}>{entry.product || '—'}</td>
                   <td className={`${cell} font-semibold`}>{qtyOf(entry.outputQty, entry.unit)}</td>
-                  <td className={cell}>{entry.deliveryPartner || '—'}</td>
-                  <td className={cell}>{entry.handoverPerson || '—'}</td>
-                  <td className={cell}>{entry.vehicleNumber || '—'}</td>
+                  {isDispatch ? (
+                    <>
+                      <td className={cell}>{formatQty(entry.inputQty)}</td>
+                      <td className={cell}>{entry.wasteQty ? formatQty(entry.wasteQty) : '—'}</td>
+                      <td className={cell}>{entry.pickedLotName || '—'}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className={cell}>{entry.deliveryPartner || '—'}</td>
+                      <td className={cell}>{entry.handoverPerson || '—'}</td>
+                      <td className={cell}>{entry.vehicleNumber || '—'}</td>
+                    </>
+                  )}
                 </>
               )}
               <td className={cell}>{entry.markedByName || '—'}</td>
@@ -185,10 +211,10 @@ export function OrderRegister() {
   }
 
   return (
-    <div className="-mx-5 -my-4 flex h-dvh min-h-0 flex-col md:-mx-6">
+    <div className="-mx-3 -my-3 flex h-[calc(100dvh-3rem)] min-h-0 flex-col sm:-mx-5 sm:-my-4 lg:-mx-6 lg:h-dvh">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-stone-800 bg-[#fffdf6]">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-4 py-2">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-3 py-2 lg:px-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <BackButton fallback={fromFloor ? '/production' : '/registers?view=orders'} />
             <h1 className="text-lg font-semibold text-stone-900">{book?.orderNumber || 'Sales order'}</h1>
             {book?.customerName ? <p className="text-sm text-stone-700">{book.customerName}</p> : null}
@@ -239,6 +265,7 @@ export function OrderRegister() {
               stage={active}
               customerName={book.customerName || ''}
               orderNumber={book.orderNumber || ''}
+              orderId={orderId}
               fromFloor={fromFloor}
             />
           ) : null}

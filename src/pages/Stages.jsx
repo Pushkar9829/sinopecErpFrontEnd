@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { confirmAction } from '../components/ui/ConfirmHost';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
 import { machinesApi } from '../api/machines.api';
@@ -138,6 +139,7 @@ export function Stages() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const assignSeq = useRef({});
 
   async function load() {
     const [nextStages, nextMachines, nextUsers] = await Promise.all([
@@ -150,8 +152,12 @@ export function Stages() {
     setUsers(nextUsers);
   }
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    load()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const machineOptions = useMemo(
@@ -203,19 +209,32 @@ export function Stages() {
     }
   }
 
+  function optimistic(stage, payload) {
+    const next = { ...stage };
+    if ('isActive' in payload) next.isActive = payload.isActive;
+    if (payload.machineIds) next.machines = machines.filter((machine) => payload.machineIds.includes(machine.id));
+    if (payload.userIds) next.users = users.filter((user) => payload.userIds.includes(user.id));
+    return next;
+  }
+
   async function handleAssign(stage, payload) {
     setError('');
     setNotice('');
+    const seq = (assignSeq.current[stage.id] || 0) + 1;
+    assignSeq.current[stage.id] = seq;
+    setStages((current) => current.map((item) => (item.id === stage.id ? optimistic(item, payload) : item)));
     try {
       const updated = await inventoryApi.updateStage(stage.id, payload);
+      if (assignSeq.current[stage.id] !== seq) return;
       setStages((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     } catch (err) {
       setError(err.message);
+      if (assignSeq.current[stage.id] === seq) load().catch(() => {});
     }
   }
 
   async function handleDelete(stage) {
-    if (!window.confirm(`Delete stage “${stage.name}”?`)) return;
+    if (!(await confirmAction({ message: `Delete stage “${stage.name}”?`, confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await inventoryApi.removeStage(stage.id);
@@ -261,16 +280,16 @@ export function Stages() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
-      <div className="rounded-xl border border-line bg-card">
-        <table className="min-w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-card lg:overflow-visible">
+        <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
           <thead className="bg-ink text-paper">
             <tr>
               <th className="px-4 py-3 font-semibold">Stage</th>
               <th className="px-4 py-3 font-semibold">Machines</th>
               <th className="px-4 py-3 font-semibold">People</th>
               <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Assign machines</th>
-              <th className="px-4 py-3 font-semibold">Assign users</th>
+              <th className="hidden px-4 py-3 font-semibold lg:table-cell">Assign machines</th>
+              <th className="hidden px-4 py-3 font-semibold lg:table-cell">Assign users</th>
               <th className="px-4 py-3 font-semibold">Actions</th>
             </tr>
           </thead>
@@ -307,7 +326,7 @@ export function Stages() {
                     onChange={(isActive) => handleAssign(stage, { isActive })}
                   />
                 </td>
-                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                <td className="hidden px-4 py-3 lg:table-cell" onClick={(event) => event.stopPropagation()}>
                   <SearchMultiSelect
                     options={machineOptions}
                     value={(stage.machines || []).map((machine) => machine.id)}
@@ -317,7 +336,7 @@ export function Stages() {
                     onChange={(machineIds) => handleAssign(stage, { machineIds })}
                   />
                 </td>
-                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                <td className="hidden px-4 py-3 lg:table-cell" onClick={(event) => event.stopPropagation()}>
                   <SearchMultiSelect
                     options={userOptions}
                     value={(stage.users || []).map((user) => user.id)}
@@ -343,7 +362,9 @@ export function Stages() {
             ))}
           </tbody>
         </table>
-        {list.total === 0 ? (
+        {!loaded ? (
+          <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+        ) : list.total === 0 ? (
           <EmptyState title="No stages found" hint="Add a stage to start assigning machines and people." />
         ) : (
           <Pagination

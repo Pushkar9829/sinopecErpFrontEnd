@@ -11,6 +11,7 @@ export const salesOrdersApi = {
   remove: (id) => api.delete(`/api/sales-orders/${id}`),
   submit: (id) => api.post(`/api/sales-orders/${id}/submit`),
   approve: (id) => api.post(`/api/sales-orders/${id}/approve`),
+  returnToDraft: (id, reason) => api.post(`/api/sales-orders/${id}/return`, { reason }),
   planProduction: (id) => api.post(`/api/sales-orders/${id}/plan-production`),
   advance: (id) => api.post(`/api/sales-orders/${id}/advance`),
   cancel: (id, reason) => api.post(`/api/sales-orders/${id}/cancel`, { reason }),

@@ -1,5 +1,6 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { PermissionGate } from '../components/PermissionGate';
 import { ProductionProgressModal } from '../components/sales/ProductionProgressModal';
@@ -156,8 +157,16 @@ export function SalesOrders() {
   const { can } = usePermission();
   const showMoney = canSeeCommercial(can);
   const canCreate = can('sales:create');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
-  const [tab, setTab] = useState('all');
+  const requested = searchParams.get('status') || 'all';
+  const tab = requested === 'all' || STATUS_ORDER.includes(requested) ? requested : 'all';
+  function setTab(next) {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'all') params.delete('status');
+    else params.set('status', next);
+    setSearchParams(params, { replace: true });
+  }
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -167,8 +176,12 @@ export function SalesOrders() {
     setOrders(await salesOrdersApi.list());
   }
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    load()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const counts = useMemo(() => {
@@ -230,7 +243,7 @@ export function SalesOrders() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this draft sales order?')) return;
+    if (!(await confirmAction({ message: 'Delete this draft sales order?', confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await salesOrdersApi.remove(id);
@@ -248,9 +261,11 @@ export function SalesOrders() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search number or customer" />
-          <Link to="/sales-settings" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
-            Product setup
-          </Link>
+          {can('sales:read') ? (
+            <Link to="/sales-settings" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
+              Product setup
+            </Link>
+          ) : null}
           <PermissionGate permission="sales:create">
             <Link
               to="/sales-orders/new"
@@ -266,8 +281,8 @@ export function SalesOrders() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
-        <table className="min-w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-card">
+        <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
           <thead className="bg-ink text-paper">
             <tr>
               <th className="px-4 py-3 font-semibold">Order</th>
@@ -356,7 +371,9 @@ export function SalesOrders() {
             ))}
           </tbody>
         </table>
-        {list.total === 0 ? (
+        {!loaded ? (
+          <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+        ) : list.total === 0 ? (
           <EmptyState title="No sales orders found" hint="Create a draft, then submit it for approval." />
         ) : (
           <Pagination

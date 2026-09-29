@@ -225,8 +225,19 @@ function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
             {list.paged.map((row, index) => (
               <tr
                 key={row.id || row.key || index}
-                className={`border-t border-line ${onRowClick ? 'cursor-pointer hover:bg-paper/70' : ''}`}
+                className={`border-t border-line ${onRowClick ? 'cursor-pointer hover:bg-paper/70 focus:bg-paper/70 focus:outline-none' : ''}`}
+                tabIndex={onRowClick ? 0 : undefined}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onRowClick(row);
+                        }
+                      }
+                    : undefined
+                }
               >
                 {columns.map((column) => (
                   <td key={column.key} className={`px-4 py-3 font-normal ${column.align === 'right' ? 'text-right' : ''}`}>
@@ -774,7 +785,7 @@ export function Analytics() {
       {tab === 'waste' ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Kpi label="Floor waste" value={formatQty(data?.kpis?.waste)} hint="Logged when a stage is marked done" tone="warning" />
+            <Kpi label="Floor waste" value={formatQty(data?.kpis?.waste)} hint="Logged with each register entry" tone="warning" />
             <Kpi
               label="Store waste lots"
               value={formatQty(data?.waste?.inventoryTotal)}

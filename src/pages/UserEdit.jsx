@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { rolesApi } from '../api/roles.api';
@@ -35,7 +36,7 @@ function TrashIcon() {
 export function UserEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const { can } = usePermission();
   const canEdit = can('users:update');
   const [roles, setRoles] = useState([]);
@@ -80,6 +81,7 @@ export function UserEdit() {
       await usersApi.update(id, payload);
       setPassword('');
       setNotice('Saved.');
+      if (currentUser?.id === id) await refreshUser().catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {
@@ -88,7 +90,7 @@ export function UserEdit() {
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this user?')) return;
+    if (!(await confirmAction({ message: 'Delete this user?', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await usersApi.remove(id);
       navigate('/users');

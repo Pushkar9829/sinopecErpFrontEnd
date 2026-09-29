@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { salesSettingsApi } from '../api/salesSettings.api';
@@ -283,8 +284,12 @@ export function SalesSettings() {
     if (optionData.groups?.length) setGroups(optionData.groups);
   }
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    load()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const viewCounts = useMemo(
@@ -394,7 +399,7 @@ export function SalesSettings() {
   }
 
   async function removeOption(option) {
-    if (!window.confirm(`Remove “${option.value}”?`)) return;
+    if (!(await confirmAction({ message: `Remove “${option.value}”?`, confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await salesSettingsApi.removeOption(option.id);
@@ -437,7 +442,7 @@ export function SalesSettings() {
   }
 
   async function removeTemplate(template) {
-    if (!window.confirm(`Delete saved product “${template.name}”?`)) return;
+    if (!(await confirmAction({ message: `Delete saved product “${template.name}”?`, confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await salesSettingsApi.removeTemplate(template.id);
@@ -509,8 +514,8 @@ export function SalesSettings() {
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
       {tab === 'templates' ? (
-        <div className="overflow-hidden rounded-xl border border-line bg-card">
-          <table className="min-w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-xl border border-line bg-card">
+          <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
             <thead className="bg-ink text-paper">
               <tr>
                 <th className="px-4 py-3 font-semibold">Product</th>
@@ -584,7 +589,9 @@ export function SalesSettings() {
               ))}
             </tbody>
           </table>
-          {templateList.total === 0 ? (
+          {!loaded ? (
+            <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+          ) : templateList.total === 0 ? (
             <EmptyState title="No saved products found" hint="Add a product you sell again." />
           ) : (
             <Pagination
@@ -597,8 +604,8 @@ export function SalesSettings() {
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-line bg-card">
-          <table className="min-w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-xl border border-line bg-card">
+          <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
             <thead className="bg-ink text-paper">
               <tr>
                 <th className="px-4 py-3 font-semibold">Word</th>
@@ -630,7 +637,9 @@ export function SalesSettings() {
               ))}
             </tbody>
           </table>
-          {wordList.total === 0 ? (
+          {!loaded ? (
+            <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+          ) : wordList.total === 0 ? (
             <EmptyState title="No words found" hint="Add a word for this list." />
           ) : (
             <Pagination

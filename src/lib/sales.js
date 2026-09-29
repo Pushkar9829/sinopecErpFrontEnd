@@ -35,7 +35,6 @@ export const PRODUCTION_VIEW_KEYS = [
   'production:rolling:read',
   'production:printing:read',
   'production:cutting:read',
-  'production:packing:read',
   'dispatch:read',
 ];
 
@@ -117,8 +116,8 @@ export const OPTION_GROUPS = [
   { id: 'holePosition', label: 'Hole position', hint: 'Top centre' },
   { id: 'tapeType', label: 'Tape type', hint: '11mm Tape, PP line tape' },
   { id: 'printImpression', label: 'Print impression', hint: '0+1, 1+1, 2+2' },
-  { id: 'printColor', label: 'Print colours', hint: 'Red, Black, Golden' },
-  { id: 'printDesign', label: 'Print design', hint: 'Customer logo' },
+  { id: 'printColor', label: 'Printing colours', hint: 'Red, Black, Golden' },
+  { id: 'printDesign', label: 'Printing design', hint: 'Customer logo' },
 ];
 
 export const OPTION_LIST_SECTIONS = [
@@ -195,6 +194,8 @@ export function formatQty(value) {
 }
 
 export function itemStageStats(item, stage) {
+  const served = item.stageStats?.[stage];
+  if (served) return { ...served };
   const work = (item.stageWork || []).filter((row) => row.stage === stage);
   const input = work.reduce((sum, row) => sum + qty(row.inputQty), 0);
   const output = work.reduce((sum, row) => sum + qty(row.outputQty), 0);
@@ -237,7 +238,7 @@ export function orderStageSummary(order) {
           id: item.id,
           product: item.product,
           productCode: item.productCode,
-          unit: item.unit || 'pcs',
+          unit: stats.unit || item.unit || 'pcs',
           route: item.productionRoute,
           current: nowAt === meta.id,
           ...stats,
@@ -298,8 +299,15 @@ export function emptyManufacturing() {
   };
 }
 
+let uidSeed = 0;
+export function lineUid() {
+  uidSeed += 1;
+  return `line-${Date.now().toString(36)}-${uidSeed}`;
+}
+
 export function emptyLineItem() {
   return {
+    uid: lineUid(),
     templateId: '',
     product: '',
     productCode: '',
@@ -331,14 +339,34 @@ export function emptyLineItem() {
     },
     holes: { required: false, count: '', type: '', size: '', position: '', specialRequirements: '' },
     tape: { required: false, type: '' },
-    image: { originalName: '', mimeType: '', dataUrl: '', url: '', key: '', storage: '' },
+    image: emptyImage(),
+    images: [],
   };
+}
+
+export function emptyImage() {
+  return { originalName: '', mimeType: '', dataUrl: '', url: '', key: '', storage: '' };
+}
+
+export function lineImages(item) {
+  const list = Array.isArray(item?.images) ? item.images : [];
+  const filled = list.filter((image) => image && (image.url || image.dataUrl || image.key));
+  const source = filled.length ? filled : item?.image && (item.image.url || item.image.dataUrl || item.image.key) ? [item.image] : [];
+  return source.map((image) => ({
+    originalName: image.originalName || '',
+    mimeType: image.mimeType || '',
+    dataUrl: image.url ? '' : image.dataUrl || '',
+    url: image.url || '',
+    key: image.key || '',
+    storage: image.storage || '',
+  }));
 }
 
 export function itemFromApi(item) {
   const base = emptyLineItem();
   return {
     ...base,
+    uid: base.uid,
     id: item.id,
     templateId: item.templateId || '',
     product: item.product || '',
@@ -362,7 +390,8 @@ export function itemFromApi(item) {
     printing: { ...base.printing, ...(item.printing || {}) },
     holes: { ...base.holes, ...(item.holes || {}) },
     tape: { ...base.tape, ...(item.tape || {}) },
-    image: { ...base.image, ...(item.image || {}) },
+    image: lineImages(item)[0] || emptyImage(),
+    images: lineImages(item),
   };
 }
 
@@ -370,6 +399,7 @@ export function applyTemplate(item, template) {
   const next = itemFromApi(template);
   return {
     ...next,
+    uid: item.uid || next.uid,
     id: item.id,
     templateId: template.id,
     quantity: item.quantity || next.quantity,
@@ -405,14 +435,8 @@ export function itemToPayload(item) {
     },
     holes: { ...item.holes, required: Boolean(item.holes?.required) },
     tape: { ...item.tape, required: Boolean(item.tape?.required) },
-    image: {
-      originalName: item.image?.originalName || '',
-      mimeType: item.image?.mimeType || '',
-      dataUrl: item.image?.url ? '' : item.image?.dataUrl || '',
-      url: item.image?.url || '',
-      key: item.image?.key || '',
-      storage: item.image?.storage || '',
-    },
+    image: lineImages(item)[0] || emptyImage(),
+    images: lineImages(item),
   };
 }
 

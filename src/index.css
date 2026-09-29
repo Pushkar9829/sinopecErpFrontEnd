@@ -53,6 +53,15 @@ body {
     font-weight: 600;
   }
 
+  tbody tr[data-row-selected],
+  tbody tr[data-row-selected] > td {
+    background-color: #fde68a !important;
+  }
+
+  tbody tr[data-row-selected] > td:first-child {
+    box-shadow: inset 4px 0 0 #b4531a;
+  }
+
   input,
   textarea,
   select {
@@ -66,5 +75,14 @@ body {
     background-position: right 0.65rem center;
     background-size: 1rem;
     padding-right: 2.15rem !important;
+  }
+}
+
+/* iOS zooms into any focused field under 16px */
+@media (max-width: 1023.98px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px;
   }
 }

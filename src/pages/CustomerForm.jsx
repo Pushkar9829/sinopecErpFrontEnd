@@ -94,15 +94,12 @@ export function CustomerForm() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
-    if (products.some((item) => !String(item.product || '').trim())) {
-      setError('Each attached product needs a product name, or remove empty rows');
-      return;
-    }
+    const named = products.filter((item) => String(item.product || '').trim());
     setSaving(true);
     try {
       const payload = {
         ...form,
-        products: products.map(itemToPayload),
+        products: named.map(itemToPayload),
       };
       if (isEdit) {
         await customersApi.update(id, payload);
@@ -183,21 +180,23 @@ export function CustomerForm() {
           }
         >
           {products.length === 0 ? (
-            <p className="text-sm text-slate">No products attached yet.</p>
+            <p className="text-sm text-slate">No products attached yet. Rows left without a product name are skipped on save.</p>
           ) : (
             <div className="space-y-4">
               {products.map((item, index) => (
                 <SalesOrderLineCard
-                  key={item.id || index}
+                  key={item.uid || item.id || index}
                   item={item}
                   index={index}
                   showCommercial
                   canEdit={canSave}
                   templates={templates}
                   options={options}
-                  removable={products.length > 1}
-                  onChange={(next) => setProducts((prev) => prev.map((row, rowIndex) => (rowIndex === index ? next : row)))}
-                  onRemove={() => setProducts((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                  removable
+                  onChange={(next) =>
+                    setProducts((prev) => prev.map((row) => (row.uid === item.uid ? (typeof next === 'function' ? next(row) : next) : row)))
+                  }
+                  onRemove={() => setProducts((prev) => prev.filter((row) => row.uid !== item.uid))}
                 />
               ))}
             </div>

@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { downloadSalesOrderFile, salesOrdersApi } from '../api/salesOrders.api';
@@ -7,6 +8,7 @@ import { Grid, Section, inputClass } from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { Badge, PriorityBadge, StatusBadge, badgeTones, stepTone, attachmentTone } from '../components/ui/Badge';
+import { ImageGallery, ImageLightbox, imageSrc } from '../components/ui/ImageGallery';
 import {
   ATTACHMENT_KINDS,
   STEP_LABELS,
@@ -15,9 +17,11 @@ import {
   formatMoney,
   itemFromApi,
   itemToPayload,
+  lineImages,
   routeHasCut,
   routeHasPrint,
   routeLabel,
+  stageLabel,
   statusLabel,
   toDateInput,
 } from '../lib/sales';
@@ -80,6 +84,7 @@ export function SalesOrderDetail() {
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState('po');
   const [tab, setTab] = useState('order');
+  const [previewIndex, setPreviewIndex] = useState(-1);
 
   async function load() {
     setOrder(await salesOrdersApi.get(id));
@@ -106,16 +111,51 @@ export function SalesOrderDetail() {
   }
 
   async function handleCancel() {
-    const reason = window.prompt('Cancel this sales order? You can add a reason.');
+    const reason = await confirmAction({
+      title: 'Cancel sales order',
+      message: 'Material taken for this order goes back to its lot, and its work-in-progress stock is taken out of use.',
+      withReason: true,
+      confirmLabel: 'Cancel order',
+      danger: true,
+    });
     if (reason === null) return;
     await run(() => salesOrdersApi.cancel(id, reason), 'Sales order cancelled.');
   }
 
+  async function handleReturn() {
+    const reason = await confirmAction({
+      title: 'Send back to draft',
+      message: 'Sales can edit the order again and resubmit it.',
+      withReason: true,
+      confirmLabel: 'Send back',
+    });
+    if (reason === null) return;
+    await run(() => salesOrdersApi.returnToDraft(id, reason), 'Sent back to draft.');
+  }
+
   async function handleUpload(event) {
-    const file = event.target.files?.[0];
+    const files = [...(event.target.files || [])];
     event.target.value = '';
-    if (!file) return;
-    await run(() => salesOrdersApi.addAttachment(id, file, kind), 'Attachment added.');
+    if (!files.length) return;
+    if (kind === 'image' && files.some((file) => !file.type.startsWith('image/'))) {
+      setError('Choose image files for an image attachment.');
+      return;
+    }
+    setError('');
+    setNotice('');
+    setBusy(true);
+    try {
+      for (const file of files) {
+        await salesOrdersApi.addAttachment(id, file, kind);
+      }
+      await load();
+      setNotice(files.length > 1 ? `${files.length} files added.` : 'Attachment added.');
+    } catch (err) {
+      setError(err.message);
+      await load();
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!order && !error) {
@@ -126,18 +166,27 @@ export function SalesOrderDetail() {
   }
 
   const customer = order.customer || {};
+  const imageAttachments = (order.attachments || []).filter((attachment) => {
+    const mime = String(attachment.mimeType || '');
+    if (mime.startsWith('image/')) return true;
+    if (mime) return false;
+    return attachment.kind === 'image';
+  });
   const canEditDraft = order.status === 'draft' && can('sales:update');
   const canSubmit = order.status === 'draft' && can('sales:update');
   const canApprove = order.status === 'submitted' && isSuperAdmin;
   const canPlan = order.status === 'approved' && can('production:update');
   const canAdvance = order.status === 'delivered' && can('production:update');
+  const earlyStatus = ['draft', 'submitted', 'approved'].includes(order.status);
+  const anyDelivered = (order.items || []).some((item) => (item.stageWork || []).some((work) => work.stage === 'delivery'));
   const canCancel =
-    order.status !== 'cancelled' &&
-    order.status !== 'completed' &&
-    order.status !== 'delivered' &&
-    ((['draft', 'submitted'].includes(order.status) && can('sales:update')) ||
-      (!['draft', 'submitted'].includes(order.status) && (can('production:update') || isSuperAdmin)));
-  const canAttach = can('sales:update') && !['cancelled', 'completed', 'dispatched', 'delivered'].includes(order.status);
+    !['cancelled', 'dispatched', 'delivered', 'completed'].includes(order.status) &&
+    !anyDelivered &&
+    (isSuperAdmin || (earlyStatus ? can('sales:update') : can('production:update')));
+  const canReturn =
+    (order.status === 'submitted' && (isSuperAdmin || can('sales:update'))) || (order.status === 'approved' && isSuperAdmin);
+  const canAttach = can('sales:update') && !['cancelled', 'completed', 'dispatched'].includes(order.status);
+  const canRemoveAttachment = can('sales:update') && (isSuperAdmin || ['draft', 'submitted'].includes(order.status));
   const canDelete = order.status === 'draft' && can('sales:delete');
   const canDuplicate = can('sales:create');
   const stageView = order.viewMode === 'stage';
@@ -161,7 +210,7 @@ export function SalesOrderDetail() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
-        <BackButton fallback="/sales-orders" />
+        <BackButton fallback={stageView ? '/registers' : '/sales-orders'} />
         <h1 className="px-1 text-lg font-semibold">{order.number}</h1>
         <StatusBadge status={order.status} label={statusLabel(order.status)} />
         <PriorityBadge priority={order.priority} />
@@ -195,8 +244,10 @@ export function SalesOrderDetail() {
                       items: (order.items || []).map((item) => itemToPayload(itemFromApi(item))),
                     });
                     navigate(`/sales-orders/${created.id}`);
+                    setNotice('Duplicated as a new draft.');
                   } catch (err) {
                     setError(err.message);
+                  } finally {
                     setBusy(false);
                   }
                 }}
@@ -218,6 +269,11 @@ export function SalesOrderDetail() {
             {canApprove ? (
               <button type="button" disabled={busy} onClick={() => run(() => salesOrdersApi.approve(id), 'Sales order approved.')} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60">
                 Approve
+              </button>
+            ) : null}
+            {canReturn && !stageView ? (
+              <button type="button" disabled={busy} onClick={handleReturn} className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper disabled:opacity-60">
+                Send back to draft
               </button>
             ) : null}
             {canPlan && !stageView ? (
@@ -245,7 +301,7 @@ export function SalesOrderDetail() {
                 type="button"
                 disabled={busy}
                 onClick={async () => {
-                  if (!window.confirm('Delete this draft?')) return;
+                  if (!(await confirmAction({ message: 'Delete this draft?', confirmLabel: 'Delete', danger: true }))) return;
                   setBusy(true);
                   try {
                     await salesOrdersApi.remove(id);
@@ -386,6 +442,11 @@ export function SalesOrderDetail() {
                   <td className="px-3 py-2">
                     <p className={`font-semibold ${PRODUCT_TONES[index % PRODUCT_TONES.length].title}`}>{item.product}</p>
                     <p className="text-sm font-normal text-slate">{item.productCode}</p>
+                    {lineImages(item).length ? (
+                      <div className="mt-2">
+                        <ImageGallery images={lineImages(item)} />
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 font-normal text-ink">{item.size || '—'}</td>
                   <td className="px-3 py-2 font-normal text-slate">{item.material || '—'}</td>
@@ -441,7 +502,7 @@ export function SalesOrderDetail() {
               </>
             ) : null}
             <Value label="Special requirements">{item.manufacturing?.specialRequirements}</Value>
-            <Value label="Now at">{item.currentStage === 'completed' ? 'Done' : item.currentStage || 'Not started'}</Value>
+            <Value label="Now at">{item.currentStage === 'completed' ? 'Done' : item.currentStage ? stageLabel(item.currentStage) : 'Not started'}</Value>
           </Grid>
         </Fold>
         );
@@ -468,7 +529,7 @@ export function SalesOrderDetail() {
               </select>
               <label className="inline-flex cursor-pointer items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
                 Upload
-                <input type="file" className="hidden" onChange={handleUpload} />
+                <input type="file" multiple accept={kind === 'image' ? 'image/*' : undefined} className="hidden" onChange={handleUpload} />
               </label>
             </div>
           ) : null
@@ -477,36 +538,56 @@ export function SalesOrderDetail() {
         {(order.attachments || []).length === 0 ? (
           <p className="text-sm font-normal text-slate">No attachments.</p>
         ) : (
-          <ul className="space-y-2 text-base">
-            {order.attachments.map((attachment) => (
-              <li key={attachment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2">
-                <span className="font-semibold text-ink">
-                  {attachment.originalName}
-                  <Badge tone={attachmentTone(attachment.kind)} className="ml-2 normal-case">
-                    {attachment.kind}
-                  </Badge>
-                </span>
-                <span className="flex gap-3">
-                  <button
-                    type="button"
-                    className="text-ink hover:underline"
-                    onClick={() => downloadSalesOrderFile(order.id, attachment.id, attachment.originalName).catch((err) => setError(err.message))}
-                  >
-                    Download
-                  </button>
-                  {canAttach && ['draft', 'submitted'].includes(order.status) ? (
-                    <button
-                      type="button"
-                      className="text-red-700 hover:underline"
-                      onClick={() => run(() => salesOrdersApi.removeAttachment(order.id, attachment.id), 'Attachment removed.')}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="space-y-2 text-base">
+              {order.attachments.map((attachment) => {
+                const imageIndex = imageAttachments.findIndex((image) => image.id === attachment.id);
+                return (
+                  <li key={attachment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2">
+                    <span className="flex min-w-0 items-center gap-2 font-semibold text-ink">
+                      {imageIndex >= 0 && imageSrc(attachment) ? (
+                        <button type="button" onClick={() => setPreviewIndex(imageIndex)} className="shrink-0 overflow-hidden rounded-md border border-line">
+                          <img src={imageSrc(attachment)} alt="" className="h-10 w-10 object-cover" />
+                        </button>
+                      ) : null}
+                      <span className="min-w-0 truncate">
+                        {attachment.originalName}
+                        <Badge tone={attachmentTone(attachment.kind)} className="ml-2 normal-case">
+                          {attachment.kind}
+                        </Badge>
+                      </span>
+                    </span>
+                    <span className="flex gap-3">
+                      {imageIndex >= 0 && imageSrc(attachment) ? (
+                        <button type="button" className="text-ink hover:underline" onClick={() => setPreviewIndex(imageIndex)}>
+                          Preview
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="text-ink hover:underline"
+                        onClick={() => downloadSalesOrderFile(order.id, attachment.id, attachment.originalName).catch((err) => setError(err.message))}
+                      >
+                        Download
+                      </button>
+                      {canRemoveAttachment ? (
+                        <button
+                          type="button"
+                          className="text-red-700 hover:underline"
+                          onClick={() => run(() => salesOrdersApi.removeAttachment(order.id, attachment.id), 'Attachment removed.')}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {previewIndex >= 0 ? (
+              <ImageLightbox images={imageAttachments} index={previewIndex} onClose={() => setPreviewIndex(-1)} onIndex={setPreviewIndex} />
+            ) : null}
+          </>
         )}
       </Section>
       ) : null}

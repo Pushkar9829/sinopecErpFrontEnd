@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { machinesApi } from '../api/machines.api';
@@ -81,7 +82,7 @@ export function MachineForm() {
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this machine?')) return;
+    if (!(await confirmAction({ message: 'Delete this machine?', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await machinesApi.remove(id);
       navigate('/machines');

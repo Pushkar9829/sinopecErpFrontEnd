@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
@@ -132,8 +133,12 @@ export function Inventory() {
     setItems(await inventoryApi.listItems());
   }
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    load()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const counts = useMemo(
@@ -160,7 +165,7 @@ export function Inventory() {
   const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this material?')) return;
+    if (!(await confirmAction({ message: 'Delete this material?', confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await inventoryApi.removeItem(id);
@@ -196,8 +201,8 @@ export function Inventory() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
-        <table className="min-w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-card">
+        <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
           <thead className="bg-ink text-paper">
             <tr>
               <th className="px-4 py-3 font-semibold">Material</th>
@@ -255,7 +260,9 @@ export function Inventory() {
             ))}
           </tbody>
         </table>
-        {list.total === 0 ? (
+        {!loaded ? (
+          <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+        ) : list.total === 0 ? (
           <EmptyState title="No materials found" hint="Add a raw, output, or waste item." />
         ) : (
           <Pagination

@@ -8,6 +8,7 @@ import { BackButton } from '../components/ui/BackButton';
 import { StepProgress, stepMark } from '../components/ui/StepProgress';
 import { Field, Grid, Section, inputClass } from '../components/ui/FormField';
 import { usePermission } from '../hooks/usePermission';
+import { confirmAction } from '../components/ui/ConfirmHost';
 import {
   PAYMENT_METHODS,
   PAYMENT_TERMS,
@@ -94,7 +95,7 @@ function FlowMenu({ disabled, onPick }) {
   );
 }
 
-const emptyHeader = {
+const emptyHeader = () => ({
   customerId: '',
   orderDate: todayInput(),
   deliveryDate: '',
@@ -111,7 +112,7 @@ const emptyHeader = {
   remarks: '',
   productionInstructions: '',
   discount: '0',
-};
+});
 
 export function SalesOrderForm() {
   const { id } = useParams();
@@ -122,7 +123,7 @@ export function SalesOrderForm() {
   const showCommercial = canSeeCommercial(can);
 
   const [customers, setCustomers] = useState([]);
-  const [header, setHeader] = useState(emptyHeader);
+  const [header, setHeader] = useState(() => emptyHeader());
   const [items, setItems] = useState([emptyLineItem()]);
   const [number, setNumber] = useState('');
   const [error, setError] = useState('');
@@ -183,7 +184,7 @@ export function SalesOrderForm() {
     setHeader((prev) => ({ ...prev, [field]: value }));
   }
 
-  function applyCustomer(customerId) {
+  async function applyCustomer(customerId) {
     const customer = customers.find((item) => item.id === customerId);
     setHeader((prev) => ({
       ...prev,
@@ -193,13 +194,27 @@ export function SalesOrderForm() {
       deliveryLocation: customer?.shippingAddress || customer?.billingAddress || prev.deliveryLocation,
     }));
 
-    const attached = (customer?.products || []).map(itemFromApi);
-    if (attached.length) {
-      setItems(attached);
-      setTab('products');
-    } else if (!isEdit) {
-      setItems([emptyLineItem()]);
+    const attached = (customer?.products || []).map((product) => ({ ...itemFromApi(product), id: undefined }));
+    if (!attached.length) return;
+    const entered = items.filter((item) => item.product.trim());
+    if (entered.length) {
+      const replace = await confirmAction({
+        title: 'Use saved products?',
+        message: `${customer.name} has ${attached.length} saved product${attached.length === 1 ? '' : 's'}. Replace the ${entered.length} product${entered.length === 1 ? '' : 's'} already on this order?`,
+        confirmLabel: 'Replace',
+        cancelLabel: 'Keep mine',
+      });
+      if (!replace) return;
     }
+    setItems(attached);
+    setTab('products');
+  }
+
+  function blockEnterSubmit(event) {
+    if (event.key !== 'Enter') return;
+    const tag = event.target.tagName;
+    if (tag === 'TEXTAREA' || tag === 'BUTTON' || event.target.type === 'submit') return;
+    event.preventDefault();
   }
 
   function payload() {
@@ -265,11 +280,18 @@ export function SalesOrderForm() {
   }
 
   if (!loaded) {
-    return <p className="text-sm text-slate">Loading sales order…</p>;
+    return error ? (
+      <div className="space-y-3">
+        <BackButton fallback="/sales-orders" />
+        <p className="text-sm text-red-700">{error}</p>
+      </div>
+    ) : (
+      <p className="text-sm text-slate">Loading sales order…</p>
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} onKeyDown={blockEnterSubmit} className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
         <BackButton fallback={isEdit ? `/sales-orders/${id}` : '/sales-orders'} />
         <h1 className="px-1 text-lg font-semibold">{isEdit ? number || 'Sales order' : 'New sales order'}</h1>
@@ -378,7 +400,7 @@ export function SalesOrderForm() {
           <div className="space-y-4">
             {items.map((item, index) => (
               <SalesOrderLineCard
-                key={item.id || index}
+                key={item.uid || item.id || index}
                 item={item}
                 index={index}
                 showCommercial={showCommercial}
@@ -386,8 +408,10 @@ export function SalesOrderForm() {
                 templates={templates}
                 options={options}
                 removable={items.length > 1}
-                onChange={(next) => setItems((prev) => prev.map((row, rowIndex) => (rowIndex === index ? next : row)))}
-                onRemove={() => setItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                onChange={(next) =>
+                  setItems((prev) => prev.map((row) => (row.uid === item.uid ? (typeof next === 'function' ? next(row) : next) : row)))
+                }
+                onRemove={() => setItems((prev) => prev.filter((row) => row.uid !== item.uid))}
               />
             ))}
           </div>

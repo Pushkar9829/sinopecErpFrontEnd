@@ -1,10 +1,11 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
 
 export function ProtectedRoute({ permission, anyOf }) {
   const { user, loading } = useAuth();
   const { can } = usePermission();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -15,7 +16,7 @@ export function ProtectedRoute({ permission, anyOf }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
   const allowed = permission

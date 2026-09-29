@@ -27,8 +27,13 @@ export function AuthProvider({ children }) {
     }
 
     bootstrap();
+    function onExpired() {
+      if (!cancelled) setUser(null);
+    }
+    window.addEventListener('auth:expired', onExpired);
     return () => {
       cancelled = true;
+      window.removeEventListener('auth:expired', onExpired);
     };
   }, []);
 
@@ -40,6 +45,11 @@ export function AuthProvider({ children }) {
         const nextUser = await authApi.login(username, password);
         setUser(nextUser);
         return nextUser;
+      },
+      async refreshUser() {
+        const current = await authApi.me();
+        setUser(current);
+        return current;
       },
       async logout() {
         await authApi.logout();

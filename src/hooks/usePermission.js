@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 function matchesPermission(ownedKeys, requiredKey) {
@@ -15,11 +16,14 @@ function matchesPermission(ownedKeys, requiredKey) {
 export function usePermission() {
   const { user } = useAuth();
 
-  const can = (key) => {
-    if (!user) return false;
-    if (user.role?.slug === 'super_admin') return true;
-    return matchesPermission(user.permissions, key);
-  };
+  const can = useCallback(
+    (key) => {
+      if (!user) return false;
+      if (user.role?.slug === 'super_admin') return true;
+      return matchesPermission(user.permissions, key);
+    },
+    [user]
+  );
 
   return { can, user };
 }

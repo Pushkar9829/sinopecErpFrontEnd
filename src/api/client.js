@@ -91,6 +91,7 @@ async function request(path, options = {}, retry = true) {
     if (refreshed.ok) {
       return request(path, options, false);
     }
+    window.dispatchEvent(new Event('auth:expired'));
   }
 
   const payload = await parseBody(response);

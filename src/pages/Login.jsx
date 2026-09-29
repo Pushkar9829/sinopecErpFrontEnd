@@ -1,35 +1,40 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const DEMO_ACCOUNTS = [
-  { username: 'owner', label: 'Owner' },
-  { username: 'sales', label: 'Sales' },
-  { username: 'production', label: 'Production' },
-  { username: 'inventory', label: 'Inventory' },
-  { username: 'rolling', label: 'Rolling' },
-  { username: 'printing', label: 'Printing' },
-  { username: 'cutting', label: 'Cutting' },
-  { username: 'packing', label: 'Packing' },
-  { username: 'dispatch', label: 'Dispatch' },
-  { username: 'accounts', label: 'Accounts' },
-];
+const DEMO_ACCOUNTS =
+  import.meta.env.VITE_HIDE_DEMO_LOGINS === 'true'
+    ? []
+    : [
+        { username: 'owner', label: 'Owner (Super Admin)', password: import.meta.env.VITE_OWNER_PASSWORD || 'ChangeMe123!' },
+        { username: 'sales', label: 'Sales' },
+        { username: 'production', label: 'Production' },
+        { username: 'inventory', label: 'Inventory' },
+        { username: 'rolling', label: 'Rolling' },
+        { username: 'printing', label: 'Printing' },
+        { username: 'cutting', label: 'Cutting' },
+        { username: 'dispatch', label: 'Dispatch' },
+        { username: 'accounts', label: 'Accounts' },
+      ];
+const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || 'Demo@1234';
 
 export function Login() {
   const { user, loading, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = typeof location.state?.from === 'string' && location.state.from.startsWith('/') ? location.state.from : '/';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (!loading && user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={from} replace />;
   }
 
-  function fillDemo(name) {
-    setUsername(name);
-    setPassword(name === 'owner' ? 'ChangeMe123!' : 'Demo@1234');
+  function fillDemo(account) {
+    setUsername(account.username);
+    setPassword(account.password || DEMO_PASSWORD);
     setError('');
   }
 
@@ -39,7 +44,7 @@ export function Login() {
     setSubmitting(true);
     try {
       await login(username, password);
-      navigate('/', { replace: true });
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -88,21 +93,30 @@ export function Login() {
           {submitting ? 'Signing in...' : 'Sign in'}
         </button>
 
+        {DEMO_ACCOUNTS.length ? (
         <div className="mt-6">
-          <p className="text-xs font-medium text-ink">Demo accounts</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <p className="text-xs font-medium text-ink">Demo accounts — click to fill</p>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
             {DEMO_ACCOUNTS.map((account) => (
               <button
                 key={account.username}
                 type="button"
-                onClick={() => fillDemo(account.username)}
-                className="rounded-full border border-line bg-paper px-2.5 py-1 text-xs text-slate hover:border-accent hover:text-ink"
+                onClick={() => fillDemo(account)}
+                className={`rounded-lg border px-2.5 py-1.5 text-left text-xs hover:border-accent hover:text-ink ${
+                  username === account.username ? 'border-accent bg-amber-50 text-ink' : 'border-line bg-paper text-slate'
+                }`}
               >
-                {account.label}
+                <span className="block font-semibold text-ink">{account.label}</span>
+                <span className="block">ID: {account.username}</span>
+                {account.password ? <span className="block">Password: {account.password}</span> : null}
               </button>
             ))}
           </div>
+          <p className="mt-2 text-xs text-slate">
+            Password for the other demo accounts: <span className="font-semibold text-ink">{DEMO_PASSWORD}</span>
+          </p>
         </div>
+        ) : null}
       </form>
     </div>
   );

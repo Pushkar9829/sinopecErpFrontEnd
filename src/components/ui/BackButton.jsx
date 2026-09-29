@@ -13,13 +13,14 @@ export function useGoBack(fallback) {
   };
 }
 
-export function BackButton({ fallback, label = 'Back', className = '' }) {
+export function BackButton({ fallback, to, label = 'Back', className = '' }) {
   const goBack = useGoBack(fallback);
+  const navigate = useNavigate();
 
   return (
     <button
       type="button"
-      onClick={goBack}
+      onClick={to ? () => navigate(to) : goBack}
       className={`inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper ${className}`}
     >
       <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

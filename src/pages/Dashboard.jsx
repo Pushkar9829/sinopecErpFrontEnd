@@ -28,7 +28,7 @@ function FloorDashboard() {
   const [searchParams] = useSearchParams();
   const { can } = usePermission();
   const stages = useMemo(() => {
-    if (can('production:read') || can('production:packing:read')) return PRODUCTION_STAGES;
+    if (can('production:read')) return PRODUCTION_STAGES;
     return PRODUCTION_STAGES.filter((item) => can(item.read));
   }, [can]);
   const [stage, setStage] = useState('');
@@ -42,13 +42,22 @@ function FloorDashboard() {
     setStage(next);
   }, [searchParams, stages]);
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    if (!stage) return;
+    if (!stage) return undefined;
+    let alive = true;
     setError('');
+    setJobs([]);
+    setLoading(true);
     productionApi
       .queue(stage)
-      .then((data) => setJobs(data.jobs || []))
-      .catch((err) => setError(err.message));
+      .then((data) => alive && setJobs(data.jobs || []))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
   }, [stage]);
 
   if (!stages.length) return null;
@@ -58,7 +67,7 @@ function FloorDashboard() {
   }
 
   return (
-    <section className="-mx-5 -my-4 flex h-dvh min-h-0 flex-col md:-mx-6">
+    <section className="-mx-3 -my-3 flex h-[calc(100dvh-3rem)] min-h-0 flex-col sm:-mx-5 sm:-my-4 lg:-mx-6 lg:h-dvh">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-card px-4 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-semibold">{PRODUCTION_STAGES.find((item) => item.id === stage)?.label || 'Stage'}</h1>
@@ -80,8 +89,8 @@ function FloorDashboard() {
       </div>
       {error ? <p className="px-4 py-2 text-sm text-red-700">{error}</p> : null}
       <div className="min-h-0 flex-1 overflow-auto bg-card">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
-          <thead className="sticky top-0 bg-ink text-paper">
+        <table className="w-full min-w-[46rem] border-collapse text-left text-sm lg:min-w-0 lg:table-fixed">
+          <thead className="sticky top-0 z-10 bg-ink text-paper">
             <tr>
               <th className="px-3 py-2 font-semibold">Order</th>
               <th className="px-3 py-2 font-semibold">Customer</th>
@@ -135,7 +144,8 @@ function FloorDashboard() {
             })}
           </tbody>
         </table>
-        {jobs.length === 0 && !error ? (
+        {loading ? <p className="px-4 py-3 text-sm text-slate">Loading…</p> : null}
+        {!loading && jobs.length === 0 && !error ? (
           <EmptyState title="No sales orders" hint="Orders appear here when this station has work." />
         ) : null}
       </div>
@@ -168,16 +178,17 @@ function AdminDashboard() {
   }, [showSales]);
 
   const salesCards = [
-    { label: 'Draft', value: summary?.draft ?? 0, to: '/sales-orders', tone: 'muted' },
-    { label: 'Submitted', value: summary?.submitted ?? 0, to: '/sales-orders', tone: 'warning' },
-    { label: 'Approved', value: summary?.approved ?? 0, to: '/sales-orders', tone: 'info' },
-    { label: 'In production', value: summary?.inProductionGroup ?? 0, to: '/sales-orders', tone: 'accent' },
-    { label: 'Packed', value: summary?.packed ?? 0, to: '/sales-orders', tone: 'purple' },
-    { label: 'Dispatch', value: summary?.dispatchGroup ?? 0, to: '/sales-orders', tone: 'teal' },
-    { label: 'Delivered', value: summary?.delivered ?? 0, to: '/sales-orders', tone: 'success' },
-    { label: 'Completed', value: summary?.completed ?? 0, to: '/sales-orders', tone: 'success' },
-    { label: 'Cancelled', value: summary?.cancelled ?? 0, to: '/sales-orders', tone: 'danger' },
-  ];
+    { label: 'Draft', status: 'draft', tone: 'muted' },
+    { label: 'Submitted', status: 'submitted', tone: 'warning' },
+    { label: 'Approved', status: 'approved', tone: 'info' },
+    { label: 'Production planned', status: 'production_planned', tone: 'accent' },
+    { label: 'In production', status: 'in_production', tone: 'accent' },
+    { label: 'Ready for dispatch', status: 'ready_for_dispatch', tone: 'teal' },
+    { label: 'Dispatched', status: 'dispatched', tone: 'teal' },
+    { label: 'Delivered', status: 'delivered', tone: 'success' },
+    { label: 'Completed', status: 'completed', tone: 'success' },
+    { label: 'Cancelled', status: 'cancelled', tone: 'danger' },
+  ].map((card) => ({ ...card, value: summary?.[card.status] ?? 0, to: `/sales-orders?status=${card.status}` }));
 
   const hasLinks =
     can('sales:read') ||

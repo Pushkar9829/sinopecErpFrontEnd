@@ -6,6 +6,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { BackButton } from '../components/ui/BackButton';
 import { SearchField } from '../components/ui/SearchField';
 import { usePermission } from '../hooks/usePermission';
+import { useAuth } from '../context/AuthContext';
 
 const MODULES = [
   { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -92,6 +93,7 @@ function Stat({ label, children }) {
 export function RoleDetail() {
   const { id } = useParams();
   const { can } = usePermission();
+  const { user, refreshUser } = useAuth();
   const canEdit = can('roles:update');
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState([]);
@@ -180,6 +182,7 @@ export function RoleDetail() {
       setRole(updated);
       setAssigned((updated.permissions || []).map((permission) => permission._id));
       setNotice('Permissions saved.');
+      if (user?.role?.slug === updated.slug) await refreshUser().catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {

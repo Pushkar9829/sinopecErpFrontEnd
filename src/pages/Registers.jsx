@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { StageRegister } from '../components/register/StageRegister';
 import { registersApi } from '../api/registers.api';
+import { BackButton } from '../components/ui/BackButton';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
@@ -10,7 +11,11 @@ import { PRODUCTION_STAGES, formatDate, statusLabel } from '../lib/sales';
 const cell = 'whitespace-nowrap border border-stone-300 px-2 py-1.5 align-middle text-sm';
 const head = 'whitespace-nowrap border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
 
-export function Registers() {
+function safeBack(value) {
+  return value && value.startsWith('/') && !value.startsWith('//') ? value : '';
+}
+
+export function Registers({ floor = false }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,16 +24,18 @@ export function Registers() {
     can('production:read') ||
     can('sales:read') ||
     can('accounts:read') ||
-    can('inventory:read') ||
-    can('production:packing:read');
+    can('inventory:read');
   const view = isAdmin && searchParams.get('view') === 'orders' ? 'orders' : 'stage';
   const stage = searchParams.get('stage') || '';
   const presetJob = searchParams.get('job') || '';
+  const backTo = safeBack(searchParams.get('back') || '');
+  const openedFromJob = useRef(Boolean(presetJob));
   const stages = useMemo(
     () => (isAdmin ? PRODUCTION_STAGES : PRODUCTION_STAGES.filter((item) => can(item.read))),
     [can, isAdmin]
   );
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [entryAction, setEntryAction] = useState(null);
   const onEntryState = useCallback((next) => setEntryAction(next), []);
@@ -42,44 +49,70 @@ export function Registers() {
   }, [view, stage, stages, isAdmin, setSearchParams]);
 
   useEffect(() => {
-    if (view !== 'orders') return;
+    if (view !== 'orders') return undefined;
+    let alive = true;
     setError('');
-    registersApi.list().then(setRows).catch((err) => setError(err.message));
+    setLoading(true);
+    registersApi
+      .list()
+      .then((data) => alive && setRows(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
   }, [view]);
+
+  function stageParams(id) {
+    const next = { stage: id };
+    if (isAdmin) next.view = 'stage';
+    return next;
+  }
 
   function setView(next) {
     if (next === 'orders') {
       setSearchParams({ view: 'orders' });
       return;
     }
-    setSearchParams({ view: 'stage', stage: stage || stages[0]?.id || 'rolling' });
+    setSearchParams(stageParams(stage || stages[0]?.id || 'rolling'));
   }
 
   function clearJob() {
-    const next = { stage: stage || '' };
-    if (isAdmin) next.view = 'stage';
+    const next = stageParams(stage || stages[0]?.id || 'rolling');
+    if (backTo) next.back = backTo;
     setSearchParams(next, { replace: true });
   }
 
+  function openOrder(orderId) {
+    navigate(`/registers/${orderId}${floor ? '?from=floor' : ''}`);
+  }
+
+  const fallback = floor ? '/production' : '/registers?view=orders';
+
   return (
-    <div className="-mx-5 -my-4 flex h-dvh min-h-0 flex-col md:-mx-6">
+    <div className="-mx-3 -my-3 flex h-[calc(100dvh-3rem)] min-h-0 flex-col sm:-mx-5 sm:-my-4 lg:-mx-6 lg:h-dvh">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-stone-800 bg-[#fffdf6]">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-4 py-2">
+        <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-3 py-2 lg:px-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg font-semibold text-stone-900">Register</h1>
+            {backTo ? (
+              <BackButton to={backTo} label="Order book" />
+            ) : openedFromJob.current ? (
+              <BackButton fallback={fallback} />
+            ) : null}
+            <h1 className="text-lg font-semibold text-stone-900">{floor ? 'Production floor' : 'Register'}</h1>
             {isAdmin ? (
               <div className="flex overflow-hidden rounded-sm border border-stone-800">
                 <button
                   type="button"
                   onClick={() => setView('orders')}
-                  className={`px-3 py-1 text-sm font-semibold ${view === 'orders' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
+                  className={`px-3 py-2 text-sm font-semibold lg:py-1 ${view === 'orders' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
                 >
                   Sales order
                 </button>
                 <button
                   type="button"
                   onClick={() => setView('stage')}
-                  className={`px-3 py-1 text-sm font-semibold ${view === 'stage' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
+                  className={`px-3 py-2 text-sm font-semibold lg:py-1 ${view === 'stage' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
                 >
                   Stage wise
                 </button>
@@ -89,17 +122,17 @@ export function Registers() {
               <StageMenu
                 stages={stages}
                 value={stage || stages[0].id}
-                onChange={(id) => setSearchParams(isAdmin ? { view: 'stage', stage: id } : { stage: id })}
+                onChange={(id) => setSearchParams(stageParams(id))}
               />
             ) : null}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full items-center justify-between gap-3 lg:w-auto lg:justify-start">
             {view === 'stage' && entryAction?.canEnter ? (
               <button
                 type="button"
                 onClick={entryAction.open}
                 disabled={entryAction.disabled}
-                className="rounded-sm bg-stone-900 px-3 py-1 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-sm bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 lg:px-3 lg:py-1"
               >
                 New entry
               </button>
@@ -113,7 +146,7 @@ export function Registers() {
             {error ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p> : null}
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full border-collapse text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10">
                   <tr>
                     <th className={head}>No</th>
                     <th className={head}>Sales order</th>
@@ -127,15 +160,22 @@ export function Registers() {
                   {rows.length === 0 ? (
                     <tr>
                       <td className={`${cell} text-stone-500`} colSpan={6}>
-                        No sales order is on the register yet.
+                        {loading ? 'Loading…' : 'No sales order is on the register yet.'}
                       </td>
                     </tr>
                   ) : (
                     rows.map((row, index) => (
                       <tr
                         key={row.orderId}
-                        onClick={() => navigate(`/registers/${row.orderId}`)}
-                        className={`cursor-pointer ${index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'} hover:bg-amber-50`}
+                        tabIndex={0}
+                        onClick={() => openOrder(row.orderId)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openOrder(row.orderId);
+                          }
+                        }}
+                        className={`cursor-pointer ${index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'} hover:bg-amber-50 focus:bg-amber-50 focus:outline-none`}
                       >
                         <td className={`${cell} w-12 text-stone-500`}>{index + 1}</td>
                         <td className={`${cell} font-semibold`}>{row.orderNumber}</td>

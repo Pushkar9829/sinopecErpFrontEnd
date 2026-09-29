@@ -102,8 +102,14 @@ export function Roles() {
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    rolesApi.list().then(setRoles).catch((err) => setError(err.message));
+    rolesApi
+      .list()
+      .then(setRoles)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const counts = useMemo(
@@ -139,8 +145,8 @@ export function Roles() {
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
-        <table className="min-w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-card">
+        <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
           <thead className="bg-ink text-paper">
             <tr>
               <th className="px-4 py-3 font-semibold">Role</th>
@@ -186,7 +192,9 @@ export function Roles() {
             ))}
           </tbody>
         </table>
-        {list.total === 0 ? (
+        {!loaded ? (
+          <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+        ) : list.total === 0 ? (
           <EmptyState title="No roles found" hint="Try another search." />
         ) : (
           <Pagination

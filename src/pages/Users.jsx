@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usersApi } from '../api/users.api';
@@ -127,8 +128,12 @@ export function Users() {
     setUsers(await usersApi.list());
   }
 
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    load()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const counts = useMemo(
@@ -166,7 +171,7 @@ export function Users() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this user?')) return;
+    if (!(await confirmAction({ message: 'Delete this user?', confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     setNotice('');
     try {
@@ -200,8 +205,8 @@ export function Users() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
-        <table className="min-w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-xl border border-line bg-card">
+        <table className="min-w-full whitespace-nowrap text-left text-sm lg:whitespace-normal">
           <thead className="bg-ink text-paper">
             <tr>
               <th className="px-4 py-3 font-semibold">Name</th>
@@ -256,7 +261,9 @@ export function Users() {
             ))}
           </tbody>
         </table>
-        {list.total === 0 ? (
+        {!loaded ? (
+          <p className="px-4 py-6 text-sm text-slate">Loading…</p>
+        ) : list.total === 0 ? (
           <EmptyState title="No users found" hint="Try another tab or search." />
         ) : (
           <Pagination

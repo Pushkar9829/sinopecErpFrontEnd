@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { ComboField } from '../ui/ComboField';
 import { Field, Grid, inputClass } from '../ui/FormField';
 import { mediaApi } from '../../api/media.api';
-import { resolveMediaUrl } from '../../api/client';
+import { ImageGallery } from '../ui/ImageGallery';
 import {
   PRODUCTION_ROUTES,
   applyRoute,
   applyTemplate,
   itemFromApi,
+  lineImages,
   routeHasCut,
   routeHasPrint,
   routeLabel,
@@ -163,6 +164,7 @@ export function SalesOrderLineCard({
       const next = itemFromApi(template);
       next.templateId = '';
       next.id = item.id;
+      next.uid = item.uid || next.uid;
       if (!next.product) next.product = template.name || '';
       if (!next.productCode) next.productCode = template.code || '';
       onChange(next);
@@ -171,45 +173,74 @@ export function SalesOrderLineCard({
     onChange(applyTemplate(item, template));
   }
 
-  async function onImagePick(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      window.alert('Please choose an image file');
+  const [uploadingImages, setUploadingImages] = useState(false);
+
+  const [imageError, setImageError] = useState('');
+
+  function addImages(added) {
+    onChange((row) => {
+      const images = [...lineImages(row), ...added].slice(0, 20);
+      return { ...row, images, image: images[0] || row.image };
+    });
+  }
+
+  async function onImagePick(files) {
+    setImageError('');
+    const current = lineImages(item);
+    const room = 20 - current.length;
+    if (room <= 0) {
+      setImageError('A product can have at most 20 images.');
       return;
     }
-    if (file.size > 15 * 1024 * 1024) {
-      window.alert('Image must be under 15 MB');
-      return;
+    const chosen = files.slice(0, room);
+    for (const file of chosen) {
+      if (!file.type.startsWith('image/')) {
+        setImageError(`${file.name} is not an image.`);
+        return;
+      }
+      if (file.size > 15 * 1024 * 1024) {
+        setImageError(`${file.name} must be under 15 MB.`);
+        return;
+      }
     }
+    if (chosen.length < files.length) {
+      setImageError('Only the first images that fit the limit of 20 were added.');
+    }
+    setUploadingImages(true);
+    const added = [];
     try {
-      const uploaded = await mediaApi.upload(file, 'products');
-      onChange({
-        ...item,
-        image: {
+      for (const file of chosen) {
+        const uploaded = await mediaApi.upload(file, 'products');
+        added.push({
           originalName: uploaded.originalName || file.name,
           mimeType: uploaded.mimeType || file.type,
           dataUrl: '',
           url: uploaded.url || '',
           key: uploaded.key || '',
           storage: uploaded.storage || uploaded.storageMode || '',
-        },
-      });
+        });
+      }
+      addImages(added);
     } catch (err) {
-      window.alert(err.message || 'Image upload failed');
+      if (added.length) addImages(added);
+      setImageError(err.message || 'Image upload failed');
+    } finally {
+      setUploadingImages(false);
     }
   }
 
-  function clearImage() {
-    onChange({
-      ...item,
-      image: { originalName: '', mimeType: '', dataUrl: '', url: '', key: '', storage: '' },
+  function removeImage(indexToRemove) {
+    onChange((row) => {
+      const images = lineImages(row).filter((_, imageIndex) => imageIndex !== indexToRemove);
+      return {
+        ...row,
+        images,
+        image: images[0] || { originalName: '', mimeType: '', dataUrl: '', url: '', key: '', storage: '' },
+      };
     });
   }
 
   const [open, setOpen] = useState(index === 0);
-  const preview = resolveMediaUrl(item.image?.url || item.image?.dataUrl || '');
   const showPrint = routeHasPrint(item.productionRoute);
   const showCut = routeHasCut(item.productionRoute);
   const tone = PRODUCT_TONES[index % PRODUCT_TONES.length];
@@ -262,38 +293,31 @@ export function SalesOrderLineCard({
         </Field>
         <ComboField label="Unit" value={item.unit} options={opts(options, 'unit')} disabled={!canEdit} onChange={(value) => update('unit', value)} />
         {showCommercial ? (
-          <Field label="Rate">
-            <input type="number" min="0" step="any" value={item.rate} disabled={!canEdit} onChange={(e) => update('rate', e.target.value)} className={inputClass} />
-          </Field>
+          <>
+            <Field label="Rate">
+              <input type="number" min="0" step="any" value={item.rate} disabled={!canEdit} onChange={(e) => update('rate', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Line discount (₹)">
+              <input type="number" min="0" step="any" value={item.discount} disabled={!canEdit} onChange={(e) => update('discount', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Tax %">
+              <input type="number" min="0" max="100" step="any" value={item.taxPercent} disabled={!canEdit} onChange={(e) => update('taxPercent', e.target.value)} className={inputClass} />
+            </Field>
+          </>
         ) : null}
       </Grid>
       </SpecSection>
 
-      <SpecSection title={sectionTitle('Product image')} dot="bg-slate-500" titleClass={titleClass}>
-      <div className="flex flex-wrap items-start gap-4">
-        <Field label="Attach image">
-          <input type="file" accept="image/*" disabled={!canEdit} onChange={onImagePick} className="block w-full text-sm text-slate file:mr-3 file:rounded-lg file:border-0 file:bg-paper file:px-3 file:py-1.5" />
-          <p className="mt-1 text-sm font-normal text-slate">Uploaded to S3 when configured (else local uploads). PNG/JPG up to 15 MB.</p>
-        </Field>
-        {preview ? (
-          <div className="space-y-2">
-            <img src={preview} alt={item.image.originalName || 'Product'} className="h-28 w-28 rounded-lg border border-line object-cover" />
-            <div className="flex items-center gap-2 text-sm font-normal text-slate">
-              <span className="truncate max-w-[10rem]">{item.image.originalName || 'Attached'}</span>
-              {canEdit ? (
-                <button
-                  type="button"
-                  onClick={clearImage}
-                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-sm font-semibold text-red-700 hover:bg-red-50"
-                >
-                  <TrashIcon />
-                  Remove
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </div>
+      <SpecSection title={sectionTitle('Product images')} dot="bg-slate-500" titleClass={titleClass}>
+        <ImageGallery
+          images={lineImages(item)}
+          canEdit={canEdit}
+          busy={uploadingImages}
+          onUpload={onImagePick}
+          onRemove={removeImage}
+          hint="Choose one or more images. PNG or JPG, up to 15 MB each."
+        />
+        {imageError ? <p className="mt-2 text-sm text-red-700">{imageError}</p> : null}
       </SpecSection>
 
       <SpecSection title={sectionTitle('Rolling requirement')} dot="bg-orange-600" titleClass={titleClass}>

@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { ConfirmHost } from './components/ui/ConfirmHost';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { Dashboard } from './pages/Dashboard';
@@ -57,6 +58,8 @@ export default function App() {
                 <Route element={<ProtectedRoute permission="sales:update" />}>
                   <Route path="sales-orders/:id/edit" element={<SalesOrderForm />} />
                 </Route>
+              </Route>
+              <Route element={<ProtectedRoute anyOf={[...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS]} />}>
                 <Route path="sales-orders/:id" element={<SalesOrderDetail />} />
               </Route>
               <Route element={<ProtectedRoute permission="sales:read" />}>
@@ -102,6 +105,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        <ConfirmHost />
       </BrowserRouter>
     </AuthProvider>
   );

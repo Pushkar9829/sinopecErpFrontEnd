@@ -1,3 +1,4 @@
+import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
@@ -174,6 +175,7 @@ const emptyForm = {
   unitPrice: '',
   stageId: '',
   notes: '',
+  kind: 'catalog',
 };
 
 export function InventoryForm() {
@@ -196,16 +198,14 @@ export function InventoryForm() {
 
   const needsStage = form.category === 'output' || form.category === 'waste';
   const hidePrice = form.category === 'waste';
+  const isWip = form.kind === 'wip';
+  const locked = !canSave || isWip;
 
   useEffect(() => {
     Promise.all([inventoryApi.listStages(), inventoryApi.meta().catch(() => ({ materialTypes: [], units: [] }))])
       .then(([nextStages, nextMeta]) => {
         setStages(nextStages);
         setMeta(nextMeta);
-        setForm((prev) => ({
-          ...prev,
-          stageId: prev.stageId || nextStages[0]?.id || '',
-        }));
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -224,6 +224,7 @@ export function InventoryForm() {
           unitPrice: item.unitPrice == null ? '' : String(item.unitPrice),
           stageId: item.stage?.id || '',
           notes: item.notes || '',
+          kind: item.kind || 'catalog',
         });
       })
       .catch((err) => setError(err.message));
@@ -245,18 +246,24 @@ export function InventoryForm() {
     if (!canSave) return;
     setError('');
     setNotice('');
+    if (!isWip && needsStage && !form.stageId) {
+      setError('Choose the production stage.');
+      return;
+    }
     setSaving(true);
 
-    const payload = {
-      category: form.category,
-      name: form.name,
-      materialType: form.materialType,
-      unit: form.unit,
-      quantity: Number(form.quantity),
-      notes: form.notes,
-      stageId: needsStage ? form.stageId : null,
-      unitPrice: hidePrice ? null : Number(form.unitPrice),
-    };
+    const payload = isWip
+      ? { notes: form.notes }
+      : {
+          category: form.category,
+          name: form.name,
+          materialType: form.materialType,
+          unit: form.unit,
+          quantity: Number(form.quantity),
+          notes: form.notes,
+          stageId: needsStage ? form.stageId : null,
+          unitPrice: hidePrice || form.unitPrice === '' ? null : Number(form.unitPrice),
+        };
 
     try {
       if (isEdit) {
@@ -274,7 +281,7 @@ export function InventoryForm() {
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this material?')) return;
+    if (!(await confirmAction({ message: 'Delete this material?', confirmLabel: 'Delete', danger: true }))) return;
     try {
       await inventoryApi.removeItem(id);
       navigate('/inventory');
@@ -290,16 +297,21 @@ export function InventoryForm() {
       <FormBar title={title} />
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-xl border border-line bg-card p-5">
+        {isWip ? (
+          <p className="rounded-lg bg-paper px-3 py-2 text-sm text-slate">
+            This lot was made on the production floor. Its quantity changes through register entries, so only notes can be edited here.
+          </p>
+        ) : null}
         <label className="block text-base font-semibold text-ink">
           Kind
-          <KindMenu value={form.category} disabled={!canSave} onChange={(category) => update('category', category)} />
+          <KindMenu value={form.category} disabled={locked} onChange={(category) => update('category', category)} />
         </label>
 
         <label className="block text-base font-semibold text-ink">
           Name
           <input
             required
-            disabled={!canSave}
+            disabled={locked}
             value={form.name}
             onChange={(event) => update('name', event.target.value)}
             placeholder="HDPE granules, rolled film…"
@@ -311,7 +323,7 @@ export function InventoryForm() {
           Type
           <input
             required
-            disabled={!canSave}
+            disabled={locked}
             list="material-types"
             value={form.materialType}
             onChange={(event) => update('materialType', event.target.value)}
@@ -331,7 +343,7 @@ export function InventoryForm() {
             <StageMenuField
               stages={stages}
               value={form.stageId}
-              disabled={!canSave}
+              disabled={locked}
               onChange={(stageId) => update('stageId', stageId)}
             />
           </label>
@@ -342,7 +354,7 @@ export function InventoryForm() {
             Quantity
             <input
               required
-              disabled={!canSave}
+              disabled={locked}
               type="number"
               min="0"
               step="any"
@@ -355,7 +367,7 @@ export function InventoryForm() {
             Unit
             <input
               required
-              disabled={!canSave}
+              disabled={locked}
               list="material-units"
               value={form.unit}
               onChange={(event) => update('unit', event.target.value)}
@@ -374,10 +386,9 @@ export function InventoryForm() {
           <p className="rounded-lg bg-paper px-3 py-2 text-sm text-slate">Waste has no unit price.</p>
         ) : (
           <label className="block text-base font-semibold text-ink">
-            Unit price
+            Unit price <span className="font-normal text-slate">(optional)</span>
             <input
-              required
-              disabled={!canSave}
+              disabled={locked}
               type="number"
               min="0"
               step="any"
