@@ -18,6 +18,7 @@ import {
   itemFromApi,
   itemToPayload,
   lineImages,
+  orderTypeLabel,
   routeHasCut,
   routeHasPrint,
   routeLabel,
@@ -112,14 +113,14 @@ export function SalesOrderDetail() {
 
   async function handleCancel() {
     const reason = await confirmAction({
-      title: 'Cancel sales order',
+      title: `Cancel ${orderTypeLabel(order?.orderType).toLowerCase()}`,
       message: 'Material taken for this order goes back to its lot, and its work-in-progress stock is taken out of use.',
       withReason: true,
       confirmLabel: 'Cancel order',
       danger: true,
     });
     if (reason === null) return;
-    await run(() => salesOrdersApi.cancel(id, reason), 'Sales order cancelled.');
+    await run(() => salesOrdersApi.cancel(id, reason), 'Order cancelled.');
   }
 
   async function handleReturn() {
@@ -159,7 +160,7 @@ export function SalesOrderDetail() {
   }
 
   if (!order && !error) {
-    return <p className="text-sm text-slate">Loading sales order…</p>;
+    return <p className="text-sm text-slate">Loading order…</p>;
   }
   if (!order) {
     return <p className="text-sm text-red-700">{error}</p>;
@@ -212,6 +213,7 @@ export function SalesOrderDetail() {
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
         <BackButton fallback={stageView ? '/registers' : '/sales-orders'} />
         <h1 className="px-1 text-lg font-semibold">{order.number}</h1>
+        <span className="rounded-full border border-line bg-white px-2 py-0.5 text-xs font-semibold text-ink">{orderTypeLabel(order.orderType)}</span>
         <StatusBadge status={order.status} label={statusLabel(order.status)} />
         <PriorityBadge priority={order.priority} />
         <span className="text-sm text-slate">{formatDate(order.orderDate)}</span>
@@ -267,7 +269,7 @@ export function SalesOrderDetail() {
               </button>
             ) : null}
             {canApprove ? (
-              <button type="button" disabled={busy} onClick={() => run(() => salesOrdersApi.approve(id), 'Sales order approved.')} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60">
+              <button type="button" disabled={busy} onClick={() => run(() => salesOrdersApi.approve(id), 'Order approved.')} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60">
                 Approve
               </button>
             ) : null}
@@ -287,7 +289,7 @@ export function SalesOrderDetail() {
               </Link>
             ) : null}
             {canAdvance ? (
-              <button type="button" disabled={busy} onClick={() => run(() => salesOrdersApi.advance(id), 'Sales order completed.')} className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hover:bg-accent disabled:opacity-60">
+              <button type="button" disabled={busy} onClick={() => run(() => salesOrdersApi.advance(id), 'Order completed.')} className="rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-paper hover:bg-accent disabled:opacity-60">
                 Mark completed
               </button>
             ) : null}
@@ -328,7 +330,8 @@ export function SalesOrderDetail() {
         <div className="space-y-4">
           <Section title="Order">
             <Grid>
-              <Value label="Customer" strong>{customer.name}</Value>
+              <Value label="Customer code" strong>{customer.code}</Value>
+              {customer.name ? <Value label="Customer">{customer.name}</Value> : null}
               {order.deliveryDate ? <Value label="Delivery">{formatDate(order.deliveryDate)}</Value> : null}
               {order.deliveryLocation ? <Value label="Location">{order.deliveryLocation}</Value> : null}
               {order.deliveryInstructions ? <Value label="Instructions">{order.deliveryInstructions}</Value> : null}

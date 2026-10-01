@@ -3,7 +3,8 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
 import { badgeTones, stepTone, tabActiveTones } from '../components/ui/Badge';
-import { OPERATOR_LABEL, STAGE_COLUMNS, frozenColumns, savedValue } from '../lib/registerBooks';
+import { useAuth } from '../context/AuthContext';
+import { OPERATOR_LABEL, bookColumns, frozenColumns, isSuperAdmin, savedValue } from '../lib/registerBooks';
 import { formatDate, formatQty, statusLabel } from '../lib/sales';
 
 const cell = 'whitespace-nowrap border-b border-r border-stone-300 px-2 py-1.5 align-middle text-sm';
@@ -17,8 +18,9 @@ function byNewest(a, b) {
   return new Date(b.workDate || b.markedAt) - new Date(a.workDate || a.markedAt);
 }
 
-function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
-  const columns = STAGE_COLUMNS[stage.id];
+function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fromFloor, showCustomerName }) {
+  const columns = bookColumns(stage.id, showCustomerName);
+  const plainSpan = showCustomerName ? 10 : 9;
   const isDispatch = stage.id === 'dispatch';
   const backTo = `/registers/${orderId}?stage=${stage.id}${fromFloor ? '&from=floor' : ''}`;
   const entries = [];
@@ -31,6 +33,7 @@ function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
         product: entry.product || line.product,
         unit: entry.unit || line.unit,
         customerName: entry.customerName || customerName,
+        customerCode: entry.customerCode || customerCode,
       });
     }
     if (line.canEnter) openLines.push(line);
@@ -58,7 +61,8 @@ function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
               ))
             ) : (
               <>
-                <th className={head}>Party</th>
+                <th className={head}>Customer code</th>
+                {showCustomerName ? <th className={head}>Customer name</th> : null}
                 <th className={head}>Product</th>
                 <th className={head}>Production</th>
                 {isDispatch ? (
@@ -83,7 +87,7 @@ function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
         <tbody>
           {entries.length === 0 && openLines.length === 0 && blocked.length === 0 ? (
             <tr>
-              <td className={`${cell} text-stone-500`} colSpan={columns ? columns.length + 3 : 9}>
+              <td className={`${cell} text-stone-500`} colSpan={columns ? columns.length + 3 : plainSpan}>
                 No entry on this stage yet.
               </td>
             </tr>
@@ -95,12 +99,13 @@ function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
               {columns ? (
                 columns.map((column) => (
                   <td key={column.key} {...cellAt(column.key)}>
-                    {column.edit ? '—' : savedValue({ ...line, orderNumber, customerName, details: line.specs }, column.key, customerName) || '—'}
+                    {column.edit ? '—' : savedValue({ ...line, orderNumber, customerName, customerCode, details: line.specs }, column.key, customerName) || '—'}
                   </td>
                 ))
               ) : (
                 <>
-                  <td className={cell}>{customerName || '—'}</td>
+                  <td className={cell}>{customerCode || '—'}</td>
+                  {showCustomerName ? <td className={cell}>{customerName || '—'}</td> : null}
                   <td className={cell}>{line.product || '—'}</td>
                   <td className={cell}>{qtyOf(line.remaining, line.unit)} left</td>
                   <td className={cell}>—</td>
@@ -121,7 +126,7 @@ function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
           ))}
           {blocked.map((line) => (
             <tr key={`${line.jobId}-blocked`}>
-              <td className={`${cell} text-stone-500`} colSpan={columns ? columns.length + (showMark ? 4 : 3) : showMark ? 10 : 9}>
+              <td className={`${cell} text-stone-500`} colSpan={columns ? columns.length + (showMark ? 4 : 3) : plainSpan + (showMark ? 1 : 0)}>
                 {line.product || 'This line'}: {line.blockedReason}
               </td>
             </tr>
@@ -138,7 +143,8 @@ function StageBook({ stage, customerName, orderNumber, orderId, fromFloor }) {
                 ))
               ) : (
                 <>
-                  <td className={cell}>{customerName || '—'}</td>
+                  <td className={cell}>{entry.customerCode || customerCode || '—'}</td>
+                  {showCustomerName ? <td className={cell}>{entry.customerName || '—'}</td> : null}
                   <td className={cell}>{entry.product || '—'}</td>
                   <td className={`${cell} font-semibold`}>{qtyOf(entry.outputQty, entry.unit)}</td>
                   {isDispatch ? (
@@ -190,6 +196,8 @@ const TAB_BAR = {
 
 export function OrderRegister() {
   const { orderId } = useParams();
+  const { user } = useAuth();
+  const showCustomerName = isSuperAdmin(user);
   const [searchParams, setSearchParams] = useSearchParams();
   const fromFloor = searchParams.get('from') === 'floor';
   const [book, setBook] = useState(null);
@@ -216,8 +224,9 @@ export function OrderRegister() {
         <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-3 py-2 lg:px-4">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <BackButton fallback={fromFloor ? '/production' : '/registers?view=orders'} />
-            <h1 className="text-lg font-semibold text-stone-900">{book?.orderNumber || 'Sales order'}</h1>
-            {book?.customerName ? <p className="text-sm text-stone-700">{book.customerName}</p> : null}
+            <h1 className="text-lg font-semibold text-stone-900">{book?.orderNumber || 'Order'}</h1>
+            {book?.customerCode ? <p className="text-sm text-stone-700">{book.customerCode}</p> : null}
+            {showCustomerName && book?.customerName ? <p className="text-sm text-stone-700">{book.customerName}</p> : null}
             {book?.status ? <p className="text-sm text-stone-600">{statusLabel(book.status)}</p> : null}
           </div>
           <p className="text-sm font-semibold text-stone-900">{formatDate(new Date())}</p>
@@ -264,9 +273,11 @@ export function OrderRegister() {
             <StageBook
               stage={active}
               customerName={book.customerName || ''}
+              customerCode={book.customerCode || ''}
               orderNumber={book.orderNumber || ''}
               orderId={orderId}
               fromFloor={fromFloor}
+              showCustomerName={showCustomerName}
             />
           ) : null}
         </div>

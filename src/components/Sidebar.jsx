@@ -7,6 +7,7 @@ const homeLink = { to: '/', label: 'Dashboard', end: true };
 
 const pageLinks = [
   { to: '/analytics', label: 'Analytics', anyOf: ANALYTICS_VIEW_KEYS },
+  { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },
   { to: '/customers', label: 'Customers', permission: 'sales:read' },
   { to: '/inventory', label: 'Inventory', permission: 'inventory:read' },
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },
@@ -14,7 +15,7 @@ const pageLinks = [
   { to: '/production', label: 'Production floor', anyOf: PRODUCTION_VIEW_KEYS },
   { to: '/registers', label: 'Register', anyOf: [...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS] },
   { to: '/roles', label: 'Roles', permission: 'roles:read' },
-  { to: '/sales-orders', label: 'Sales Orders', anyOf: SALES_ORDER_VIEW_KEYS },
+  { to: '/sales-orders', label: 'Orders', anyOf: SALES_ORDER_VIEW_KEYS },
   { to: '/stages', label: 'Stages', anyOf: ['production:read', 'inventory:read'] },
   { to: '/users', label: 'Users', permission: 'users:read' },
 ].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));

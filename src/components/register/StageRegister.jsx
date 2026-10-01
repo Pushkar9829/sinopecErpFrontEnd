@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
 import { registersApi } from '../../api/registers.api';
 import { Modal } from '../ui/Modal';
-import { OPERATOR_LABEL, STAGE_COLUMNS, frozenColumns, orderValue, paperQuantities, savedValue, typedDetails } from '../../lib/registerBooks';
+import { confirmAction } from '../ui/ConfirmHost';
+import { useAuth } from '../../context/AuthContext';
+import { OPERATOR_LABEL, STAGE_COLUMNS, bookColumns, frozenColumns, isSuperAdmin, orderValue, paperQuantities, savedValue, typedDetails } from '../../lib/registerBooks';
 import { DELIVERY_PARTNERS, PRODUCTION_SHIFTS, formatDate, formatQty, toDateInput } from '../../lib/sales';
 
 const cell = 'whitespace-nowrap border-b border-r border-stone-300 px-2 py-1.5 align-middle text-sm';
@@ -74,8 +76,33 @@ function ReadField({ label, value, wide = false }) {
   );
 }
 
-function PaperBook({ stage, columns, entries, isAdmin }) {
-  const span = 3 + columns.length;
+function EntryActions({ entry, onEdit, onDelete, busy }) {
+  return (
+    <td className={`${cell} text-right`}>
+      <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          onClick={() => onEdit(entry)}
+          disabled={busy}
+          className="rounded border border-stone-400 bg-white px-2 py-0.5 text-xs font-semibold text-stone-800 hover:bg-stone-100 disabled:opacity-50"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(entry)}
+          disabled={busy}
+          className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+        >
+          Delete
+        </button>
+      </div>
+    </td>
+  );
+}
+
+function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDelete, busy }) {
+  const span = 3 + columns.length + (canChange ? 1 : 0);
   const frozen = frozenColumns(columns);
   const headAt = (key) => (frozen[key] ? { className: `${head} ${frozen[key].className} z-20`, style: frozen[key].style } : { className: head });
   const cellAt = (key, extra = '') =>
@@ -94,6 +121,7 @@ function PaperBook({ stage, columns, entries, isAdmin }) {
               </th>
             ))}
             <th className={head}>{OPERATOR_LABEL[stage]}</th>
+            {canChange ? <th className={head} /> : null}
           </tr>
         </thead>
         <tbody>
@@ -120,6 +148,7 @@ function PaperBook({ stage, columns, entries, isAdmin }) {
                   </td>
                 ))}
                 <td className={cell}>{entry.markedByName || '—'}</td>
+                {canChange ? <EntryActions entry={entry} onEdit={onEdit} onDelete={onDelete} busy={busy} /> : null}
               </tr>
             ))
           )}
@@ -145,13 +174,16 @@ function EntryModal({
   machines,
   onRelease,
   onSubmit,
+  editing = null,
 }) {
   const paperQty = columns ? paperQuantities(stage, draft.details) : null;
   const madeNow = paperQty ? paperQty.outputQty : Number(draft.outputQty);
   const wasteNow = paperQty ? paperQty.wasteQty : Number(draft.wasteQty) || 0;
   const pickedLot = (chosen?.sourceLots || []).find((lot) => lot.id === draft.lotId) || chosen?.sourceLots?.[0];
-  const sourceUnit = chosen?.pickup?.unit || pickedLot?.unit || chosen?.unit || '';
-  const unitsDiffer = Boolean(chosen) && !isDelivery && sourceUnit.toLowerCase() !== String(chosen.unit || '').toLowerCase();
+  const sourceUnit = editing ? '' : chosen?.pickup?.unit || pickedLot?.unit || chosen?.unit || '';
+  const unitsDiffer = editing
+    ? !isDelivery && Math.abs(Number(editing.inputQty) - (Number(editing.outputQty) + Number(editing.wasteQty || 0))) > 1e-6
+    : Boolean(chosen) && !isDelivery && sourceUnit.toLowerCase() !== String(chosen.unit || '').toLowerCase();
   const usedOver =
     !isDelivery &&
     !unitsDiffer &&
@@ -199,15 +231,15 @@ function EntryModal({
         </select>
       );
     }
-    if (column.key === 'printDescription') {
-      return <textarea value={value} onChange={onChange} rows={3} className={boxClass} />;
+    if (column.long) {
+      return <textarea value={value} onChange={onChange} rows={3} placeholder="Write anything about this entry" className={boxClass} />;
     }
     const numeric = column.qty || WEIGHT_KEYS.has(column.key);
     return <input value={value} onChange={onChange} inputMode={numeric ? 'decimal' : 'text'} placeholder={numeric ? '0' : ''} className={boxClass} />;
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New entry" wide="entry">
+    <Modal open={open} onClose={onClose} title={editing ? 'Edit entry' : 'New entry'} wide="entry">
       <form onSubmit={onSubmit} className="space-y-4">
         <EntrySection title="Entry">
           <EntryField label="Date">
@@ -224,20 +256,28 @@ function EntryModal({
               </select>
             </EntryField>
           )}
-          <EntryField label={columns?.find((column) => column.key === 'orderNumber')?.label || 'Sales order'} wide>
-            <select required value={draft.jobId} onChange={(event) => chooseLine(event.target.value)} className={boxClass}>
-              <option value="">{openLines.length ? 'Choose' : 'Nothing waiting'}</option>
-              {openLines.map((line) => (
-                <option key={line.jobId} value={line.jobId}>
-                  {line.orderNumber} — {line.product}
-                </option>
-              ))}
-            </select>
-          </EntryField>
+          {editing ? (
+            <ReadField
+              label={columns?.find((column) => column.key === 'orderNumber')?.label || 'Order'}
+              value={`${editing.orderNumber} — ${editing.product}`}
+              wide
+            />
+          ) : (
+            <EntryField label={columns?.find((column) => column.key === 'orderNumber')?.label || 'Order'} wide>
+              <select required value={draft.jobId} onChange={(event) => chooseLine(event.target.value)} className={boxClass}>
+                <option value="">{openLines.length ? 'Choose' : 'Nothing waiting'}</option>
+                {openLines.map((line) => (
+                  <option key={line.jobId} value={line.jobId}>
+                    {line.orderNumber} — {line.product}
+                  </option>
+                ))}
+              </select>
+            </EntryField>
+          )}
           {machines?.length ? (
             <EntryField label="Machine">
               <select value={draft.machineId || ''} onChange={setTop('machineId')} className={boxClass}>
-                <option value="">Choose</option>
+                <option value="">{editing ? editing.machineName || 'Keep as is' : 'Choose'}</option>
                 {machines.map((machine) => (
                   <option key={machine.id} value={machine.id}>
                     {machine.name}
@@ -246,7 +286,7 @@ function EntryModal({
               </select>
             </EntryField>
           ) : null}
-          {!chosen?.pickup && (chosen?.sourceLots || []).length ? (
+          {!editing && !chosen?.pickup && (chosen?.sourceLots || []).length ? (
             <EntryField label="Material" wide>
               <select value={draft.lotId || chosen.sourceLots[0]?.id || ''} onChange={setTop('lotId')} className={boxClass}>
                 {chosen.sourceLots.map((lot) => (
@@ -271,14 +311,15 @@ function EntryModal({
           </p>
         ) : null}
 
-        <EntrySection title="From the sales order" muted>
+        <EntrySection title="From the order" muted>
           {columns ? (
             orderFields.map((column) => <ReadField key={column.key} label={column.label} value={orderValue(chosen, column.key)} />)
           ) : (
             <>
-              <ReadField label="Party" value={chosen?.customerName} />
+              <ReadField label="Customer code" value={chosen?.customerCode} />
+              {chosen?.customerName ? <ReadField label="Customer name" value={chosen.customerName} /> : null}
               <ReadField label="Product" value={chosen?.product} wide />
-              <ReadField label="Left" value={chosen ? qtyOf(chosen.remaining, chosen.unit) : ''} />
+              {editing ? null : <ReadField label="Left" value={chosen ? qtyOf(chosen.remaining, chosen.unit) : ''} />}
             </>
           )}
           <ReadField label={columns ? OPERATOR_LABEL[stage] : 'Operator'} value={operatorName} />
@@ -289,7 +330,7 @@ function EntryModal({
             {lineFields.length ? (
               <EntrySection title="Written on this line">
                 {lineFields.map((column) => (
-                  <EntryField key={column.key} label={column.label} full={column.key === 'printDescription'}>
+                  <EntryField key={column.key} label={column.label} full={Boolean(column.long)}>
                     {paperInput(column)}
                   </EntryField>
                 ))}
@@ -306,7 +347,7 @@ function EntryModal({
             ) : null}
             {unitsDiffer ? (
               <EntrySection title="Material used">
-                <EntryField label={`Used (${sourceUnit})`}>
+                <EntryField label={sourceUnit ? `Used (${sourceUnit})` : 'Used'}>
                   <input type="number" required min="0" step="any" value={draft.inputQty} onChange={setTop('inputQty')} className={boxClass} />
                 </EntryField>
               </EntrySection>
@@ -327,7 +368,7 @@ function EntryModal({
                 step="any"
                 value={draft.outputQty}
                 onChange={setTop('outputQty')}
-                placeholder={chosen ? `Left ${formatQty(chosen.remaining)}` : ''}
+                placeholder={chosen && !editing ? `Left ${formatQty(chosen.remaining)}` : ''}
                 className={boxClass}
               />
             </EntryField>
@@ -374,7 +415,7 @@ function EntryModal({
             disabled={saving || !chosen || !(madeNow > 0) || deliveryBlocked || wasteBlocked || usedOver || usedMissing}
             className="flex-1 rounded bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 sm:flex-none lg:py-2"
           >
-            {saving ? 'Saving…' : 'Enter'}
+            {saving ? 'Saving…' : editing ? 'Save' : 'Enter'}
           </button>
         </div>
       </form>
@@ -383,11 +424,14 @@ function EntryModal({
 }
 
 export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '', onConsumePreset, onEntryState }) {
+  const { user } = useAuth();
+  const showCustomerName = isSuperAdmin(user);
   const [book, setBook] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [machines, setMachines] = useState([]);
   const openedJob = useRef('');
   const [draft, setDraft] = useState({
@@ -434,6 +478,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
     }));
     setNotice('');
     setEntryOpen(false);
+    setEditing(null);
   }, [stage]);
 
   useEffect(() => {
@@ -467,9 +512,23 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
   );
   const openLines = (book?.open || []).filter((line) => line.canMark);
   const canEnter = Boolean(book?.canMark);
-  const chosen = openLines.find((line) => line.jobId === draft.jobId) || null;
+  const editLine = editing
+    ? {
+        orderId: editing.orderId,
+        orderNumber: editing.orderNumber,
+        product: editing.product,
+        productCode: editing.productCode,
+        customerName: editing.customerName,
+        customerCode: editing.customerCode,
+        unit: editing.unit,
+        specs: editing.details || {},
+        sourceLots: [],
+        pickup: null,
+      }
+    : null;
+  const chosen = editLine || openLines.find((line) => line.jobId === draft.jobId) || null;
   const isDelivery = stage === 'delivery';
-  const columns = STAGE_COLUMNS[stage] || null;
+  const columns = bookColumns(stage, showCustomerName);
 
   async function reloadStage() {
     const next = await registersApi.stage(stage);
@@ -488,6 +547,27 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
       const made = paperQty ? paperQty.outputQty : Number(draft.outputQty);
       const waste = paperQty ? paperQty.wasteQty : isDelivery ? 0 : Number(draft.wasteQty) || 0;
       const used = draft.inputQty === '' ? made + waste : Number(draft.inputQty);
+      if (editing) {
+        await productionApi.updateEntry({
+          orderId: editing.orderId,
+          entryId: editing.id,
+          outputQty: made,
+          wasteQty: waste,
+          inputQty: draft.inputQty === '' ? undefined : Number(draft.inputQty),
+          machineId: draft.machineId || undefined,
+          workDate: draft.workDate,
+          shift: draft.shift || undefined,
+          vehicleNumber: draft.vehicleNumber,
+          handoverPerson: draft.handoverPerson,
+          deliveryPartner: draft.deliveryPartner,
+          details: paper ? typedDetails(stage, draft.details) : undefined,
+        });
+        setEntryOpen(false);
+        setEditing(null);
+        await reloadStage();
+        setNotice('Entry updated.');
+        return;
+      }
       await productionApi.enter({
         orderId: chosen.orderId,
         itemId: chosen.itemId,
@@ -521,11 +601,62 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
 
   function closeEntry() {
     setEntryOpen(false);
+    if (editing) {
+      setEditing(null);
+      return;
+    }
     onConsumePreset?.();
+  }
+
+  function startEdit(entry) {
+    const details = { ...(entry.details || {}) };
+    if (stage === 'printing' || stage === 'cutting') details.quantity = String(entry.outputQty || '');
+    if (stage === 'printing' && !details.wastage && entry.wasteQty) details.wastage = String(entry.wasteQty);
+    const differ = Math.abs(Number(entry.inputQty) - (Number(entry.outputQty) + Number(entry.wasteQty || 0))) > 1e-6;
+    setError('');
+    setNotice('');
+    setEditing(entry);
+    setDraft({
+      ...blankDraft(),
+      jobId: 'edit',
+      inputQty: differ ? String(entry.inputQty ?? '') : '',
+      outputQty: String(entry.outputQty ?? ''),
+      wasteQty: entry.wasteQty ? String(entry.wasteQty) : '',
+      shift: entry.shift || todayShift(),
+      workDate: toDateInput(entry.workDate || entry.markedAt || new Date()),
+      deliveryPartner: entry.deliveryPartner || '',
+      handoverPerson: entry.handoverPerson || '',
+      vehicleNumber: entry.vehicleNumber || '',
+      details,
+    });
+    setEntryOpen(true);
+  }
+
+  async function removeEntry(entry) {
+    const ok = await confirmAction({
+      title: 'Delete entry',
+      message: `Delete this ${stage} entry for ${entry.orderNumber}? The material it used goes back to store and what it made is taken out of stock.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
+    setError('');
+    setNotice('');
+    setSaving(true);
+    try {
+      await productionApi.deleteEntry({ orderId: entry.orderId, entryId: entry.id });
+      await reloadStage();
+      setNotice('Entry deleted.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function openEntry() {
     const line = openLines[0];
+    setEditing(null);
     setError('');
     setDraft((current) => ({
       ...current,
@@ -575,7 +706,16 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
       {notice ? <p className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{notice}</p> : null}
       {!book && !error ? <p className="border-b border-stone-200 px-4 py-2 text-sm text-stone-500">Loading…</p> : null}
       {columns ? (
-        <PaperBook stage={stage} columns={columns} entries={entries} isAdmin={isAdmin} />
+        <PaperBook
+          stage={stage}
+          columns={columns}
+          entries={entries}
+          isAdmin={isAdmin}
+          canChange={canEnter}
+          onEdit={startEdit}
+          onDelete={removeEntry}
+          busy={saving}
+        />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full border-separate border-spacing-0 border-l border-t border-stone-300 text-sm">
@@ -583,8 +723,9 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
               <tr>
                 <th className={head}>No</th>
                 <th className={head}>Date</th>
-                <th className={head}>Sales order</th>
-                <th className={head}>Party</th>
+                <th className={head}>Order</th>
+                <th className={head}>Customer code</th>
+                {showCustomerName ? <th className={head}>Customer name</th> : null}
                 <th className={head}>Product</th>
                 <th className={head}>Production</th>
                 {isDelivery ? (
@@ -601,12 +742,13 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
                   </>
                 )}
                 <th className={head}>Operator</th>
+                {canEnter ? <th className={head} /> : null}
               </tr>
             </thead>
             <tbody>
               {entries.length === 0 ? (
                 <tr>
-                    <td className={`${cell} text-stone-500`} colSpan={10}>
+                    <td className={`${cell} text-stone-500`} colSpan={10 + (canEnter ? 1 : 0) + (showCustomerName ? 1 : 0)}>
                     No entry on this stage yet.
                   </td>
                 </tr>
@@ -620,7 +762,8 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
                         {entry.orderNumber}
                       </Link>
                     </td>
-                    <td className={cell}>{entry.customerName || '—'}</td>
+                    <td className={cell}>{entry.customerCode || '—'}</td>
+                    {showCustomerName ? <td className={cell}>{entry.customerName || '—'}</td> : null}
                     <td className={cell}>{entry.product || '—'}</td>
                     <td className={`${cell} font-semibold`}>{qtyOf(entry.outputQty, entry.unit)}</td>
                     {isDelivery ? (
@@ -637,6 +780,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
                       </>
                     )}
                     <td className={cell}>{entry.markedByName || '—'}</td>
+                    {canEnter ? <EntryActions entry={entry} onEdit={startEdit} onDelete={removeEntry} busy={saving} /> : null}
                   </tr>
                 ))
               )}
@@ -660,6 +804,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
         machines={machines}
         onRelease={putBack}
         onSubmit={submitEntry}
+        editing={editing}
       />
     </>
   );

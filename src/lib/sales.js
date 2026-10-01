@@ -38,6 +38,15 @@ export const PRODUCTION_VIEW_KEYS = [
   'dispatch:read',
 ];
 
+export const ORDER_TYPES = [
+  { id: 'sales_order', label: 'Sales order', prefix: 'SO' },
+  { id: 'job_work', label: 'Job work', prefix: 'JW' },
+];
+
+export function orderTypeLabel(id) {
+  return (ORDER_TYPES.find((type) => type.id === id) || ORDER_TYPES[0]).label;
+}
+
 export const STATUS_LABELS = {
   draft: 'Draft',
   submitted: 'Submitted',

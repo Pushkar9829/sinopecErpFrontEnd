@@ -1,34 +1,37 @@
+const ROLLING_ROLL_TYPES = [
+  'Tube (Maticore)',
+  'Tube (Medium)',
+  'Cake',
+  'Tube (Patli Cap)',
+  'Sheet (Sana)',
+  'Recycled (5/60?)',
+  'Frosted',
+  'B Tube',
+  'Barni',
+  'Milk',
+];
+
 export const STAGE_COLUMNS = {
   rolling: [
-    { key: 'orderNumber', label: 'Sales order' },
+    { key: 'orderNumber', label: 'Order' },
     { key: 'product', label: 'Name' },
     { key: 'productCode', label: 'Code' },
-    { key: 'customerName', label: 'Party name' },
-    { key: 'beam', label: 'Beam', edit: true },
+    { key: 'customerCode', label: 'Customer code' },
     { key: 'rollSize', label: 'Roll size' },
-    { key: 'tb', label: 'T×B mm', edit: true },
-    { key: 'rollType', label: 'Roll type', edit: true, choices: ['Side seal', 'Centre fold'] },
-    { key: 'materialType', label: 'Type' },
-    { key: 'tubeMedium', label: 'Tube (medium)', edit: true, choices: ['Paper'] },
-    { key: 'tubeCore', label: 'Tube (core)', edit: true, choices: ['3 inch'] },
-    { key: 'tubeParticular', label: 'Tube (particular)', edit: true, choices: ['Plain'] },
-    { key: 'sheetTube', label: 'Sheet / tube (8 mm)', edit: true, choices: ['Sheet (8 mm)', 'Tube (8 mm)'] },
-    { key: 'recycled', label: 'Recycled (5–10)', edit: true, choices: ['5', '6', '7', '8', '9', '10'] },
+    { key: 'rollType', label: 'Roll type', edit: true, choices: ROLLING_ROLL_TYPES },
     { key: 'exStock', label: 'Ex-stock (D.S.)', edit: true, choices: ['D.S.'] },
-    { key: 'micron', label: 'Micron' },
     { key: 'colour', label: 'Colour' },
-    { key: 'width', label: 'Width' },
     { key: 'weight', label: 'Weight', edit: true },
     { key: 'gross', label: 'Gross', edit: true },
     { key: 'tare', label: 'Tare', edit: true },
     { key: 'net', label: 'Net', edit: true },
-    { key: 'party', label: 'Party' },
+    { key: 'description', label: 'Description', edit: true, long: true },
   ],
   printing: [
-    { key: 'orderNumber', label: 'S/o' },
+    { key: 'orderNumber', label: 'Order' },
     { key: 'product', label: 'Name' },
     { key: 'productCode', label: 'code' },
-    { key: 'customerName', label: 'Customer name' },
+    { key: 'customerCode', label: 'Customer code' },
     { key: 'rollSize', label: 'Roll size' },
     { key: 'jobSize', label: 'Job size' },
     { key: 'quantity', label: 'Quantity', edit: true, qty: 'output' },
@@ -36,24 +39,35 @@ export const STAGE_COLUMNS = {
     { key: 'colorUsed', label: 'color used' },
     { key: 'cylinderSize', label: 'Cylinder size', edit: true },
     { key: 'wastage', label: 'wastage', edit: true, qty: 'waste' },
-    { key: 'gauge', label: 'gauge', edit: true },
-    { key: 'uv', label: 'UV', edit: true, choices: ['Yes', 'No'] },
-    { key: 'printDescription', label: 'Print description', edit: true },
+    { key: 'printDescription', label: 'Print description', edit: true, long: true },
   ],
   cutting: [
-    { key: 'orderNumber', label: 'S/o' },
+    { key: 'orderNumber', label: 'Order' },
     { key: 'product', label: 'Name' },
-    { key: 'customerName', label: 'Customer name' },
+    { key: 'customerCode', label: 'Customer code' },
     { key: 'rollSize', label: 'Roll size' },
     { key: 'size', label: 'Size' },
     { key: 'quantity', label: 'Quantity', edit: true, qty: 'output' },
-    { key: 'tubeUsed', label: 'Tube used', edit: true },
+    { key: 'tubeUsed', label: 'Tape used', edit: true },
     { key: 'hole', label: 'Hole' },
-    { key: 'rollType', label: 'Roll type', edit: true, choices: ['Side seal', 'Centre fold'] },
+    { key: 'rollType', label: 'Hole type', edit: true },
     { key: 'cuts', label: 'No. of cuts', edit: true },
     { key: 'discKnife', label: 'Disc / knife', edit: true, choices: ['disc', 'knife'] },
+    { key: 'description', label: 'Description', edit: true, long: true },
   ],
 };
+
+export function isSuperAdmin(user) {
+  return user?.role?.slug === 'super_admin';
+}
+
+export function bookColumns(stage, showCustomerName) {
+  const columns = STAGE_COLUMNS[stage];
+  if (!columns || !showCustomerName) return columns || null;
+  const at = columns.findIndex((column) => column.key === 'customerCode');
+  if (at < 0) return columns;
+  return [...columns.slice(0, at + 1), { key: 'customerName', label: 'Customer name' }, ...columns.slice(at + 1)];
+}
 
 const FROZEN = {
   no: { width: 3, sticky: 'sticky' },
@@ -61,7 +75,7 @@ const FROZEN = {
   orderNumber: { width: 9, sticky: 'sm:sticky' },
   product: { width: 11, sticky: 'lg:sticky' },
   productCode: { width: 6.5, sticky: 'lg:sticky' },
-  customerName: { width: 11, sticky: 'lg:sticky' },
+  customerCode: { width: 7.5, sticky: 'lg:sticky' },
 };
 
 export function frozenColumns(columns) {
@@ -116,6 +130,7 @@ export function orderValue(line, key) {
   if (key === 'product') return line.product || '';
   if (key === 'productCode') return line.productCode || '';
   if (key === 'customerName' || key === 'party') return line.customerName || '';
+  if (key === 'customerCode') return line.customerCode || '';
   const spec = line.specs?.[key];
   return spec == null ? '' : String(spec);
 }
@@ -126,13 +141,9 @@ export function savedValue(entry, key, customerName = '') {
   if (key === 'product') return entry.product || '';
   if (key === 'productCode') return entry.productCode || '';
   if (key === 'customerName' || key === 'party') return entry.customerName || customerName || '';
+  if (key === 'customerCode') return entry.customerCode || '';
   if (key === 'quantity') return entry.outputQty ? String(entry.outputQty) : '';
   if (key === 'wastage') return entry.details?.wastage || (entry.wasteQty ? String(entry.wasteQty) : '');
-  if (key === 'sheetTube') {
-    if (entry.details?.sheetTube) return entry.details.sheetTube;
-    if (entry.details?.sheet8) return 'Sheet (8 mm)';
-    if (entry.details?.tube8) return 'Tube (8 mm)';
-  }
   if (key === 'discKnife') {
     if (entry.details?.discKnife) return entry.details.discKnife;
     return [entry.details?.disc, entry.details?.knife].filter(Boolean).join(' · ');

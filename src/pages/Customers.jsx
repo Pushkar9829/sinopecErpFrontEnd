@@ -269,7 +269,7 @@ export function Customers() {
         {!loaded ? (
           <p className="px-4 py-6 text-sm text-slate">Loading…</p>
         ) : list.total === 0 ? (
-          <EmptyState title="No customers found" hint="Add a customer before creating a sales order." />
+          <EmptyState title="No customers found" hint="Add a customer before creating an order." />
         ) : (
           <Pagination
             page={list.page}

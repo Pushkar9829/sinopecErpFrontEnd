@@ -17,7 +17,9 @@ import {
   isFloorStatus,
   itemFromApi,
   itemToPayload,
+  ORDER_TYPES,
   orderActiveStages,
+  orderTypeLabel,
   STATUS_LABELS,
   stageLabel,
   statusLabel,
@@ -167,6 +169,14 @@ export function SalesOrders() {
     else params.set('status', next);
     setSearchParams(params, { replace: true });
   }
+  const requestedType = searchParams.get('type') || 'all';
+  const typeFilter = ORDER_TYPES.some((type) => type.id === requestedType) ? requestedType : 'all';
+  function setTypeFilter(next) {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'all') params.delete('type');
+    else params.set('type', next);
+    setSearchParams(params, { replace: true });
+  }
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -184,21 +194,27 @@ export function SalesOrders() {
       .finally(() => setLoaded(true));
   }, []);
 
+  const typed = useMemo(
+    () => (typeFilter === 'all' ? orders : orders.filter((order) => (order.orderType || 'sales_order') === typeFilter)),
+    [orders, typeFilter]
+  );
+
   const counts = useMemo(() => {
-    const next = { all: orders.length };
+    const next = { all: typed.length };
     for (const status of STATUS_ORDER) {
-      next[status] = orders.filter((order) => order.status === status).length;
+      next[status] = typed.filter((order) => order.status === status).length;
     }
     return next;
-  }, [orders]);
+  }, [typed]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return orders.filter((order) => {
+    return typed.filter((order) => {
       if (tab !== 'all' && order.status !== tab) return false;
       if (!q) return true;
       return [
         order.number,
+        orderTypeLabel(order.orderType),
         order.customer?.name,
         order.customer?.code,
         order.customer?.companyName,
@@ -208,9 +224,9 @@ export function SalesOrders() {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q));
     });
-  }, [orders, tab, query]);
+  }, [typed, tab, query]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${typeFilter}|${tab}|${query}` });
 
   async function duplicateOrder(order) {
     setError('');
@@ -218,6 +234,7 @@ export function SalesOrders() {
     try {
       const source = await salesOrdersApi.get(order.id);
       const created = await salesOrdersApi.create({
+        orderType: source.orderType || 'sales_order',
         customerId: source.customer?.id,
         orderDate: toDateInput(new Date()),
         deliveryDate: toDateInput(source.deliveryDate),
@@ -243,12 +260,12 @@ export function SalesOrders() {
   }
 
   async function handleDelete(id) {
-    if (!(await confirmAction({ message: 'Delete this draft sales order?', confirmLabel: 'Delete', danger: true }))) return;
+    if (!(await confirmAction({ message: 'Delete this draft order?', confirmLabel: 'Delete', danger: true }))) return;
     setError('');
     try {
       await salesOrdersApi.remove(id);
       await load();
-      setNotice('Sales order deleted.');
+      setNotice('Order deleted.');
     } catch (err) {
       setError(err.message);
     }
@@ -257,7 +274,20 @@ export function SalesOrders() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
-        <h1 className="px-1 text-lg font-semibold">Sales orders</h1>
+        <h1 className="px-1 text-lg font-semibold">Orders</h1>
+        <div className="inline-flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Order type">
+          {[{ id: 'all', label: 'All' }, ...ORDER_TYPES].map((type) => (
+            <button
+              key={type.id}
+              type="button"
+              aria-pressed={typeFilter === type.id}
+              onClick={() => setTypeFilter(type.id)}
+              className={`rounded-md px-2.5 py-1 text-sm font-semibold ${typeFilter === type.id ? 'bg-ink text-paper' : 'text-ink hover:bg-paper'}`}
+            >
+              {type.label}
+            </button>
+          ))}
+        </div>
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search number or customer" />
@@ -272,7 +302,7 @@ export function SalesOrders() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
             >
               <PlusIcon />
-              New sales order
+              New order
             </Link>
           </PermissionGate>
         </div>
@@ -311,7 +341,9 @@ export function SalesOrders() {
               >
                 <td className="px-4 py-3">
                   <p className="font-semibold text-ink">{order.number}</p>
-                  <p className="text-sm font-normal text-slate">{formatDate(order.orderDate)}</p>
+                  <p className="text-sm font-normal text-slate">
+                    {orderTypeLabel(order.orderType)} · {formatDate(order.orderDate)}
+                  </p>
                 </td>
                 <td className="px-4 py-3">
                   <p className="font-semibold text-ink">{order.customer?.name || '—'}</p>
@@ -374,7 +406,7 @@ export function SalesOrders() {
         {!loaded ? (
           <p className="px-4 py-6 text-sm text-slate">Loading…</p>
         ) : list.total === 0 ? (
-          <EmptyState title="No sales orders found" hint="Create a draft, then submit it for approval." />
+          <EmptyState title="No orders found" hint="Create a sales order or job work draft, then submit it for approval." />
         ) : (
           <Pagination
             page={list.page}

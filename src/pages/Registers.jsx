@@ -6,7 +6,8 @@ import { BackButton } from '../components/ui/BackButton';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
-import { PRODUCTION_STAGES, formatDate, statusLabel } from '../lib/sales';
+import { isSuperAdmin } from '../lib/registerBooks';
+import { PRODUCTION_STAGES, formatDate, orderTypeLabel, statusLabel } from '../lib/sales';
 
 const cell = 'whitespace-nowrap border border-stone-300 px-2 py-1.5 align-middle text-sm';
 const head = 'whitespace-nowrap border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
@@ -25,6 +26,7 @@ export function Registers({ floor = false }) {
     can('sales:read') ||
     can('accounts:read') ||
     can('inventory:read');
+  const showCustomerName = isSuperAdmin(user);
   const view = isAdmin && searchParams.get('view') === 'orders' ? 'orders' : 'stage';
   const stage = searchParams.get('stage') || '';
   const presetJob = searchParams.get('job') || '';
@@ -107,7 +109,7 @@ export function Registers({ floor = false }) {
                   onClick={() => setView('orders')}
                   className={`px-3 py-2 text-sm font-semibold lg:py-1 ${view === 'orders' ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}
                 >
-                  Sales order
+                  Order
                 </button>
                 <button
                   type="button"
@@ -149,8 +151,10 @@ export function Registers({ floor = false }) {
                 <thead className="sticky top-0 z-10">
                   <tr>
                     <th className={head}>No</th>
-                    <th className={head}>Sales order</th>
-                    <th className={head}>Party</th>
+                    <th className={head}>Order</th>
+                    <th className={head}>Type</th>
+                    <th className={head}>Customer code</th>
+                    {showCustomerName ? <th className={head}>Customer name</th> : null}
                     <th className={head}>Status</th>
                     <th className={head}>Due</th>
                     <th className={head}>Stages</th>
@@ -159,8 +163,8 @@ export function Registers({ floor = false }) {
                 <tbody>
                   {rows.length === 0 ? (
                     <tr>
-                      <td className={`${cell} text-stone-500`} colSpan={6}>
-                        {loading ? 'Loading…' : 'No sales order is on the register yet.'}
+                      <td className={`${cell} text-stone-500`} colSpan={showCustomerName ? 8 : 7}>
+                        {loading ? 'Loading…' : 'No order is on the register yet.'}
                       </td>
                     </tr>
                   ) : (
@@ -179,7 +183,9 @@ export function Registers({ floor = false }) {
                       >
                         <td className={`${cell} w-12 text-stone-500`}>{index + 1}</td>
                         <td className={`${cell} font-semibold`}>{row.orderNumber}</td>
-                        <td className={cell}>{row.customerName || '—'}</td>
+                        <td className={cell}>{orderTypeLabel(row.orderType)}</td>
+                        <td className={cell}>{row.customerCode || '—'}</td>
+                        {showCustomerName ? <td className={cell}>{row.customerName || '—'}</td> : null}
                         <td className={cell}>{statusLabel(row.status)}</td>
                         <td className={cell}>{formatDate(row.deliveryDate)}</td>
                         <td className={cell}>{(row.stages || []).map((item) => item.label).join(' · ') || '—'}</td>

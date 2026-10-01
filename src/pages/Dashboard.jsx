@@ -93,7 +93,7 @@ function FloorDashboard() {
           <thead className="sticky top-0 z-10 bg-ink text-paper">
             <tr>
               <th className="px-3 py-2 font-semibold">Order</th>
-              <th className="px-3 py-2 font-semibold">Customer</th>
+              <th className="px-3 py-2 font-semibold">Customer code</th>
               <th className="px-3 py-2 font-semibold">Product</th>
               <th className="px-3 py-2 font-semibold">Qty</th>
               <th className="px-3 py-2 font-semibold">{DONE_LABEL[stage] || 'Done'}</th>
@@ -120,7 +120,7 @@ function FloorDashboard() {
                   className="cursor-pointer border-t border-line hover:bg-paper/70"
                 >
                   <td className="px-3 py-2 font-semibold">{job.number}</td>
-                  <td className="px-3 py-2 font-normal">{job.customer || '—'}</td>
+                  <td className="px-3 py-2 font-normal">{job.customerCode || '—'}</td>
                   <td className="px-3 py-2">
                     <p className="font-semibold">{job.product}</p>
                     {job.requirements?.size ? <p className="text-sm font-normal text-slate">{job.requirements.size}</p> : null}
@@ -146,7 +146,7 @@ function FloorDashboard() {
         </table>
         {loading ? <p className="px-4 py-3 text-sm text-slate">Loading…</p> : null}
         {!loading && jobs.length === 0 && !error ? (
-          <EmptyState title="No sales orders" hint="Orders appear here when this station has work." />
+          <EmptyState title="No orders" hint="Orders appear here when this station has work." />
         ) : null}
       </div>
     </section>
@@ -217,7 +217,7 @@ function AdminDashboard() {
           ) : null}
           {showSales ? (
             <Link to="/sales-orders" className={outlineLink}>
-              Sales orders
+              Orders
             </Link>
           ) : null}
           {showAnalytics ? (
@@ -276,7 +276,7 @@ function AdminDashboard() {
       {showSales ? (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Sales orders</h2>
+            <h2 className="text-lg font-semibold">Orders</h2>
             <p className="text-sm font-normal text-slate">{summary?.total ?? 0} orders</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

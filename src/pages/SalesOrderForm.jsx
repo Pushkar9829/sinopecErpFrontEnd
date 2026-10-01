@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { customersApi } from '../api/customers.api';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
@@ -10,6 +10,8 @@ import { Field, Grid, Section, inputClass } from '../components/ui/FormField';
 import { usePermission } from '../hooks/usePermission';
 import { confirmAction } from '../components/ui/ConfirmHost';
 import {
+  ORDER_TYPES,
+  orderTypeLabel,
   PAYMENT_METHODS,
   PAYMENT_TERMS,
   PRIORITIES,
@@ -126,6 +128,11 @@ export function SalesOrderForm() {
   const [header, setHeader] = useState(() => emptyHeader());
   const [items, setItems] = useState([emptyLineItem()]);
   const [number, setNumber] = useState('');
+  const [searchParams] = useSearchParams();
+  const [orderType, setOrderType] = useState(() =>
+    ORDER_TYPES.some((type) => type.id === searchParams.get('type')) ? searchParams.get('type') : 'sales_order'
+  );
+  const typeInfo = ORDER_TYPES.find((type) => type.id === orderType) || ORDER_TYPES[0];
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(!isEdit);
@@ -156,6 +163,7 @@ export function SalesOrderForm() {
           return;
         }
         setNumber(order.number);
+        setOrderType(order.orderType || 'sales_order');
         setHeader({
           customerId: order.customer?.id || '',
           orderDate: toDateInput(order.orderDate) || todayInput(),
@@ -246,7 +254,7 @@ export function SalesOrderForm() {
         await salesOrdersApi.update(id, payload());
         navigate(`/sales-orders/${id}`);
       } else {
-        const created = await salesOrdersApi.create(payload());
+        const created = await salesOrdersApi.create({ ...payload(), orderType });
         navigate(`/sales-orders/${created.id}`);
       }
     } catch (err) {
@@ -286,7 +294,7 @@ export function SalesOrderForm() {
         <p className="text-sm text-red-700">{error}</p>
       </div>
     ) : (
-      <p className="text-sm text-slate">Loading sales order…</p>
+      <p className="text-sm text-slate">Loading order…</p>
     );
   }
 
@@ -294,7 +302,7 @@ export function SalesOrderForm() {
     <form onSubmit={handleSubmit} onKeyDown={blockEnterSubmit} className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
         <BackButton fallback={isEdit ? `/sales-orders/${id}` : '/sales-orders'} />
-        <h1 className="px-1 text-lg font-semibold">{isEdit ? number || 'Sales order' : 'New sales order'}</h1>
+        <h1 className="px-1 text-lg font-semibold">{isEdit ? number || typeInfo.label : `New ${typeInfo.label.toLowerCase()}`}</h1>
       </div>
 
       <StepProgress steps={steps} value={tab} onChange={setTab} />
@@ -303,15 +311,32 @@ export function SalesOrderForm() {
         <>
         <Section title="Order" mark={{ ...stepMark('order'), number: steps.find((s) => s.id === 'order')?.number || 1 }}>
           <Grid>
-            {isEdit ? (
-              <Field label="Sales order no.">
-                <input readOnly value={number} className={inputClass} />
-              </Field>
-            ) : (
-              <Field label="Sales order no.">
-                <input readOnly value="Assigned on save (SO-YYYY-00001)" className={inputClass} />
-              </Field>
-            )}
+            <Field label="Order type">
+              {isEdit ? (
+                <input readOnly value={orderTypeLabel(orderType)} className={inputClass} />
+              ) : (
+                <div className="flex gap-2" role="radiogroup" aria-label="Order type">
+                  {ORDER_TYPES.map((type) => (
+                    <button
+                      key={type.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={orderType === type.id}
+                      disabled={!canSave}
+                      onClick={() => setOrderType(type.id)}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                        orderType === type.id ? 'border-accent bg-accent text-white' : 'border-line bg-white text-ink hover:bg-paper'
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Field>
+            <Field label={`${typeInfo.label} no.`}>
+              <input readOnly value={isEdit ? number : `Assigned on save (${typeInfo.prefix}-YYYY-00001)`} className={inputClass} />
+            </Field>
             <Field label="Order date">
               <input type="date" required value={header.orderDate} disabled={!canSave} onChange={(e) => updateHeader('orderDate', e.target.value)} className={inputClass} />
             </Field>
