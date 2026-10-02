@@ -24,6 +24,7 @@ import { SalesOrderForm } from './pages/SalesOrderForm';
 import { SalesOrderDetail } from './pages/SalesOrderDetail';
 import { SalesSettings } from './pages/SalesSettings';
 import { ProductTemplateForm } from './pages/ProductTemplateForm';
+import { RateCalculator } from './pages/RateCalculator';
 import { OrderRegister } from './pages/OrderRegister';
 import { Registers } from './pages/Registers';
 import { AuditLogs } from './pages/AuditLogs';
@@ -70,6 +71,7 @@ export default function App() {
               </Route>
               <Route element={<ProtectedRoute permission="sales:read" />}>
                 <Route path="sales-settings" element={<SalesSettings />} />
+                <Route path="rate-calculator" element={<RateCalculator />} />
                 <Route element={<ProtectedRoute permission="sales:create" />}>
                   <Route path="sales-settings/templates/new" element={<ProductTemplateForm />} />
                 </Route>
