@@ -236,7 +236,7 @@ export function Users() {
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                   <StatusToggle
                     checked={user.isActive}
-                    disabled={!can('users:update')}
+                    disabled={!can('users:update') || user.id === currentUser?.id}
                     onChange={(isActive) => handleUpdate(user.id, { isActive })}
                   />
                 </td>

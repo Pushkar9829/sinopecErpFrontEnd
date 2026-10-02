@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { productionApi } from '../api/production.api';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { ActiveBadge, Badge, PriorityBadge, panelTones, valueTones } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/AuthContext';
-import { usePermission } from '../hooks/usePermission';
+import { ArtworkButton } from '../components/register/ArtworkButton';
+import { MyTasksPanel } from '../components/tasks/MyTasksPanel';
+import { tasksApi } from '../api/tasks.api';
+import { stageJobKey, TASKS_CHANGED_EVENT } from '../lib/tasks';
+import { useFloorWorker, usePermission } from '../hooks/usePermission';
+import { useTaskSummary } from '../hooks/useTaskSummary';
 import { PRODUCTION_STAGES, PRODUCTION_VIEW_KEYS, canViewAnalytics, canViewSalesOrders, formatDate, formatQty } from '../lib/sales';
 
 const DONE_LABEL = {
@@ -14,7 +19,6 @@ const DONE_LABEL = {
   printing: 'Printed',
   cutting: 'Cut',
   dispatch: 'Dispatched',
-  delivery: 'Delivered',
 };
 
 function jobFlag(job) {
@@ -34,6 +38,25 @@ function FloorDashboard() {
   const [stage, setStage] = useState('');
   const [jobs, setJobs] = useState([]);
   const [error, setError] = useState('');
+  const taskSummary = useTaskSummary();
+  const { user } = useAuth();
+  const [jobTasks, setJobTasks] = useState({});
+
+  useEffect(() => {
+    if (!can('tasks:read')) return undefined;
+    let alive = true;
+    const load = () =>
+      tasksApi
+        .list({ scope: 'inbox', category: 'stage_work' })
+        .then((list) => alive && setJobTasks(Object.fromEntries(list.map((task) => [stageJobKey(task), task]))))
+        .catch(() => alive && setJobTasks({}));
+    load();
+    window.addEventListener(TASKS_CHANGED_EVENT, load);
+    return () => {
+      alive = false;
+      window.removeEventListener(TASKS_CHANGED_EVENT, load);
+    };
+  }, [can]);
 
   useEffect(() => {
     if (!stages.length) return;
@@ -63,7 +86,7 @@ function FloorDashboard() {
   if (!stages.length) return null;
 
   function openJob(job) {
-    navigate(`/production?stage=${stage}&job=${encodeURIComponent(job.id)}`);
+    navigate(`/registers?stage=${stage}&job=${encodeURIComponent(job.id)}`);
   }
 
   return (
@@ -85,7 +108,20 @@ function FloorDashboard() {
             />
           ) : null}
         </div>
-        <p className="text-sm font-semibold text-ink">{jobs.length}</p>
+        <div className="flex items-center gap-3">
+          {taskSummary ? (
+            <Link
+              to="/tasks?scope=inbox"
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                taskSummary.overdue ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-line bg-white text-ink'
+              }`}
+            >
+              My tasks {taskSummary.total}
+              {taskSummary.overdue ? ` · ${taskSummary.overdue} overdue` : ''}
+            </Link>
+          ) : null}
+          <p className="text-sm font-semibold text-ink">{jobs.length}</p>
+        </div>
       </div>
       {error ? <p className="px-4 py-2 text-sm text-red-700">{error}</p> : null}
       <div className="min-h-0 flex-1 overflow-auto bg-card">
@@ -95,6 +131,7 @@ function FloorDashboard() {
               <th className="px-3 py-2 font-semibold">Order</th>
               <th className="px-3 py-2 font-semibold">Customer code</th>
               <th className="px-3 py-2 font-semibold">Product</th>
+              {stage === 'printing' ? <th className="px-3 py-2 font-semibold">Artwork</th> : null}
               <th className="px-3 py-2 font-semibold">Qty</th>
               <th className="px-3 py-2 font-semibold">{DONE_LABEL[stage] || 'Done'}</th>
               <th className="px-3 py-2 font-semibold">Left</th>
@@ -125,6 +162,16 @@ function FloorDashboard() {
                     <p className="font-semibold">{job.product}</p>
                     {job.requirements?.size ? <p className="text-sm font-normal text-slate">{job.requirements.size}</p> : null}
                   </td>
+                  {stage === 'printing' ? (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 truncate font-normal">
+                          {job.requirements?.printing?.artwork || job.requirements?.printing?.design || '—'}
+                        </span>
+                        <ArtworkButton orderId={job.orderId} itemId={job.itemId} />
+                      </div>
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 font-normal">
                     {formatQty(job.quantity)} {job.unit}
                   </td>
@@ -138,6 +185,17 @@ function FloorDashboard() {
                     {flag === 'working' ? <Badge tone="accent">Working</Badge> : null}
                     {flag === 'ready' ? <Badge tone="info">Ready</Badge> : null}
                     {flag === 'waiting' ? <Badge tone="muted">Waiting</Badge> : null}
+                    {(() => {
+                      const task = jobTasks[job.id];
+                      if (!task) return null;
+                      const mine = task.assignee && String(task.assignee) === String(user?.id);
+                      return (
+                        <p className={`mt-1 text-xs font-semibold ${mine ? 'text-accent' : 'text-slate'} ${task.overdue ? 'text-red-700' : ''}`}>
+                          {mine ? 'Your task' : task.assigneeName ? `Taken by ${task.assigneeName}` : 'Team task'}
+                          {task.overdue ? ' · overdue' : ''}
+                        </p>
+                      );
+                    })()}
                   </td>
                 </tr>
               );
@@ -225,11 +283,6 @@ function AdminDashboard() {
               Analytics
             </Link>
           ) : null}
-          {showFloor ? (
-            <Link to="/production" className={outlineLink}>
-              Production floor
-            </Link>
-          ) : null}
           {showFloor || showSales ? (
             <Link to="/registers" className={outlineLink}>
               Register
@@ -271,6 +324,8 @@ function AdminDashboard() {
         </Stat>
       </div>
 
+      {can('tasks:read') ? <MyTasksPanel /> : null}
+
       {!hasLinks ? <p className="text-sm font-normal text-slate">No extra pages for this role yet.</p> : null}
 
       {showSales ? (
@@ -300,6 +355,8 @@ function AdminDashboard() {
 export function Dashboard() {
   const { user } = useAuth();
   const { can } = usePermission();
+  const floorWorker = useFloorWorker();
+  if (floorWorker) return <Navigate to={can('tasks:read') ? '/tasks' : '/registers'} replace />;
   const floorOnly =
     user?.role?.slug !== 'super_admin' &&
     !can('sales:read') &&

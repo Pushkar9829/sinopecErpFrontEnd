@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ConfirmHost } from './components/ui/ConfirmHost';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -24,12 +24,17 @@ import { SalesOrderForm } from './pages/SalesOrderForm';
 import { SalesOrderDetail } from './pages/SalesOrderDetail';
 import { SalesSettings } from './pages/SalesSettings';
 import { ProductTemplateForm } from './pages/ProductTemplateForm';
-import { ProductionFloor } from './pages/ProductionFloor';
 import { OrderRegister } from './pages/OrderRegister';
 import { Registers } from './pages/Registers';
 import { AuditLogs } from './pages/AuditLogs';
 import { Analytics } from './pages/Analytics';
+import { Tasks } from './pages/Tasks';
 import { ANALYTICS_VIEW_KEYS, PRODUCTION_VIEW_KEYS, SALES_ORDER_VIEW_KEYS } from './lib/sales';
+
+function ToRegister() {
+  const { search } = useLocation();
+  return <Navigate to={`/registers${search}`} replace />;
+}
 
 export default function App() {
   return (
@@ -75,12 +80,13 @@ export default function App() {
                 </Route>
                 <Route path="customers/:id" element={<CustomerForm />} />
               </Route>
-              <Route element={<ProtectedRoute anyOf={PRODUCTION_VIEW_KEYS} />}>
-                <Route path="production" element={<ProductionFloor />} />
-              </Route>
+              <Route path="production" element={<ToRegister />} />
               <Route element={<ProtectedRoute anyOf={[...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS]} />}>
                 <Route path="registers" element={<Registers />} />
                 <Route path="registers/:orderId" element={<OrderRegister />} />
+              </Route>
+              <Route element={<ProtectedRoute permission="tasks:read" />}>
+                <Route path="tasks" element={<Tasks />} />
               </Route>
               <Route element={<ProtectedRoute permission="audit:read" />}>
                 <Route path="audit-logs" element={<AuditLogs />} />

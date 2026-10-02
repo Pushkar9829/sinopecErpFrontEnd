@@ -30,10 +30,23 @@ export function AuthProvider({ children }) {
     function onExpired() {
       if (!cancelled) setUser(null);
     }
+    let lastStale = 0;
+    function onStale() {
+      if (cancelled || Date.now() - lastStale < 5000) return;
+      lastStale = Date.now();
+      authApi
+        .me()
+        .then((current) => {
+          if (!cancelled) setUser(current);
+        })
+        .catch(() => {});
+    }
     window.addEventListener('auth:expired', onExpired);
+    window.addEventListener('auth:stale', onStale);
     return () => {
       cancelled = true;
       window.removeEventListener('auth:expired', onExpired);
+      window.removeEventListener('auth:stale', onStale);
     };
   }, []);
 

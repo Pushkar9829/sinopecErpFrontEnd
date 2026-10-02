@@ -249,7 +249,7 @@ export function Inventory() {
                     <IconButton label="Edit material" className="text-ink hover:bg-paper" onClick={() => navigate(`/inventory/${item.id}`)}>
                       <PencilIcon />
                     </IconButton>
-                    {can('inventory:delete') ? (
+                    {can('inventory:delete') && item.canDelete !== false ? (
                       <IconButton label="Delete material" className="text-red-700 hover:bg-red-50" onClick={() => handleDelete(item.id)}>
                         <TrashIcon />
                       </IconButton>

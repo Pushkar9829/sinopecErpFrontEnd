@@ -1,6 +1,6 @@
 import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { downloadSalesOrderFile, salesOrdersApi } from '../api/salesOrders.api';
 import { BackButton } from '../components/ui/BackButton';
 import { StepProgress } from '../components/ui/StepProgress';
@@ -9,6 +9,8 @@ import { useAuth } from '../context/AuthContext';
 import { usePermission } from '../hooks/usePermission';
 import { Badge, PriorityBadge, StatusBadge, badgeTones, stepTone, attachmentTone } from '../components/ui/Badge';
 import { ImageGallery, ImageLightbox, imageSrc } from '../components/ui/ImageGallery';
+import { OrderNextStep, OrderTasksTab, useOrderTasks } from '../components/tasks/OrderTasksTab';
+import { OrderPayments } from '../components/sales/OrderPayments';
 import {
   ATTACHMENT_KINDS,
   STEP_LABELS,
@@ -84,8 +86,15 @@ export function SalesOrderDetail() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState('po');
-  const [tab, setTab] = useState('order');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get('tab') || 'order');
+  useEffect(() => {
+    const requested = searchParams.get('tab');
+    if (requested) setTab(requested);
+  }, [searchParams]);
   const [previewIndex, setPreviewIndex] = useState(-1);
+  const showTasks = can('tasks:read');
+  const orderTasks = useOrderTasks(showTasks ? id : null);
 
   async function load() {
     setOrder(await salesOrdersApi.get(id));
@@ -179,7 +188,7 @@ export function SalesOrderDetail() {
   const canPlan = order.status === 'approved' && can('production:update');
   const canAdvance = order.status === 'delivered' && can('production:update');
   const earlyStatus = ['draft', 'submitted', 'approved'].includes(order.status);
-  const anyDelivered = (order.items || []).some((item) => (item.stageWork || []).some((work) => work.stage === 'delivery'));
+  const anyDelivered = (order.items || []).some((item) => (item.stageWork || []).some((work) => work.stage === 'dispatch'));
   const canCancel =
     !['cancelled', 'dispatched', 'delivered', 'completed'].includes(order.status) &&
     !anyDelivered &&
@@ -192,10 +201,12 @@ export function SalesOrderDetail() {
   const canDuplicate = can('sales:create');
   const stageView = order.viewMode === 'stage';
 
+  const tasksTab = showTasks ? [{ id: 'tasks', label: 'Tasks', count: orderTasks.openCount, tone: 'danger' }] : [];
   const tabs = stageView
     ? [
         { id: 'work', label: 'Your stage', tone: 'accent' },
         { id: 'progress', label: 'Progress', tone: 'teal' },
+        ...tasksTab,
       ]
     : [
         { id: 'order', label: 'Order', tone: 'info' },
@@ -204,6 +215,7 @@ export function SalesOrderDetail() {
         { id: 'documents', label: 'Documents', count: order.attachments?.length || 0, tone: 'purple' },
         ...(showMoney ? [{ id: 'amounts', label: 'Amounts', tone: 'success' }] : []),
         { id: 'progress', label: 'Progress', tone: 'teal' },
+        ...tasksTab,
       ];
 
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
@@ -227,6 +239,7 @@ export function SalesOrderDetail() {
                   setBusy(true);
                   try {
                     const created = await salesOrdersApi.create({
+                      orderType: order.orderType || 'sales_order',
                       customerId: order.customer?.id,
                       orderDate: toDateInput(new Date()),
                       deliveryDate: toDateInput(order.deliveryDate),
@@ -234,7 +247,7 @@ export function SalesOrderDetail() {
                       paymentTerms: order.paymentTerms,
                       paymentMethod: order.paymentMethod,
                       creditDays: order.creditDays,
-                      advanceAmount: order.advanceAmount,
+                      advanceAmount: 0,
                       paymentRemarks: order.paymentRemarks,
                       billingAddress: order.billingAddress,
                       shippingAddress: order.shippingAddress,
@@ -325,6 +338,8 @@ export function SalesOrderDetail() {
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
+
+      {showTasks && activeTab !== 'tasks' ? <OrderNextStep state={orderTasks} onShowAll={() => setTab('tasks')} /> : null}
 
       {stageView && activeTab === 'work' ? (
         <div className="space-y-4">
@@ -577,7 +592,14 @@ export function SalesOrderDetail() {
                         <button
                           type="button"
                           className="text-red-700 hover:underline"
-                          onClick={() => run(() => salesOrdersApi.removeAttachment(order.id, attachment.id), 'Attachment removed.')}
+                          onClick={async () => {
+                            const ok = await confirmAction({
+                              message: `Remove ${attachment.originalName}? The file is deleted and cannot be recovered.`,
+                              confirmLabel: 'Remove',
+                              danger: true,
+                            });
+                            if (ok) run(() => salesOrdersApi.removeAttachment(order.id, attachment.id), 'Attachment removed.');
+                          }}
                         >
                           Remove
                         </button>
@@ -596,14 +618,31 @@ export function SalesOrderDetail() {
       ) : null}
 
       {activeTab === 'amounts' && showMoney ? (
-        <Section title="Amount">
-          <Grid cols="sm:grid-cols-2 lg:grid-cols-4">
-            <Value label="Subtotal">{formatMoney(order.subtotal)}</Value>
-            <Value label="Discount">{formatMoney(order.discount)}</Value>
-            <Value label="Tax">{formatMoney(order.tax)}</Value>
-            <Value label="Grand total" strong>{formatMoney(order.grandTotal)}</Value>
-          </Grid>
-        </Section>
+        <div className="space-y-4">
+          <Section title="Amount">
+            <Grid cols="sm:grid-cols-2 lg:grid-cols-4">
+              <Value label="Subtotal">{formatMoney(order.subtotal)}</Value>
+              <Value label="Discount">{formatMoney(order.discount)}</Value>
+              <Value label="Tax">{formatMoney(order.tax)}</Value>
+              <Value label="Grand total" strong>{formatMoney(order.grandTotal)}</Value>
+              <Value label="Advance">{formatMoney(order.advanceAmount)}</Value>
+              <Value label="Paid since">{formatMoney(order.paidAmount)}</Value>
+              <Value label="Remaining" strong>
+                <span className={Number(order.remainingAmount) > 0 ? 'text-red-700' : 'text-emerald-700'}>{formatMoney(order.remainingAmount)}</span>
+              </Value>
+            </Grid>
+          </Section>
+          <Section title="Payments">
+            <OrderPayments
+              order={order}
+              canRecord={isSuperAdmin || can('accounts:create') || can('accounts:update') || can('sales:update')}
+              onChanged={async (message) => {
+                await load();
+                setNotice(message);
+              }}
+            />
+          </Section>
+        </div>
       ) : null}
 
       {activeTab === 'progress' ? (
@@ -661,6 +700,8 @@ export function SalesOrderDetail() {
         })}
       </div>
       ) : null}
+
+      {activeTab === 'tasks' ? <OrderTasksTab order={order} state={orderTasks} /> : null}
     </div>
   );
 }

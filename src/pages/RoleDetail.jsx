@@ -207,6 +207,13 @@ export function RoleDetail() {
   }
 
   const assignedCount = locked ? permissions.length || 'All' : assigned.length;
+  const wildcardModules = new Set(
+    permissions
+      .filter((permission) => permission.key.endsWith(':*') && assigned.includes(permission._id))
+      .map((permission) => permission.key.split(':')[0])
+  );
+  const coveredBy = (permission) =>
+    !permission.key.endsWith(':*') && wildcardModules.has(permission.key.split(':')[0]) ? `${permission.key.split(':')[0]}:*` : '';
 
   return (
     <div className="space-y-5">
@@ -271,20 +278,26 @@ export function RoleDetail() {
                   <span className="text-sm font-normal text-slate">{items.length}</span>
                 </div>
                 <div className="space-y-2">
-                  {items.map((permission) => (
-                    <label key={permission._id} className="flex cursor-pointer items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={assigned.includes(permission._id)}
-                        onChange={() => toggle(permission._id)}
-                        className="mt-1"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-ink">{permission.key}</span>
-                        <span className="block text-sm font-normal text-slate">{permission.description}</span>
-                      </span>
-                    </label>
-                  ))}
+                  {items.map((permission) => {
+                    const covered = coveredBy(permission);
+                    return (
+                      <label key={permission._id} className={`flex items-start gap-2 ${covered ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(covered) || assigned.includes(permission._id)}
+                          disabled={Boolean(covered)}
+                          onChange={() => toggle(permission._id)}
+                          className="mt-1"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-ink">{permission.key}</span>
+                          <span className="block text-sm font-normal text-slate">
+                            {covered ? `Included by ${covered}. Untick ${covered} to control this one.` : permission.description}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </section>
             );

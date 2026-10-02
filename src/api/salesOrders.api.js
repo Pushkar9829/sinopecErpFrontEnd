@@ -22,6 +22,8 @@ export const salesOrdersApi = {
     return api.upload(`/api/sales-orders/${id}/attachments`, body);
   },
   removeAttachment: (id, attachmentId) => api.delete(`/api/sales-orders/${id}/attachments/${attachmentId}`),
+  recordPayment: (id, payload) => api.post(`/api/sales-orders/${id}/payments`, payload),
+  removePayment: (id, paymentId) => api.delete(`/api/sales-orders/${id}/payments/${paymentId}`),
 };
 
 export async function downloadSalesOrderFile(orderId, attachmentId, fileName) {

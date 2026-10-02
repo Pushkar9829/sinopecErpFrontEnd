@@ -242,7 +242,7 @@ export function SalesOrders() {
         paymentTerms: source.paymentTerms,
         paymentMethod: source.paymentMethod,
         creditDays: source.creditDays,
-        advanceAmount: source.advanceAmount,
+        advanceAmount: 0,
         paymentRemarks: source.paymentRemarks,
         billingAddress: source.billingAddress,
         shippingAddress: source.shippingAddress,

@@ -1,4 +1,7 @@
 import { clearStoredTokens, getStoredTokens, setStoredTokens } from '../lib/authTokens';
+import { notifyTasksChanged } from '../lib/tasks';
+
+const TASK_SOURCES = /^\/api\/(sales-orders|production|inventory)(\/|$)/;
 
 const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -96,8 +99,11 @@ async function request(path, options = {}, retry = true) {
 
   const payload = await parseBody(response);
   if (!response.ok) {
+    if (response.status === 403 && !path.startsWith('/api/auth/')) window.dispatchEvent(new Event('auth:stale'));
     throw new Error(payload.message || 'Request failed');
   }
+
+  if (rest.method && rest.method !== 'GET' && TASK_SOURCES.test(path)) notifyTasksChanged();
 
   return payload.data !== undefined ? payload.data : payload;
 }

@@ -148,6 +148,7 @@ export function SalesOrderLineCard({
   options = {},
   hideTemplate = false,
   removable,
+  routes = PRODUCTION_ROUTES,
 }) {
   function update(path, value) {
     onChange(setPath(item, path, value));
@@ -270,7 +271,7 @@ export function SalesOrderLineCard({
         </Field>
         <Field label="Production flow">
           <select required value={item.productionRoute} disabled={!canEdit} onChange={(e) => updateRoute(e.target.value)} className={inputClass}>
-            {PRODUCTION_ROUTES.map((route) => (
+            {routes.map((route) => (
               <option key={route.id} value={route.id}>
                 {route.label}
               </option>

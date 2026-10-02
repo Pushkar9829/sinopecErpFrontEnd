@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
 import { registersApi } from '../../api/registers.api';
-import { Modal } from '../ui/Modal';
 import { confirmAction } from '../ui/ConfirmHost';
+import { ArtworkButton } from './ArtworkButton';
+import { LongText } from './LongText';
 import { useAuth } from '../../context/AuthContext';
 import { OPERATOR_LABEL, STAGE_COLUMNS, bookColumns, frozenColumns, isSuperAdmin, orderValue, paperQuantities, savedValue, typedDetails } from '../../lib/registerBooks';
 import { DELIVERY_PARTNERS, PRODUCTION_SHIFTS, formatDate, formatQty, toDateInput } from '../../lib/sales';
@@ -34,12 +35,48 @@ function blankDraft() {
     handoverPerson: '',
     vehicleNumber: '',
     machineId: '',
+    shift: todayShift(),
+    workDate: toDateInput(new Date()),
+    prefilled: [],
+    autoNet: true,
   };
 }
 
+// Fields that usually stay the same from one shift to the next on the same line.
+const CARRY_OVER = {
+  rolling: ['rollType', 'tare'],
+  printing: ['cylinderSize', 'printDescription'],
+  cutting: ['tubeUsed', 'rollType'],
+};
+// Figures written fresh every shift.
+const SHIFT_KEYS = new Set(['gross', 'net', 'quantity']);
+
+function carryOver(stage, line, machines) {
+  const last = (line?.entries || []).at(-1);
+  if (!last) return { details: {}, prefilled: [] };
+  const details = {};
+  for (const key of CARRY_OVER[stage] || []) {
+    if (last.details?.[key]) details[key] = last.details[key];
+  }
+  const machine = last.machineName
+    ? (machines || []).find((item) => last.machineName === item.name || last.machineName.startsWith(`${item.name} (`))
+    : null;
+  const top = {};
+  if (machine) top.machineId = machine.id;
+  if (stage === 'dispatch') {
+    if (last.deliveryPartner) top.deliveryPartner = last.deliveryPartner;
+    if (last.handoverPerson) top.handoverPerson = last.handoverPerson;
+    if (last.vehicleNumber) top.vehicleNumber = last.vehicleNumber;
+  }
+  return { ...top, details, prefilled: [...Object.keys(details), ...Object.keys(top)] };
+}
+
 const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-stone-500';
-const boxClass = 'mt-1 w-full rounded border border-stone-400 bg-white px-2.5 py-2 text-base font-normal text-ink outline-none focus:border-accent lg:text-sm';
-const WEIGHT_KEYS = new Set(['weight', 'gross', 'tare', 'net']);
+const cellBox = 'w-full min-w-0 rounded border border-stone-400 bg-white px-1.5 py-1 text-sm font-normal text-ink outline-none focus:border-accent';
+const barBox = 'mt-0.5 block rounded border border-stone-400 bg-white px-2 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent';
+const needsTint = 'border-amber-500 bg-amber-50';
+const ENTRY_FORM = 'register-entry-form';
+const WEIGHT_KEYS = new Set(['gross', 'tare', 'net']);
 
 function spanClass({ wide, full }) {
   if (full) return 'col-span-2 sm:col-span-3 lg:col-span-4';
@@ -56,15 +93,6 @@ function EntrySection({ title, muted = false, children }) {
   );
 }
 
-function EntryField({ label, wide = false, full = false, children }) {
-  return (
-    <label className={`block min-w-0 ${spanClass({ wide, full })}`}>
-      <span className={labelClass}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
 function ReadField({ label, value, wide = false }) {
   return (
     <div className={`min-w-0 ${spanClass({ wide })}`}>
@@ -77,6 +105,13 @@ function ReadField({ label, value, wide = false }) {
 }
 
 function EntryActions({ entry, onEdit, onDelete, busy }) {
+  if (entry.editable === false) {
+    return (
+      <td className={`${cell} text-right text-xs text-stone-500`} title="This order is completed, so its entries are locked.">
+        Locked
+      </td>
+    );
+  }
   return (
     <td className={`${cell} text-right`}>
       <div className="flex justify-end gap-1">
@@ -101,7 +136,7 @@ function EntryActions({ entry, onEdit, onDelete, busy }) {
   );
 }
 
-function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDelete, busy }) {
+function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDelete, busy, adding = false, editingId = '', renderEntry }) {
   const span = 3 + columns.length + (canChange ? 1 : 0);
   const frozen = frozenColumns(columns);
   const headAt = (key) => (frozen[key] ? { className: `${head} ${frozen[key].className} z-20`, style: frozen[key].style } : { className: head });
@@ -125,14 +160,20 @@ function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDele
           </tr>
         </thead>
         <tbody>
+          {adding ? renderEntry(cellAt) : null}
           {entries.length === 0 ? (
-            <tr>
-              <td className={`${cell} text-stone-500`} colSpan={span}>
-                No entry on this stage yet.
-              </td>
-            </tr>
+            adding ? null : (
+              <tr>
+                <td className={`${cell} text-stone-500`} colSpan={span}>
+                  No entry on this stage yet.
+                </td>
+              </tr>
+            )
           ) : (
-            entries.map((entry, index) => (
+            entries.map((entry, index) =>
+              entry.id === editingId ? (
+                renderEntry(cellAt, index)
+              ) : (
               <tr key={entry.id} className={index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'}>
                 <td {...cellAt('no', 'text-stone-500')}>{index + 1}</td>
                 <td {...cellAt('date')}>{formatDate(entry.workDate || entry.markedAt)}</td>
@@ -142,6 +183,13 @@ function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDele
                       <Link to={isAdmin ? `/registers/${entry.orderId}` : `/sales-orders/${entry.orderId}`} className="hover:underline">
                         {savedValue(entry, column.key) || '—'}
                       </Link>
+                    ) : column.long ? (
+                      <LongText text={savedValue(entry, column.key)} title={column.label} />
+                    ) : column.artwork ? (
+                      <span className="inline-flex max-w-[16rem] items-center gap-1.5">
+                        <span className="min-w-0 truncate">{savedValue(entry, column.key) || '—'}</span>
+                        <ArtworkButton orderId={entry.orderId} itemId={entry.itemId} />
+                      </span>
                     ) : (
                       savedValue(entry, column.key) || '—'
                     )}
@@ -150,7 +198,8 @@ function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDele
                 <td className={cell}>{entry.markedByName || '—'}</td>
                 {canChange ? <EntryActions entry={entry} onEdit={onEdit} onDelete={onDelete} busy={busy} /> : null}
               </tr>
-            ))
+              )
+            )
           )}
         </tbody>
       </table>
@@ -158,24 +207,31 @@ function PaperBook({ stage, columns, entries, isAdmin, canChange, onEdit, onDele
   );
 }
 
-function EntryModal({
-  open,
-  onClose,
-  stage,
-  columns,
-  openLines,
-  chosen,
-  draft,
-  setDraft,
-  operatorName,
-  saving,
-  error,
-  isDelivery,
-  machines,
-  onRelease,
-  onSubmit,
-  editing = null,
-}) {
+const SAME_AS_BOOK = { rollSize: 'rollSize', colour: 'colour', jobSize: 'jobSize', impression: 'impression', artwork: 'artwork', hole: 'hole' };
+
+function JobDetails({ line, shownKeys }) {
+  const fields = (line.jobFields || []).filter((field) => !shownKeys.includes(SAME_AS_BOOK[field.key]));
+  const left = line.remaining != null && line.unit ? `${formatQty(line.remaining)} ${line.unit} of ${formatQty(line.quantity)}` : '';
+  if (!fields.length && !line.instructions && !left) return null;
+  return (
+    <EntrySection title="Job details for this stage" muted>
+      {left ? <ReadField label="Left to do" value={left} /> : null}
+      {fields.filter((field) => !field.long).map((field) => (
+        <ReadField key={field.key} label={field.label} value={field.value} />
+      ))}
+      {[...fields.filter((field) => field.long), line.instructions ? { key: 'instructions', label: 'Production instructions', value: line.instructions } : null]
+        .filter(Boolean)
+        .map((field) => (
+          <div key={field.key} className="col-span-full min-w-0">
+            <p className={labelClass}>{field.label}</p>
+            <p className="mt-1 whitespace-pre-line text-sm font-medium text-stone-900">{field.value}</p>
+          </div>
+        ))}
+    </EntrySection>
+  );
+}
+
+function entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDelivery, machines, editing }) {
   const paperQty = columns ? paperQuantities(stage, draft.details) : null;
   const madeNow = paperQty ? paperQty.outputQty : Number(draft.outputQty);
   const wasteNow = paperQty ? paperQty.wasteQty : Number(draft.wasteQty) || 0;
@@ -183,7 +239,7 @@ function EntryModal({
   const sourceUnit = editing ? '' : chosen?.pickup?.unit || pickedLot?.unit || chosen?.unit || '';
   const unitsDiffer = editing
     ? !isDelivery && Math.abs(Number(editing.inputQty) - (Number(editing.outputQty) + Number(editing.wasteQty || 0))) > 1e-6
-    : Boolean(chosen) && !isDelivery && sourceUnit.toLowerCase() !== String(chosen.unit || '').toLowerCase();
+    : Boolean(chosen) && sourceUnit.toLowerCase() !== String(chosen.unit || '').toLowerCase();
   const usedOver =
     !isDelivery &&
     !unitsDiffer &&
@@ -191,239 +247,409 @@ function EntryModal({
     Math.abs(Number(draft.inputQty) - (madeNow + wasteNow)) > 1e-6;
   const usedMissing = unitsDiffer && !(Number(draft.inputQty) > 0);
   const wasteBlocked = paperQty ? paperQty.wasteOk === false : false;
+  const weightError = paperQty?.weightError || '';
   const deliveryBlocked = isDelivery && (!draft.deliveryPartner || !draft.handoverPerson.trim() || !draft.vehicleNumber.trim());
 
   function setField(key, value) {
-    setDraft((current) => ({
-      ...current,
-      details: { ...(current.details || {}), [key]: value },
-    }));
+    setDraft((current) => {
+      const details = { ...(current.details || {}), [key]: value };
+      let autoNet = current.autoNet !== false;
+      if (stage === 'rolling' && key === 'net') autoNet = String(value).trim() === '';
+      if (stage === 'rolling' && autoNet && (key === 'gross' || key === 'tare')) {
+        const gross = Number(details.gross);
+        const tare = Number(details.tare || 0);
+        const ready = String(details.gross ?? '').trim() !== '' && Number.isFinite(gross) && Number.isFinite(tare) && gross >= tare;
+        details.net = ready ? String(Math.round((gross - tare) * 1000) / 1000) : '';
+      }
+      return { ...current, details, autoNet };
+    });
   }
 
   function chooseLine(jobId) {
     const line = openLines.find((item) => item.jobId === jobId);
     setDraft((current) => ({
       ...current,
+      machineId: '',
       jobId,
       lotId: line?.sourceLots?.[0]?.id || '',
-      details: {},
+      ...carryOver(stage, line, machines),
     }));
   }
 
+  const prefilled = new Set(draft.prefilled || []);
+  const fieldLabel = (key, label) => {
+    if (key === 'wastage' && unitsDiffer && sourceUnit) label = `${label} (${sourceUnit})`;
+    if (prefilled.has(key)) return `${label} · last entry`;
+    if (stage === 'rolling' && key === 'net' && draft.autoNet !== false && draft.details?.net) return `${label} · gross − tare`;
+    return label;
+  };
+  const needsValue = (key) => !editing && SHIFT_KEYS.has(key) && !String(draft.details?.[key] ?? '').trim();
+
   const setTop = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
-  const paperFields = (columns || []).filter((column) => column.key !== 'orderNumber');
-  const orderFields = paperFields.filter((column) => !column.edit);
-  const weightFields = paperFields.filter((column) => column.edit && WEIGHT_KEYS.has(column.key));
-  const lineFields = paperFields.filter((column) => column.edit && !WEIGHT_KEYS.has(column.key));
+  const canSubmit =
+    Boolean(chosen) && madeNow > 0 && !deliveryBlocked && !wasteBlocked && !weightError && !usedOver && !usedMissing;
 
-  function paperInput(column) {
-    const value = draft.details?.[column.key] || '';
-    const onChange = (event) => setField(column.key, event.target.value);
-    if (column.choices) {
-      return (
-        <select value={value} onChange={onChange} className={boxClass}>
-          <option value="">Choose</option>
-          {column.choices.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
-            </option>
-          ))}
-        </select>
-      );
-    }
-    if (column.long) {
-      return <textarea value={value} onChange={onChange} rows={3} placeholder="Write anything about this entry" className={boxClass} />;
-    }
-    const numeric = column.qty || WEIGHT_KEYS.has(column.key);
-    return <input value={value} onChange={onChange} inputMode={numeric ? 'decimal' : 'text'} placeholder={numeric ? '0' : ''} className={boxClass} />;
-  }
+  return {
+    madeNow,
+    sourceUnit,
+    unitsDiffer,
+    usedOver,
+    wasteBlocked,
+    weightError,
+    prefilled,
+    canSubmit,
+    setField,
+    chooseLine,
+    fieldLabel,
+    needsValue,
+    setTop,
+  };
+}
 
+function useEntryRowFocus(jobId) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const row = ref.current;
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    const target = row.querySelector('[data-needs="1"]') || row.querySelector('select:not([disabled]), input:not([type="date"])');
+    target?.focus({ preventScroll: true });
+  }, [jobId]);
+  return ref;
+}
+
+function OrderCell({ editing, draft, openLines, form }) {
+  if (editing) return <span className="font-semibold">{editing.orderNumber}</span>;
   return (
-    <Modal open={open} onClose={onClose} title={editing ? 'Edit entry' : 'New entry'} wide="entry">
-      <form onSubmit={onSubmit} className="space-y-4">
-        <EntrySection title="Entry">
-          <EntryField label="Date">
-            <input type="date" required value={draft.workDate} onChange={setTop('workDate')} className={boxClass} />
-          </EntryField>
-          {columns ? null : (
-            <EntryField label="Shift">
-              <select value={draft.shift} onChange={setTop('shift')} className={boxClass}>
-                {PRODUCTION_SHIFTS.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </EntryField>
-          )}
-          {editing ? (
-            <ReadField
-              label={columns?.find((column) => column.key === 'orderNumber')?.label || 'Order'}
-              value={`${editing.orderNumber} — ${editing.product}`}
-              wide
-            />
-          ) : (
-            <EntryField label={columns?.find((column) => column.key === 'orderNumber')?.label || 'Order'} wide>
-              <select required value={draft.jobId} onChange={(event) => chooseLine(event.target.value)} className={boxClass}>
-                <option value="">{openLines.length ? 'Choose' : 'Nothing waiting'}</option>
-                {openLines.map((line) => (
-                  <option key={line.jobId} value={line.jobId}>
-                    {line.orderNumber} — {line.product}
-                  </option>
-                ))}
-              </select>
-            </EntryField>
-          )}
-          {machines?.length ? (
-            <EntryField label="Machine">
-              <select value={draft.machineId || ''} onChange={setTop('machineId')} className={boxClass}>
-                <option value="">{editing ? editing.machineName || 'Keep as is' : 'Choose'}</option>
-                {machines.map((machine) => (
-                  <option key={machine.id} value={machine.id}>
-                    {machine.name}
-                  </option>
-                ))}
-              </select>
-            </EntryField>
-          ) : null}
-          {!editing && !chosen?.pickup && (chosen?.sourceLots || []).length ? (
-            <EntryField label="Material" wide>
-              <select value={draft.lotId || chosen.sourceLots[0]?.id || ''} onChange={setTop('lotId')} className={boxClass}>
-                {chosen.sourceLots.map((lot) => (
-                  <option key={lot.id} value={lot.id}>
-                    {lot.name} — {formatQty(lot.quantity)} {lot.unit}
-                  </option>
-                ))}
-              </select>
-            </EntryField>
-          ) : null}
-        </EntrySection>
-
-        {chosen?.pickup ? (
-          <p className="flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            <span>
-              {formatQty(chosen.pickup.qty)} {chosen.pickup.unit} already taken for this line
-              {chosen.pickup.lotName ? ` from ${chosen.pickup.lotName}` : ''}.
-            </span>
-            <button type="button" onClick={onRelease} disabled={saving} className="font-semibold underline disabled:opacity-50">
-              Return to store
-            </button>
-          </p>
-        ) : null}
-
-        <EntrySection title="From the order" muted>
-          {columns ? (
-            orderFields.map((column) => <ReadField key={column.key} label={column.label} value={orderValue(chosen, column.key)} />)
-          ) : (
-            <>
-              <ReadField label="Customer code" value={chosen?.customerCode} />
-              {chosen?.customerName ? <ReadField label="Customer name" value={chosen.customerName} /> : null}
-              <ReadField label="Product" value={chosen?.product} wide />
-              {editing ? null : <ReadField label="Left" value={chosen ? qtyOf(chosen.remaining, chosen.unit) : ''} />}
-            </>
-          )}
-          <ReadField label={columns ? OPERATOR_LABEL[stage] : 'Operator'} value={operatorName} />
-        </EntrySection>
-
-        {columns ? (
-          <>
-            {lineFields.length ? (
-              <EntrySection title="Written on this line">
-                {lineFields.map((column) => (
-                  <EntryField key={column.key} label={column.label} full={Boolean(column.long)}>
-                    {paperInput(column)}
-                  </EntryField>
-                ))}
-              </EntrySection>
-            ) : null}
-            {weightFields.length ? (
-              <EntrySection title="Weight">
-                {weightFields.map((column) => (
-                  <EntryField key={column.key} label={column.label}>
-                    {paperInput(column)}
-                  </EntryField>
-                ))}
-              </EntrySection>
-            ) : null}
-            {unitsDiffer ? (
-              <EntrySection title="Material used">
-                <EntryField label={sourceUnit ? `Used (${sourceUnit})` : 'Used'}>
-                  <input type="number" required min="0" step="any" value={draft.inputQty} onChange={setTop('inputQty')} className={boxClass} />
-                </EntryField>
-              </EntrySection>
-            ) : null}
-          </>
-        ) : (
-          <EntrySection title={isDelivery ? 'Delivery' : 'Quantity'}>
-            {isDelivery ? null : (
-              <EntryField label={sourceUnit ? `Used (${sourceUnit})` : 'Used'}>
-                <input type="number" required={unitsDiffer} min="0" step="any" value={draft.inputQty} onChange={setTop('inputQty')} className={boxClass} />
-              </EntryField>
-            )}
-            <EntryField label="Production">
-              <input
-                type="number"
-                required
-                min="0"
-                step="any"
-                value={draft.outputQty}
-                onChange={setTop('outputQty')}
-                placeholder={chosen && !editing ? `Left ${formatQty(chosen.remaining)}` : ''}
-                className={boxClass}
-              />
-            </EntryField>
-            {isDelivery ? (
-              <>
-                <EntryField label="Who is sending">
-                  <select required value={draft.deliveryPartner} onChange={setTop('deliveryPartner')} className={boxClass}>
-                    <option value="">Choose</option>
-                    {DELIVERY_PARTNERS.map((partner) => (
-                      <option key={partner} value={partner}>
-                        {partner}
-                      </option>
-                    ))}
-                  </select>
-                </EntryField>
-                <EntryField label="Person">
-                  <input required value={draft.handoverPerson} onChange={setTop('handoverPerson')} className={boxClass} />
-                </EntryField>
-                <EntryField label="Vehicle">
-                  <input required value={draft.vehicleNumber} onChange={setTop('vehicleNumber')} className={boxClass} />
-                </EntryField>
-              </>
-            ) : (
-              <EntryField label="Waste">
-                <input type="number" min="0" step="any" value={draft.wasteQty} onChange={setTop('wasteQty')} className={boxClass} />
-              </EntryField>
-            )}
-          </EntrySection>
-        )}
-
-        {wasteBlocked ? <p className="text-sm text-red-800">Enter wastage as a number.</p> : null}
-        {usedOver ? <p className="text-sm text-red-800">Used must equal made plus waste.</p> : null}
-        {error ? <p className="text-sm text-red-800">{error}</p> : null}
-        <div className="sticky bottom-0 -mx-3 -mb-3 flex items-center justify-end gap-2 border-t border-stone-300 bg-card px-3 py-3 sm:-mx-5 sm:-mb-5 sm:px-5 lg:static lg:mx-0 lg:mb-0 lg:bg-transparent lg:px-0 lg:pb-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded border border-stone-400 bg-white px-4 py-2.5 text-sm font-semibold text-stone-800 sm:flex-none lg:py-2"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving || !chosen || !(madeNow > 0) || deliveryBlocked || wasteBlocked || usedOver || usedMissing}
-            className="flex-1 rounded bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 sm:flex-none lg:py-2"
-          >
-            {saving ? 'Saving…' : editing ? 'Save' : 'Enter'}
-          </button>
-        </div>
-      </form>
-    </Modal>
+    <select
+      form={ENTRY_FORM}
+      required
+      value={draft.jobId}
+      onChange={(event) => form.chooseLine(event.target.value)}
+      title="Order"
+      className={`${cellBox} font-semibold ${draft.jobId ? '' : needsTint}`}
+    >
+      <option value="">{openLines.length ? 'Choose order' : 'Nothing waiting'}</option>
+      {openLines.map((line) => (
+        <option key={line.jobId} value={line.jobId}>
+          {line.orderNumber} — {line.product}
+        </option>
+      ))}
+    </select>
   );
 }
 
-export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '', onConsumePreset, onEntryState }) {
+function PaperCellInput({ column, draft, form }) {
+  const value = draft.details?.[column.key] || '';
+  const onChange = (event) => form.setField(column.key, event.target.value);
+  const needs = form.needsValue(column.key);
+  const title = form.fieldLabel(column.key, column.label);
+  const tint = needs ? needsTint : form.prefilled.has(column.key) ? 'bg-sky-50' : '';
+  if (column.choices) {
+    return (
+      <select form={ENTRY_FORM} value={value} onChange={onChange} title={title} className={`${cellBox} min-w-[9rem] ${tint}`}>
+        <option value="">Choose</option>
+        {column.choices.map((choice) => (
+          <option key={choice} value={choice}>
+            {choice}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  if (column.long) {
+    return <textarea form={ENTRY_FORM} value={value} onChange={onChange} rows={2} title={title} placeholder="Notes" className={`${cellBox} min-w-[14rem] ${tint}`} />;
+  }
+  const numeric = column.qty || WEIGHT_KEYS.has(column.key);
+  return (
+    <input
+      form={ENTRY_FORM}
+      value={value}
+      onChange={onChange}
+      inputMode={numeric ? 'decimal' : 'text'}
+      placeholder={numeric ? '0' : ''}
+      title={title}
+      data-needs={needs ? '1' : undefined}
+      className={`${cellBox} ${numeric ? 'min-w-[5.5rem]' : 'min-w-[8rem]'} ${tint}`}
+    />
+  );
+}
+
+function ReadCell({ column, line }) {
+  const value = orderValue(line, column.key);
+  if (column.long) return <LongText text={value} title={column.label} />;
+  if (column.artwork && line) {
+    return (
+      <span className="inline-flex max-w-[16rem] items-center gap-1.5">
+        <span className="min-w-0 truncate">{value || '—'}</span>
+        <ArtworkButton orderId={line.orderId} itemId={line.itemId} />
+      </span>
+    );
+  }
+  return value || '—';
+}
+
+function RowSave({ form, saving, editing, onCancel }) {
+  return (
+    <td className={`${cell} text-right`}>
+      <div className="flex justify-end gap-1">
+        <button
+          type="submit"
+          form={ENTRY_FORM}
+          disabled={saving || !form.canSubmit}
+          className="rounded bg-stone-900 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : editing ? 'Save' : 'Enter'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded border border-stone-400 bg-white px-2 py-1 text-xs font-semibold text-stone-800 hover:bg-stone-100"
+        >
+          Cancel
+        </button>
+      </div>
+    </td>
+  );
+}
+
+const entryRowClass = 'bg-[#fff3cf] shadow-[inset_0_0_0_2px_#d97706]';
+
+function PaperEntryRow({ columns, cellAt, draft, form, chosen, editing, openLines, operatorName, saving, onCancel }) {
+  const ref = useEntryRowFocus(draft.jobId);
+  return (
+    <tr ref={ref} className={entryRowClass} onKeyDown={(event) => event.key === 'Escape' && onCancel()}>
+      <td {...cellAt('no', 'text-xs font-semibold uppercase text-amber-800')}>{editing ? 'Edit' : 'New'}</td>
+      <td {...cellAt('date')}>
+        <input form={ENTRY_FORM} type="date" required value={draft.workDate} onChange={form.setTop('workDate')} className={cellBox} />
+      </td>
+      {columns.map((column) => (
+        <td key={column.key} {...cellAt(column.key, 'align-top')}>
+          {column.key === 'orderNumber' ? (
+            <OrderCell editing={editing} draft={draft} openLines={openLines} form={form} />
+          ) : column.edit ? (
+            <PaperCellInput column={column} draft={draft} form={form} />
+          ) : (
+            <ReadCell column={column} line={chosen} />
+          )}
+        </td>
+      ))}
+      <td className={cell}>{editing ? editing.markedByName || '—' : operatorName || '—'}</td>
+      <RowSave form={form} saving={saving} editing={editing} onCancel={onCancel} />
+    </tr>
+  );
+}
+
+function PlainEntryRow({ draft, form, chosen, editing, openLines, operatorName, saving, onCancel, isDelivery, showCustomerName }) {
+  const ref = useEntryRowFocus(draft.jobId);
+  const needsQty = !editing && draft.outputQty === '';
+  const text = (key, label) => (
+    <input
+      form={ENTRY_FORM}
+      required
+      value={draft[key]}
+      onChange={form.setTop(key)}
+      title={form.fieldLabel(key, label)}
+      className={`${cellBox} min-w-[8rem] ${draft[key].trim() ? (form.prefilled.has(key) ? 'bg-sky-50' : '') : needsTint}`}
+    />
+  );
+  return (
+    <tr ref={ref} className={entryRowClass} onKeyDown={(event) => event.key === 'Escape' && onCancel()}>
+      <td className={`${cell} text-xs font-semibold uppercase text-amber-800`}>{editing ? 'Edit' : 'New'}</td>
+      <td className={cell}>
+        <input form={ENTRY_FORM} type="date" required value={draft.workDate} onChange={form.setTop('workDate')} className={`${cellBox} min-w-[9rem]`} />
+      </td>
+      <td className={cell}>
+        <div className="min-w-[12rem]">
+          <OrderCell editing={editing} draft={draft} openLines={openLines} form={form} />
+        </div>
+      </td>
+      <td className={cell}>{chosen?.customerCode || '—'}</td>
+      {showCustomerName ? <td className={cell}>{chosen?.customerName || '—'}</td> : null}
+      <td className={cell}>{chosen?.product || '—'}</td>
+      <td className={cell}>
+        <input
+          form={ENTRY_FORM}
+          type="number"
+          required
+          min="0"
+          step="any"
+          value={draft.outputQty}
+          onChange={form.setTop('outputQty')}
+          placeholder={chosen && !editing ? `Left ${formatQty(chosen.remaining)}` : '0'}
+          title={isDelivery ? 'Quantity sent' : 'Production'}
+          data-needs={needsQty ? '1' : undefined}
+          className={`${cellBox} min-w-[7rem] ${needsQty ? needsTint : ''}`}
+        />
+      </td>
+      {isDelivery ? (
+        <>
+          <td className={cell}>
+            <select
+              form={ENTRY_FORM}
+              required
+              value={draft.deliveryPartner}
+              onChange={form.setTop('deliveryPartner')}
+              title={form.fieldLabel('deliveryPartner', 'Who is sending')}
+              className={`${cellBox} min-w-[8rem] ${draft.deliveryPartner ? (form.prefilled.has('deliveryPartner') ? 'bg-sky-50' : '') : needsTint}`}
+            >
+              <option value="">Choose</option>
+              {DELIVERY_PARTNERS.map((partner) => (
+                <option key={partner} value={partner}>
+                  {partner}
+                </option>
+              ))}
+            </select>
+          </td>
+          <td className={cell}>{text('handoverPerson', 'Person')}</td>
+          <td className={cell}>{text('vehicleNumber', 'Vehicle')}</td>
+        </>
+      ) : (
+        <>
+          <td className={cell}>
+            <input
+              form={ENTRY_FORM}
+              type="number"
+              required={form.unitsDiffer}
+              min="0"
+              step="any"
+              value={draft.inputQty}
+              onChange={form.setTop('inputQty')}
+              placeholder={form.unitsDiffer ? form.sourceUnit : 'auto'}
+              title={form.sourceUnit ? `Used (${form.sourceUnit})` : 'Used'}
+              className={`${cellBox} min-w-[6rem]`}
+            />
+          </td>
+          <td className={cell}>
+            <input
+              form={ENTRY_FORM}
+              type="number"
+              min="0"
+              step="any"
+              value={draft.wasteQty}
+              onChange={form.setTop('wasteQty')}
+              placeholder="0"
+              title="Waste"
+              className={`${cellBox} min-w-[6rem]`}
+            />
+          </td>
+          <td className={cell}>{chosen?.pickup?.lotName || (chosen?.sourceLots || []).find((lot) => lot.id === draft.lotId)?.name || '—'}</td>
+        </>
+      )}
+      <td className={cell}>{editing ? editing.markedByName || '—' : operatorName || '—'}</td>
+      <RowSave form={form} saving={saving} editing={editing} onCancel={onCancel} />
+    </tr>
+  );
+}
+
+function BarField({ label, children }) {
+  return (
+    <label className="block min-w-0">
+      <span className={labelClass}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery, fromTask, saving, error, onRelease }) {
+  const lots = !editing && !chosen?.pickup ? chosen?.sourceLots || [] : [];
+  const showUsed = form.unitsDiffer && Boolean(columns || isDelivery);
+  return (
+    <div className="space-y-2 border-b border-amber-300 bg-[#fffaf0] px-4 py-3">
+      {fromTask && !editing ? (
+        <p className="text-sm text-sky-950">
+          <span className="font-semibold">From task {fromTask}.</span> The yellow row in the register below is filled from the order
+          {draft.prefilled?.length ? ' and the last entry (light blue boxes)' : ''}. Type this shift&apos;s figures in the{' '}
+          <span className="font-semibold text-amber-800">orange-bordered</span> boxes and press Enter. You&apos;ll go back to your tasks.
+        </p>
+      ) : (
+        <p className="text-sm text-stone-700">
+          {editing ? 'Change the yellow row in the register, then press Save.' : 'Fill the yellow row at the top of the register, then press Enter.'}
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        {columns ? null : (
+          <BarField label="Shift">
+            <select form={ENTRY_FORM} value={draft.shift} onChange={form.setTop('shift')} className={barBox}>
+              {PRODUCTION_SHIFTS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </BarField>
+        )}
+        {machines?.length ? (
+          <BarField label={form.fieldLabel('machineId', 'Machine')}>
+            <select
+              form={ENTRY_FORM}
+              value={draft.machineId || ''}
+              onChange={form.setTop('machineId')}
+              className={`${barBox} ${form.prefilled.has('machineId') ? 'bg-sky-50' : ''}`}
+            >
+              <option value="">{editing ? editing.machineName || 'Keep as is' : 'Choose'}</option>
+              {machines.map((machine) => (
+                <option key={machine.id} value={machine.id}>
+                  {machine.name}
+                </option>
+              ))}
+            </select>
+          </BarField>
+        ) : null}
+        {lots.length ? (
+          <BarField label="Material">
+            <select form={ENTRY_FORM} value={draft.lotId || lots[0]?.id || ''} onChange={form.setTop('lotId')} className={`${barBox} max-w-[22rem]`}>
+              {lots.map((lot) => (
+                <option key={lot.id} value={lot.id}>
+                  {lot.name} — {formatQty(lot.quantity)} {lot.unit}
+                </option>
+              ))}
+            </select>
+          </BarField>
+        ) : null}
+        {showUsed ? (
+          <BarField label={`${isDelivery ? 'Taken from stock' : 'Used'}${form.sourceUnit ? ` (${form.sourceUnit})` : ''}`}>
+            <input
+              form={ENTRY_FORM}
+              type="number"
+              required
+              min="0"
+              step="any"
+              value={draft.inputQty}
+              onChange={form.setTop('inputQty')}
+              className={`${barBox} w-32 ${Number(draft.inputQty) > 0 ? '' : needsTint}`}
+            />
+          </BarField>
+        ) : null}
+      </div>
+      {chosen?.pickup ? (
+        <p className="flex flex-wrap items-center gap-2 text-sm text-amber-950">
+          <span>
+            {formatQty(chosen.pickup.qty)} {chosen.pickup.unit} already taken for this line
+            {chosen.pickup.lotName ? ` from ${chosen.pickup.lotName}` : ''}.
+          </span>
+          <button type="button" onClick={onRelease} disabled={saving} className="font-semibold underline disabled:opacity-50">
+            Return to store
+          </button>
+        </p>
+      ) : null}
+      {form.wasteBlocked ? <p className="text-sm text-red-800">Enter wastage as a number.</p> : null}
+      {form.weightError ? <p className="text-sm text-red-800">{form.weightError}</p> : null}
+      {form.usedOver ? <p className="text-sm text-red-800">Used must equal made plus waste.</p> : null}
+      {error ? <p className="text-sm text-red-800">{error}</p> : null}
+      {!editing && chosen ? (
+        <details open={Boolean(fromTask)} className="rounded border border-stone-300 bg-white px-3 py-2">
+          <summary className="cursor-pointer text-sm font-semibold text-stone-900">Job sheet for this order</summary>
+          <div className="mt-2">
+            <JobDetails line={chosen} shownKeys={(columns || []).filter((column) => !column.edit).map((column) => column.key)} />
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', operatorName = '', onConsumePreset, onEntryState, onSaved }) {
   const { user } = useAuth();
   const showCustomerName = isSuperAdmin(user);
   const [book, setBook] = useState(null);
@@ -450,7 +676,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
   });
 
   useEffect(() => {
-    if (!stage || stage === 'dispatch' || stage === 'delivery') {
+    if (!stage || stage === 'dispatch') {
       setMachines([]);
       return;
     }
@@ -501,11 +727,24 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
     openedJob.current = presetJob;
     setDraft((current) => ({
       ...current,
+      ...blankDraft(),
       jobId: presetJob,
       lotId: line.sourceLots?.[0]?.id || '',
+      ...carryOver(stage, line, machines),
     }));
     setEntryOpen(true);
   }, [book, presetJob]);
+
+  useEffect(() => {
+    if (!entryOpen || editing || !machines.length) return;
+    setDraft((current) => {
+      if (current.machineId || !current.jobId) return current;
+      const line = (book?.open || []).find((item) => item.jobId === current.jobId);
+      const carried = carryOver(stage, line, machines);
+      if (!carried.machineId) return current;
+      return { ...current, machineId: carried.machineId, prefilled: [...new Set([...(current.prefilled || []), 'machineId'])] };
+    });
+  }, [machines, entryOpen, editing, book, stage]);
 
   const entries = [...(book?.entries || [])].sort(
     (a, b) => new Date(b.workDate || b.markedAt) - new Date(a.workDate || a.markedAt)
@@ -515,6 +754,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
   const editLine = editing
     ? {
         orderId: editing.orderId,
+        itemId: editing.itemId,
         orderNumber: editing.orderNumber,
         product: editing.product,
         productCode: editing.productCode,
@@ -527,8 +767,12 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
       }
     : null;
   const chosen = editLine || openLines.find((line) => line.jobId === draft.jobId) || null;
-  const isDelivery = stage === 'delivery';
+  const isDelivery = stage === 'dispatch';
   const columns = bookColumns(stage, showCustomerName);
+  const form = entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDelivery, machines, editing });
+  const adding = entryOpen && !editing;
+  const editingId = entryOpen && editing ? editing.id : '';
+  const rowProps = { draft, form, chosen, editing, openLines, operatorName, saving, onCancel: closeEntry };
 
   async function reloadStage() {
     const next = await registersApi.stage(stage);
@@ -573,7 +817,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
         itemId: chosen.itemId,
         stage,
         outputQty: made,
-        inputQty: isDelivery ? made : used,
+        inputQty: isDelivery ? (draft.inputQty === '' ? made : Number(draft.inputQty)) : used,
         wasteQty: waste,
         lotId: draft.lotId || undefined,
         machineId: draft.machineId || undefined,
@@ -590,8 +834,9 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
       }));
       setEntryOpen(false);
       onConsumePreset?.();
+      if (onSaved?.()) return;
       await reloadStage();
-      setNotice('Entered on this register and the production floor.');
+      setNotice('Entry saved on the register.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -618,6 +863,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
     setEditing(entry);
     setDraft({
       ...blankDraft(),
+      autoNet: false,
       jobId: 'edit',
       inputQty: differ ? String(entry.inputQty ?? '') : '',
       outputQty: String(entry.outputQty ?? ''),
@@ -705,6 +951,24 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
       {error && !entryOpen ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p> : null}
       {notice ? <p className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{notice}</p> : null}
       {!book && !error ? <p className="border-b border-stone-200 px-4 py-2 text-sm text-stone-500">Loading…</p> : null}
+      {entryOpen ? (
+        <>
+          <form id={ENTRY_FORM} onSubmit={submitEntry} className="hidden" />
+          <EntryBar
+            columns={columns}
+            draft={draft}
+            form={form}
+            chosen={chosen}
+            editing={editing}
+            machines={machines}
+            isDelivery={isDelivery}
+            fromTask={fromTask}
+            saving={saving}
+            error={error}
+            onRelease={putBack}
+          />
+        </>
+      ) : null}
       {columns ? (
         <PaperBook
           stage={stage}
@@ -715,6 +979,9 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
           onEdit={startEdit}
           onDelete={removeEntry}
           busy={saving}
+          adding={adding}
+          editingId={editingId}
+          renderEntry={(cellAt) => <PaperEntryRow key="entry-row" columns={columns} cellAt={cellAt} {...rowProps} />}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -727,7 +994,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
                 <th className={head}>Customer code</th>
                 {showCustomerName ? <th className={head}>Customer name</th> : null}
                 <th className={head}>Product</th>
-                <th className={head}>Production</th>
+                <th className={head}>{isDelivery ? 'Sent' : 'Production'}</th>
                 {isDelivery ? (
                   <>
                     <th className={head}>Who</th>
@@ -746,14 +1013,20 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
               </tr>
             </thead>
             <tbody>
+              {adding ? <PlainEntryRow isDelivery={isDelivery} showCustomerName={showCustomerName} {...rowProps} /> : null}
               {entries.length === 0 ? (
-                <tr>
+                adding ? null : (
+                  <tr>
                     <td className={`${cell} text-stone-500`} colSpan={10 + (canEnter ? 1 : 0) + (showCustomerName ? 1 : 0)}>
-                    No entry on this stage yet.
-                  </td>
-                </tr>
+                      No entry on this stage yet.
+                    </td>
+                  </tr>
+                )
               ) : (
-                entries.map((entry, index) => (
+                entries.map((entry, index) =>
+                  entry.id === editingId ? (
+                    <PlainEntryRow key={entry.id} isDelivery={isDelivery} showCustomerName={showCustomerName} {...rowProps} />
+                  ) : (
                   <tr key={entry.id} className={index % 2 ? 'bg-[#fbf7ee]' : 'bg-white'}>
                     <td className={`${cell} text-stone-500`}>{index + 1}</td>
                     <td className={cell}>{formatDate(entry.workDate || entry.markedAt)}</td>
@@ -782,30 +1055,13 @@ export function StageRegister({ stage, isAdmin, presetJob = '', operatorName = '
                     <td className={cell}>{entry.markedByName || '—'}</td>
                     {canEnter ? <EntryActions entry={entry} onEdit={startEdit} onDelete={removeEntry} busy={saving} /> : null}
                   </tr>
-                ))
+                  )
+                )
               )}
             </tbody>
           </table>
         </div>
       )}
-      <EntryModal
-        open={entryOpen}
-        onClose={closeEntry}
-        stage={stage}
-        columns={columns}
-        openLines={openLines}
-        chosen={chosen}
-        draft={draft}
-        setDraft={setDraft}
-        operatorName={operatorName}
-        saving={saving}
-        error={error}
-        isDelivery={isDelivery}
-        machines={machines}
-        onRelease={putBack}
-        onSubmit={submitEntry}
-        editing={editing}
-      />
     </>
   );
 }

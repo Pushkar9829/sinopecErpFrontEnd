@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { usePermission } from '../hooks/usePermission';
+import { useFloorWorker, usePermission } from '../hooks/usePermission';
+import { useTaskSummary } from '../hooks/useTaskSummary';
 import { ANALYTICS_VIEW_KEYS, PRODUCTION_VIEW_KEYS, SALES_ORDER_VIEW_KEYS } from '../lib/sales';
 
 const homeLink = { to: '/', label: 'Dashboard', end: true };
@@ -12,19 +13,21 @@ const pageLinks = [
   { to: '/inventory', label: 'Inventory', permission: 'inventory:read' },
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
-  { to: '/production', label: 'Production floor', anyOf: PRODUCTION_VIEW_KEYS },
   { to: '/registers', label: 'Register', anyOf: [...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS] },
   { to: '/roles', label: 'Roles', permission: 'roles:read' },
   { to: '/sales-orders', label: 'Orders', anyOf: SALES_ORDER_VIEW_KEYS },
   { to: '/stages', label: 'Stages', anyOf: ['production:read', 'inventory:read'] },
+  { to: '/tasks', label: 'Tasks', permission: 'tasks:read', badge: 'tasks' },
   { to: '/users', label: 'Users', permission: 'users:read' },
 ].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
-
-const links = [homeLink, ...pageLinks];
 
 export function Sidebar({ open = false, onClose }) {
   const { user, logout } = useAuth();
   const { can } = usePermission();
+  const floorWorker = useFloorWorker();
+  const links = floorWorker ? pageLinks : [homeLink, ...pageLinks];
+  const taskSummary = useTaskSummary();
+  const badges = { tasks: taskSummary?.total || 0 };
 
   return (
     <aside
@@ -62,12 +65,17 @@ export function Sidebar({ open = false, onClose }) {
               to={link.to}
               end={link.end}
               className={({ isActive }) =>
-                `block rounded-lg px-3 py-2.5 text-sm lg:py-1.5 ${
+                `flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm lg:py-1.5 ${
                   isActive ? 'bg-accent text-white' : 'text-paper/80 hover:bg-white/10'
                 }`
               }
             >
               {link.label}
+              {link.badge && badges[link.badge] ? (
+                <span className="min-w-5 rounded-full bg-rose-600 px-1.5 text-center text-xs font-semibold text-white">
+                  {badges[link.badge] > 99 ? '99+' : badges[link.badge]}
+                </span>
+              ) : null}
             </NavLink>
           ))}
       </nav>

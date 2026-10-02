@@ -152,11 +152,11 @@ export function UserEdit() {
         ) : null}
         <label className="block text-base font-semibold text-ink">
           Role
-          <RoleMenu roles={roles} value={form.roleId} disabled={!canEdit} onChange={(roleId) => update('roleId', roleId)} />
+          <RoleMenu roles={roles} value={form.roleId} disabled={!canEdit || id === currentUser?.id} onChange={(roleId) => update('roleId', roleId)} />
         </label>
         <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
           <span className="text-base font-semibold text-ink">Account status</span>
-          <StatusToggle checked={form.isActive} disabled={!canEdit} onChange={(isActive) => update('isActive', isActive)} />
+          <StatusToggle checked={form.isActive} disabled={!canEdit || id === currentUser?.id} onChange={(isActive) => update('isActive', isActive)} />
         </div>
 
         {error ? <p className="text-sm text-red-700">{error}</p> : null}

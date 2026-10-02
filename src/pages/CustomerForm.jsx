@@ -54,6 +54,7 @@ export function CustomerForm() {
   const [options, setOptions] = useState({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(!isEdit);
 
   useEffect(() => {
     Promise.all([salesSettingsApi.listTemplates(), salesSettingsApi.options()])
@@ -83,6 +84,7 @@ export function CustomerForm() {
           isActive: customer.isActive !== false,
         });
         setProducts((customer.products || []).map(itemFromApi));
+        setLoaded(true);
       })
       .catch((err) => setError(err.message));
   }, [id]);
@@ -112,6 +114,15 @@ export function CustomerForm() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!loaded) {
+    return (
+      <div className="space-y-5">
+        <FormBar title="Customer" />
+        {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : <p className="text-sm text-slate">Loading customer…</p>}
+      </div>
+    );
   }
 
   return (

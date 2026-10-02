@@ -16,7 +16,7 @@ function safeBack(value) {
   return value && value.startsWith('/') && !value.startsWith('//') ? value : '';
 }
 
-export function Registers({ floor = false }) {
+export function Registers() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,6 +31,7 @@ export function Registers({ floor = false }) {
   const stage = searchParams.get('stage') || '';
   const presetJob = searchParams.get('job') || '';
   const backTo = safeBack(searchParams.get('back') || '');
+  const fromTask = backTo.startsWith('/tasks') ? searchParams.get('task') || '' : '';
   const openedFromJob = useRef(Boolean(presetJob));
   const stages = useMemo(
     () => (isAdmin ? PRODUCTION_STAGES : PRODUCTION_STAGES.filter((item) => can(item.read))),
@@ -85,11 +86,17 @@ export function Registers({ floor = false }) {
     setSearchParams(next, { replace: true });
   }
 
-  function openOrder(orderId) {
-    navigate(`/registers/${orderId}${floor ? '?from=floor' : ''}`);
+  function afterSave() {
+    if (!fromTask) return false;
+    navigate(`${backTo}${backTo.includes('?') ? '&' : '?'}saved=${encodeURIComponent(fromTask)}`);
+    return true;
   }
 
-  const fallback = floor ? '/production' : '/registers?view=orders';
+  function openOrder(orderId) {
+    navigate(`/registers/${orderId}`);
+  }
+
+  const fallback = isAdmin ? '/registers?view=orders' : '/tasks';
 
   return (
     <div className="-mx-3 -my-3 flex h-[calc(100dvh-3rem)] min-h-0 flex-col sm:-mx-5 sm:-my-4 lg:-mx-6 lg:h-dvh">
@@ -97,11 +104,11 @@ export function Registers({ floor = false }) {
         <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-3 py-2 lg:px-4">
           <div className="flex flex-wrap items-center gap-2">
             {backTo ? (
-              <BackButton to={backTo} label="Order book" />
+              <BackButton to={backTo} label={backTo.startsWith('/tasks') ? 'Tasks' : 'Order book'} />
             ) : openedFromJob.current ? (
               <BackButton fallback={fallback} />
             ) : null}
-            <h1 className="text-lg font-semibold text-stone-900">{floor ? 'Production floor' : 'Register'}</h1>
+            <h1 className="text-lg font-semibold text-stone-900">Register</h1>
             {isAdmin ? (
               <div className="flex overflow-hidden rounded-sm border border-stone-800">
                 <button
@@ -201,9 +208,11 @@ export function Registers({ floor = false }) {
             stage={stage}
             isAdmin={isAdmin}
             presetJob={presetJob}
+            fromTask={presetJob ? fromTask : ''}
             operatorName={user?.fullName || user?.username || ''}
             onConsumePreset={clearJob}
             onEntryState={onEntryState}
+            onSaved={afterSave}
           />
         )}
       </div>

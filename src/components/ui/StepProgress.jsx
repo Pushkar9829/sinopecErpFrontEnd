@@ -8,6 +8,7 @@ export const STEP_MARKS = {
   amounts: { badge: 'bg-emerald-600 text-white', idle: 'border border-emerald-300 bg-emerald-100 text-emerald-800', title: 'text-emerald-800', shell: 'border-emerald-300' },
   progress: { badge: 'bg-teal-600 text-white', idle: 'border border-teal-300 bg-teal-100 text-teal-800', title: 'text-teal-800', shell: 'border-teal-300' },
   work: { badge: 'bg-orange-600 text-white', idle: 'border border-orange-300 bg-orange-100 text-orange-900', title: 'text-orange-900', shell: 'border-orange-300' },
+  tasks: { badge: 'bg-rose-600 text-white', idle: 'border border-rose-300 bg-rose-100 text-rose-800', title: 'text-rose-800', shell: 'border-rose-300' },
 };
 
 export function stepMark(id) {

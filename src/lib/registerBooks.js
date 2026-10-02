@@ -15,16 +15,13 @@ export const STAGE_COLUMNS = {
   rolling: [
     { key: 'orderNumber', label: 'Order' },
     { key: 'product', label: 'Name' },
-    { key: 'productCode', label: 'Code' },
     { key: 'customerCode', label: 'Customer code' },
     { key: 'rollSize', label: 'Roll size' },
     { key: 'rollType', label: 'Roll type', edit: true, choices: ROLLING_ROLL_TYPES },
-    { key: 'exStock', label: 'Ex-stock (D.S.)', edit: true, choices: ['D.S.'] },
     { key: 'colour', label: 'Colour' },
-    { key: 'weight', label: 'Weight', edit: true },
-    { key: 'gross', label: 'Gross', edit: true },
+    { key: 'gross', label: 'Gross wt', edit: true },
     { key: 'tare', label: 'Tare', edit: true },
-    { key: 'net', label: 'Net', edit: true },
+    { key: 'net', label: 'Net wt', edit: true },
     { key: 'description', label: 'Description', edit: true, long: true },
   ],
   printing: [
@@ -37,6 +34,7 @@ export const STAGE_COLUMNS = {
     { key: 'quantity', label: 'Quantity', edit: true, qty: 'output' },
     { key: 'impression', label: 'impression' },
     { key: 'colorUsed', label: 'color used' },
+    { key: 'artwork', label: 'Artwork', artwork: true },
     { key: 'cylinderSize', label: 'Cylinder size', edit: true },
     { key: 'wastage', label: 'wastage', edit: true, qty: 'waste' },
     { key: 'printDescription', label: 'Print description', edit: true, long: true },
@@ -51,8 +49,7 @@ export const STAGE_COLUMNS = {
     { key: 'tubeUsed', label: 'Tape used', edit: true },
     { key: 'hole', label: 'Hole' },
     { key: 'rollType', label: 'Hole type', edit: true },
-    { key: 'cuts', label: 'No. of cuts', edit: true },
-    { key: 'discKnife', label: 'Disc / knife', edit: true, choices: ['disc', 'knife'] },
+    { key: 'packets', label: 'No. of packets', edit: true },
     { key: 'description', label: 'Description', edit: true, long: true },
   ],
 };
@@ -117,11 +114,14 @@ export function paperQuantities(stage, details) {
     };
   }
   const netText = String(fields.net ?? '').trim();
-  const weightText = String(fields.weight ?? '').trim();
   const net = Number(netText);
-  const weight = Number(weightText);
-  const outputQty = netText !== '' && Number.isFinite(net) ? net : weight;
-  return { outputQty, wasteQty: 0 };
+  const gross = Number(String(fields.gross ?? fields.weight ?? '').trim());
+  const outputQty = netText !== '' && Number.isFinite(net) ? net : gross;
+  let weightError = '';
+  if (netText !== '' && Number.isFinite(net) && Number.isFinite(gross) && gross > 0 && net > gross) {
+    weightError = 'Net weight cannot be more than gross weight.';
+  }
+  return { outputQty, wasteQty: 0, weightError };
 }
 
 export function orderValue(line, key) {
@@ -144,10 +144,6 @@ export function savedValue(entry, key, customerName = '') {
   if (key === 'customerCode') return entry.customerCode || '';
   if (key === 'quantity') return entry.outputQty ? String(entry.outputQty) : '';
   if (key === 'wastage') return entry.details?.wastage || (entry.wasteQty ? String(entry.wasteQty) : '');
-  if (key === 'discKnife') {
-    if (entry.details?.discKnife) return entry.details.discKnife;
-    return [entry.details?.disc, entry.details?.knife].filter(Boolean).join(' · ');
-  }
   return entry.details?.[key] || '';
 }
 

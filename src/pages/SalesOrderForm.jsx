@@ -15,14 +15,15 @@ import {
   PAYMENT_METHODS,
   PAYMENT_TERMS,
   PRIORITIES,
-  PRODUCTION_ROUTES,
   applyRoute,
   calcOrder,
   canSeeCommercial,
   emptyLineItem,
+  fitRoute,
   formatMoney,
   itemFromApi,
   itemToPayload,
+  routesFor,
   toDateInput,
 } from '../lib/sales';
 
@@ -35,6 +36,9 @@ const FLOW_CHIPS = {
   roll_print_dispatch: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
   roll_print_cut_dispatch: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
   roll_cut_dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+  print_dispatch: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
+  print_cut_dispatch: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  cut_dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
 };
 
 function PlusIcon() {
@@ -45,7 +49,7 @@ function PlusIcon() {
   );
 }
 
-function FlowMenu({ disabled, onPick }) {
+function FlowMenu({ disabled, onPick, routes }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -74,7 +78,7 @@ function FlowMenu({ disabled, onPick }) {
       </button>
       {open ? (
         <div className="absolute right-0 z-20 mt-1 w-80 rounded-lg border border-line bg-white p-1 shadow-md">
-          {PRODUCTION_ROUTES.map((route) => {
+          {routes.map((route) => {
             const tone = FLOW_CHIPS[route.id] || FLOW_CHIPS.roll_dispatch;
             return (
               <button
@@ -133,15 +137,20 @@ export function SalesOrderForm() {
     ORDER_TYPES.some((type) => type.id === searchParams.get('type')) ? searchParams.get('type') : 'sales_order'
   );
   const typeInfo = ORDER_TYPES.find((type) => type.id === orderType) || ORDER_TYPES[0];
+  const allowedRoutes = routesFor(orderType);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(!isEdit);
   const [tab, setTab] = useState('order');
   const [templates, setTemplates] = useState([]);
   const [options, setOptions] = useState({});
+  const [paidAmount, setPaidAmount] = useState(0);
 
   const selectedCustomer = customers.find((customer) => customer.id === header.customerId);
-  const totals = useMemo(() => calcOrder(items, header.discount, header.advanceAmount), [items, header.discount, header.advanceAmount]);
+  const totals = useMemo(
+    () => calcOrder(items, header.discount, header.advanceAmount, paidAmount),
+    [items, header.discount, header.advanceAmount, paidAmount]
+  );
 
   useEffect(() => {
     Promise.all([customersApi.list(), salesSettingsApi.listTemplates(), salesSettingsApi.options()])
@@ -154,6 +163,10 @@ export function SalesOrderForm() {
   }, []);
 
   useEffect(() => {
+    setItems((prev) => prev.map((item) => fitRoute(item, orderType)));
+  }, [orderType]);
+
+  useEffect(() => {
     if (!id) return;
     salesOrdersApi
       .get(id)
@@ -163,6 +176,7 @@ export function SalesOrderForm() {
           return;
         }
         setNumber(order.number);
+        setPaidAmount(Number(order.paidAmount) || 0);
         setOrderType(order.orderType || 'sales_order');
         setHeader({
           customerId: order.customer?.id || '',
@@ -202,7 +216,7 @@ export function SalesOrderForm() {
       deliveryLocation: customer?.shippingAddress || customer?.billingAddress || prev.deliveryLocation,
     }));
 
-    const attached = (customer?.products || []).map((product) => ({ ...itemFromApi(product), id: undefined }));
+    const attached = (customer?.products || []).map((product) => fitRoute({ ...itemFromApi(product), id: undefined }, orderType));
     if (!attached.length) return;
     const entered = items.filter((item) => item.product.trim());
     if (entered.length) {
@@ -407,12 +421,13 @@ export function SalesOrderForm() {
             <div className="flex flex-wrap items-center gap-2">
               <FlowMenu
                 disabled={!canSave}
+                routes={allowedRoutes}
                 onPick={(route) => setItems((prev) => prev.map((item) => applyRoute(item, route)))}
               />
               {canSave ? (
                 <button
                   type="button"
-                  onClick={() => setItems((prev) => [...prev, emptyLineItem()])}
+                  onClick={() => setItems((prev) => [...prev, fitRoute(emptyLineItem(), orderType)])}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
                 >
                   <PlusIcon />
@@ -433,8 +448,11 @@ export function SalesOrderForm() {
                 templates={templates}
                 options={options}
                 removable={items.length > 1}
+                routes={allowedRoutes}
                 onChange={(next) =>
-                  setItems((prev) => prev.map((row) => (row.uid === item.uid ? (typeof next === 'function' ? next(row) : next) : row)))
+                  setItems((prev) =>
+                    prev.map((row) => (row.uid === item.uid ? fitRoute(typeof next === 'function' ? next(row) : next, orderType) : row))
+                  )
                 }
                 onRemove={() => setItems((prev) => prev.filter((row) => row.uid !== item.uid))}
               />

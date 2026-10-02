@@ -351,7 +351,7 @@ export function Stages() {
                     <IconButton label="Edit stage" className="text-ink hover:bg-paper" onClick={() => navigate(`/stages/${stage.id}`)}>
                       <PencilIcon />
                     </IconButton>
-                    {canDelete ? (
+                    {canDelete && !stage.builtIn ? (
                       <IconButton label="Delete stage" className="text-red-700 hover:bg-red-50" onClick={() => handleDelete(stage)}>
                         <TrashIcon />
                       </IconButton>

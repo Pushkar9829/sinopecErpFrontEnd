@@ -3,23 +3,52 @@ export const SALES_ORDER_VIEW_KEYS = [
   'production:read',
   'inventory:read',
   'accounts:read',
+  'dispatch:read',
 ];
 
 export const ANALYTICS_VIEW_KEYS = ['production:read'];
 
 export const PRODUCTION_ROUTES = [
-  { id: 'roll_dispatch', label: 'Rolling → Dispatch → Delivery', stages: ['rolling', 'dispatch', 'delivery'] },
-  { id: 'roll_print_dispatch', label: 'Rolling → Printing → Dispatch → Delivery', stages: ['rolling', 'printing', 'dispatch', 'delivery'] },
-  { id: 'roll_print_cut_dispatch', label: 'Rolling → Printing → Cutting → Dispatch → Delivery', stages: ['rolling', 'printing', 'cutting', 'dispatch', 'delivery'] },
-  { id: 'roll_cut_dispatch', label: 'Rolling → Cutting → Dispatch → Delivery', stages: ['rolling', 'cutting', 'dispatch', 'delivery'] },
+  { id: 'roll_dispatch', label: 'Rolling → Dispatch', stages: ['rolling', 'dispatch'], orderType: 'sales_order' },
+  { id: 'roll_print_dispatch', label: 'Rolling → Printing → Dispatch', stages: ['rolling', 'printing', 'dispatch'], orderType: 'sales_order' },
+  { id: 'roll_print_cut_dispatch', label: 'Rolling → Printing → Cutting → Dispatch', stages: ['rolling', 'printing', 'cutting', 'dispatch'], orderType: 'sales_order' },
+  { id: 'roll_cut_dispatch', label: 'Rolling → Cutting → Dispatch', stages: ['rolling', 'cutting', 'dispatch'], orderType: 'sales_order' },
+  { id: 'print_dispatch', label: 'Printing → Dispatch', stages: ['printing', 'dispatch'], orderType: 'job_work' },
+  { id: 'print_cut_dispatch', label: 'Printing → Cutting → Dispatch', stages: ['printing', 'cutting', 'dispatch'], orderType: 'job_work' },
+  { id: 'cut_dispatch', label: 'Cutting → Dispatch', stages: ['cutting', 'dispatch'], orderType: 'job_work' },
 ];
+
+const ROUTE_SWAP = {
+  job_work: {
+    roll_dispatch: 'print_dispatch',
+    roll_print_dispatch: 'print_dispatch',
+    roll_print_cut_dispatch: 'print_cut_dispatch',
+    roll_cut_dispatch: 'cut_dispatch',
+  },
+  sales_order: {
+    print_dispatch: 'roll_print_dispatch',
+    print_cut_dispatch: 'roll_print_cut_dispatch',
+    cut_dispatch: 'roll_cut_dispatch',
+  },
+};
+
+export function routesFor(orderType) {
+  const type = orderType === 'job_work' ? 'job_work' : 'sales_order';
+  return PRODUCTION_ROUTES.filter((route) => route.orderType === type);
+}
+
+export function fitRoute(item, orderType) {
+  const allowed = routesFor(orderType);
+  if (allowed.some((route) => route.id === item.productionRoute)) return item;
+  const type = orderType === 'job_work' ? 'job_work' : 'sales_order';
+  return applyRoute(item, ROUTE_SWAP[type][item.productionRoute] || allowed[0].id);
+}
 
 export const PRODUCTION_STAGES = [
   { id: 'rolling', label: 'Rolling', read: 'production:rolling:read', update: 'production:rolling:update' },
   { id: 'printing', label: 'Printing', read: 'production:printing:read', update: 'production:printing:update' },
   { id: 'cutting', label: 'Cutting', read: 'production:cutting:read', update: 'production:cutting:update' },
   { id: 'dispatch', label: 'Dispatch', read: 'dispatch:read', update: 'dispatch:update' },
-  { id: 'delivery', label: 'Delivery', read: 'dispatch:read', update: 'dispatch:update' },
 ];
 
 export const PRODUCTION_SHIFTS = [
@@ -100,7 +129,6 @@ export const STEP_LABELS = {
   cutting: 'Cutting',
   packing: 'Packing',
   dispatch: 'Dispatch',
-  delivery: 'Delivery',
 };
 
 export const NEXT_STATUS_LABELS = { ...STATUS_LABELS };
@@ -158,7 +186,7 @@ export function routeHasCut(route) {
 }
 
 export function routeStages(route) {
-  return PRODUCTION_ROUTES.find((item) => item.id === route)?.stages || ['rolling', 'dispatch', 'delivery'];
+  return PRODUCTION_ROUTES.find((item) => item.id === route)?.stages || ['rolling', 'dispatch'];
 }
 
 export function applyRoute(item, route) {
@@ -463,17 +491,17 @@ export function calcLine(item) {
   return { taxable: money(taxable), tax: money(tax), amount: money(taxable) };
 }
 
-export function calcOrder(items, orderDiscount, advanceAmount) {
+export function calcOrder(items, orderDiscount, advanceAmount, paidAmount = 0) {
   let subtotal = 0;
   let tax = 0;
   for (const item of items) {
-    const line = calcLine(item);
-    subtotal += line.taxable;
-    tax += line.tax;
+    const taxable = Math.max(0, (Number(item.quantity) || 0) * (Number(item.rate) || 0) - (Number(item.discount) || 0));
+    subtotal += taxable;
+    tax += (taxable * (Number(item.taxPercent) || 0)) / 100;
   }
   const discount = Math.max(0, Number(orderDiscount) || 0);
   const grandTotal = Math.max(0, subtotal - discount + tax);
-  const remaining = Math.max(0, grandTotal - Math.max(0, Number(advanceAmount) || 0));
+  const remaining = Math.max(0, grandTotal - Math.max(0, Number(advanceAmount) || 0) - (Number(paidAmount) || 0));
   return {
     subtotal: money(subtotal),
     discount: money(discount),

@@ -2,6 +2,7 @@ import { confirmAction } from '../components/ui/ConfirmHost';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
+import { salesOrdersApi } from '../api/salesOrders.api';
 import { BackButton } from '../components/ui/BackButton';
 import { usePermission } from '../hooks/usePermission';
 
@@ -176,6 +177,7 @@ const emptyForm = {
   stageId: '',
   notes: '',
   kind: 'catalog',
+  salesOrderId: '',
 };
 
 export function InventoryForm() {
@@ -190,8 +192,19 @@ export function InventoryForm() {
   const [meta, setMeta] = useState({ materialTypes: [], units: [] });
   const [form, setForm] = useState({
     ...emptyForm,
-    category: searchParams.get('category') || 'raw',
+    category: searchParams.get('order') ? 'raw' : searchParams.get('category') || 'raw',
+    salesOrderId: searchParams.get('order') || '',
   });
+  const [jobWorks, setJobWorks] = useState([]);
+
+  useEffect(() => {
+    salesOrdersApi
+      .list()
+      .then((orders) =>
+        setJobWorks(orders.filter((order) => order.orderType === 'job_work' && !['cancelled', 'completed'].includes(order.status)))
+      )
+      .catch(() => setJobWorks([]));
+  }, []);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -225,6 +238,8 @@ export function InventoryForm() {
           stageId: item.stage?.id || '',
           notes: item.notes || '',
           kind: item.kind || 'catalog',
+          salesOrderId: item.kind === 'wip' ? '' : item.salesOrderId || '',
+          canDelete: item.canDelete !== false,
         });
       })
       .catch((err) => setError(err.message));
@@ -263,6 +278,7 @@ export function InventoryForm() {
           notes: form.notes,
           stageId: needsStage ? form.stageId : null,
           unitPrice: hidePrice || form.unitPrice === '' ? null : Number(form.unitPrice),
+          salesOrderId: form.category === 'raw' ? form.salesOrderId || null : null,
         };
 
     try {
@@ -336,6 +352,34 @@ export function InventoryForm() {
             ))}
           </datalist>
         </label>
+
+        {form.category === 'raw' && !isWip && (jobWorks.length || form.salesOrderId) ? (
+          <label className="block text-base font-semibold text-ink">
+            Customer material for job work <span className="font-normal text-slate">(optional)</span>
+            <select
+              disabled={locked}
+              value={form.salesOrderId}
+              onChange={(event) => update('salesOrderId', event.target.value)}
+              className={inputClass}
+            >
+              <option value="">Not customer material</option>
+              {form.salesOrderId && !jobWorks.some((order) => order.id === form.salesOrderId) ? (
+                <option value={form.salesOrderId}>Linked job work</option>
+              ) : null}
+              {jobWorks.map((order) => (
+                <option key={order.id} value={order.id}>
+                  {order.number}
+                  {order.customer?.name ? ` · ${order.customer.name}` : ''}
+                </option>
+              ))}
+            </select>
+            {form.salesOrderId ? (
+              <span className="mt-1 block text-sm font-normal text-slate">
+                Saving this closes the job work's "Receive customer material" task.
+              </span>
+            ) : null}
+          </label>
+        ) : null}
 
         {needsStage ? (
           <label className="block text-base font-semibold text-ink">
@@ -424,7 +468,7 @@ export function InventoryForm() {
             </button>
           ) : null}
           <BackButton fallback="/inventory" label="Back to list" />
-          {isEdit && can('inventory:delete') ? (
+          {isEdit && can('inventory:delete') && form.canDelete !== false ? (
             <button
               type="button"
               title="Delete material"

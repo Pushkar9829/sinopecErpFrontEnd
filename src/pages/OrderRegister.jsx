@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
+import { ArtworkButton } from '../components/register/ArtworkButton';
+import { LongText } from '../components/register/LongText';
 import { badgeTones, stepTone, tabActiveTones } from '../components/ui/Badge';
 import { useAuth } from '../context/AuthContext';
 import { OPERATOR_LABEL, bookColumns, frozenColumns, isSuperAdmin, savedValue } from '../lib/registerBooks';
@@ -21,7 +23,7 @@ function byNewest(a, b) {
 function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fromFloor, showCustomerName }) {
   const columns = bookColumns(stage.id, showCustomerName);
   const plainSpan = showCustomerName ? 10 : 9;
-  const isDispatch = stage.id === 'dispatch';
+  const showUsage = stage.id !== 'dispatch';
   const backTo = `/registers/${orderId}?stage=${stage.id}${fromFloor ? '&from=floor' : ''}`;
   const entries = [];
   const openLines = [];
@@ -64,8 +66,8 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
                 <th className={head}>Customer code</th>
                 {showCustomerName ? <th className={head}>Customer name</th> : null}
                 <th className={head}>Product</th>
-                <th className={head}>Production</th>
-                {isDispatch ? (
+                <th className={head}>{showUsage ? 'Production' : 'Sent'}</th>
+                {showUsage ? (
                   <>
                     <th className={head}>Used</th>
                     <th className={head}>Waste</th>
@@ -99,7 +101,16 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
               {columns ? (
                 columns.map((column) => (
                   <td key={column.key} {...cellAt(column.key)}>
-                    {column.edit ? '—' : savedValue({ ...line, orderNumber, customerName, customerCode, details: line.specs }, column.key, customerName) || '—'}
+                    {column.edit ? (
+                      '—'
+                    ) : column.artwork ? (
+                      <span className="inline-flex max-w-[16rem] items-center gap-1.5">
+                        <span className="min-w-0 truncate">{line.specs?.artwork || '—'}</span>
+                        <ArtworkButton orderId={orderId} itemId={line.itemId} />
+                      </span>
+                    ) : (
+                      savedValue({ ...line, orderNumber, customerName, customerCode, details: line.specs }, column.key, customerName) || '—'
+                    )}
                   </td>
                 ))
               ) : (
@@ -138,7 +149,16 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
               {columns ? (
                 columns.map((column) => (
                   <td key={column.key} {...cellAt(column.key)}>
-                    {savedValue(entry, column.key, customerName) || '—'}
+                    {column.long ? (
+                      <LongText text={savedValue(entry, column.key, customerName)} title={column.label} />
+                    ) : column.artwork ? (
+                      <span className="inline-flex max-w-[16rem] items-center gap-1.5">
+                        <span className="min-w-0 truncate">{savedValue(entry, column.key, customerName) || '—'}</span>
+                        <ArtworkButton orderId={orderId} itemId={entry.itemId} />
+                      </span>
+                    ) : (
+                      savedValue(entry, column.key, customerName) || '—'
+                    )}
                   </td>
                 ))
               ) : (
@@ -147,7 +167,7 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
                   {showCustomerName ? <td className={cell}>{entry.customerName || '—'}</td> : null}
                   <td className={cell}>{entry.product || '—'}</td>
                   <td className={`${cell} font-semibold`}>{qtyOf(entry.outputQty, entry.unit)}</td>
-                  {isDispatch ? (
+                  {showUsage ? (
                     <>
                       <td className={cell}>{formatQty(entry.inputQty)}</td>
                       <td className={cell}>{entry.wasteQty ? formatQty(entry.wasteQty) : '—'}</td>
@@ -223,7 +243,7 @@ export function OrderRegister() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-stone-800 bg-[#fffdf6]">
         <div className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b-2 border-stone-800 bg-[#f6f1e4] px-3 py-2 lg:px-4">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <BackButton fallback={fromFloor ? '/production' : '/registers?view=orders'} />
+            <BackButton fallback="/registers?view=orders" />
             <h1 className="text-lg font-semibold text-stone-900">{book?.orderNumber || 'Order'}</h1>
             {book?.customerCode ? <p className="text-sm text-stone-700">{book.customerCode}</p> : null}
             {showCustomerName && book?.customerName ? <p className="text-sm text-stone-700">{book.customerName}</p> : null}
