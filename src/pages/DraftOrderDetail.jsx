@@ -5,15 +5,20 @@ import { resolveMediaUrl } from '../api/client';
 import { PageHeader } from '../components/ui/PageHeader';
 
 const STATUS_LABEL = {
-  received: 'Waiting to read',
+  stored: 'In mailbox',
+  received: 'Queued for reading',
   reading: 'Reading',
-  needs_review: 'Needs review',
+  needs_review: 'Draft ready',
   reading_failed: 'Reading failed',
   discarded: 'Discarded',
 };
 
 function senderOf(draft) {
   return [draft.sender?.name, draft.sender?.phone, draft.sender?.email].filter(Boolean).join(' · ') || 'Unknown sender';
+}
+
+function sizeOf(line) {
+  return [line.width, line.length].filter(Boolean).join(' × ');
 }
 
 function FieldLine({ label, value }) {
@@ -111,6 +116,15 @@ export function DraftOrderDetail() {
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="space-y-3 rounded-xl border border-line bg-white p-4">
             <h2 className="text-lg font-semibold">Original</h2>
+            {draft.subject ? <p className="text-sm font-semibold">{draft.subject}</p> : null}
+            {draft.potentialOrder ? (
+              <p className="text-sm text-amber-950">
+                Potential order{draft.matchedKeywords?.length ? ` · ${draft.matchedKeywords.join(', ')}` : ''}
+              </p>
+            ) : null}
+            {draft.channel === 'gmail' && draft.status === 'stored' ? (
+              <p className="text-sm text-slate">No order keywords, so this mail was not sent to the reader.</p>
+            ) : null}
             <p className="whitespace-pre-wrap text-sm">{draft.rawBody || 'No text was sent with this message.'}</p>
             {draft.files?.length ? (
               <ul className="space-y-1 text-sm">
@@ -145,15 +159,22 @@ export function DraftOrderDetail() {
                       <th className="py-1 pr-2 font-medium">Product</th>
                       <th className="py-1 pr-2 font-medium">Qty</th>
                       <th className="py-1 pr-2 font-medium">Unit</th>
+                      <th className="py-1 pr-2 font-medium">Size</th>
                       <th className="py-1 font-medium">Rate</th>
                     </tr>
                   </thead>
                   <tbody>
                     {lines.map((line, index) => (
                       <tr key={`${line.product}-${index}`} className="border-t border-line">
-                        <td className="py-1 pr-2">{line.product || '—'}</td>
+                        <td className="py-1 pr-2">
+                          <div>{line.product || '—'}</div>
+                          {line.material || line.notes ? (
+                            <div className="text-xs text-slate">{[line.material, line.notes].filter(Boolean).join(' · ')}</div>
+                          ) : null}
+                        </td>
                         <td className="py-1 pr-2">{line.quantity ?? '—'}</td>
                         <td className="py-1 pr-2">{line.unit || '—'}</td>
+                        <td className="py-1 pr-2">{sizeOf(line) || '—'}</td>
                         <td className="py-1">{line.rate ?? '—'}</td>
                       </tr>
                     ))}

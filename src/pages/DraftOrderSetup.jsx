@@ -14,6 +14,7 @@ const EMPTY = {
   gmailClientSecret: '',
   geminiApiKey: '',
   geminiModel: 'gemini-3.5-flash-lite',
+  orderKeywords: '',
 };
 
 export function DraftOrderSetup() {
@@ -45,6 +46,7 @@ export function DraftOrderSetup() {
           whatsappPhoneNumberId: data.whatsappPhoneNumberId || '',
           gmailClientId: data.gmailClientId || '',
           geminiModel: data.geminiModel || 'gemini-3.5-flash-lite',
+          orderKeywords: data.orderKeywords || '',
         }));
       })
       .catch((err) => setError(err.message));
@@ -161,7 +163,10 @@ export function DraftOrderSetup() {
             <input className={inputClass} type="password" value={form.gmailClientSecret} onChange={(event) => set('gmailClientSecret', event.target.value)} placeholder={saved?.gmailClientSecretSet ? 'Saved. Type a new value to replace it.' : ''} />
           </Field>
         </div>
-        <p className="text-sm text-slate">Save the client id and secret, then connect. Unread mail from the last 7 days is pulled into this tab.</p>
+        <p className="text-sm text-slate">Save the client id and secret, then connect. Mail from the last 30 days is listed in this tab. The reader runs only when a keyword below is present, and that mail is marked Potential order.</p>
+        <Field label="Order keywords, one per line">
+          <textarea className={`${inputClass} min-h-36 font-mono text-xs`} value={form.orderKeywords} onChange={(event) => set('orderKeywords', event.target.value)} />
+        </Field>
       </Section>
 
       <Section title="Reader">
