@@ -25,6 +25,7 @@ import { SalesOrderDetail } from './pages/SalesOrderDetail';
 import { DraftOrders } from './pages/DraftOrders';
 import { DraftOrderSetup } from './pages/DraftOrderSetup';
 import { DraftOrderDetail } from './pages/DraftOrderDetail';
+import { DraftOrderForm } from './pages/DraftOrderForm';
 import { SalesSettings } from './pages/SalesSettings';
 import { ProductTemplateForm } from './pages/ProductTemplateForm';
 import { RateCalculator } from './pages/RateCalculator';
@@ -75,6 +76,7 @@ export default function App() {
               <Route element={<ProtectedRoute permission="sales:create" />}>
                 <Route path="draft-orders" element={<DraftOrders />} />
                 <Route path="draft-orders/setup" element={<DraftOrderSetup />} />
+                <Route path="draft-orders/new" element={<DraftOrderForm />} />
                 <Route path="draft-orders/:id" element={<DraftOrderDetail />} />
               </Route>
               <Route element={<ProtectedRoute permission="sales:read" />}>

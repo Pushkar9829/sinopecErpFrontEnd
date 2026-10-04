@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { intakeApi } from '../api/intake.api';
 import { Field, Section, inputClass } from '../components/ui/FormField';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -18,15 +18,12 @@ const EMPTY = {
 };
 
 export function DraftOrderSetup() {
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const [form, setForm] = useState(EMPTY);
   const [saved, setSaved] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
-  const [paste, setPaste] = useState('');
-  const [pasting, setPasting] = useState(false);
 
   useEffect(() => {
     const gmail = params.get('gmail');
@@ -75,19 +72,6 @@ export function DraftOrderSetup() {
       setError(err.message);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function onPaste(event) {
-    event.preventDefault();
-    setPasting(true);
-    setError('');
-    try {
-      const draft = await intakeApi.paste(paste);
-      navigate(`/draft-orders/${draft.id}`);
-    } catch (err) {
-      setError(err.message);
-      setPasting(false);
     }
   }
 
@@ -163,8 +147,9 @@ export function DraftOrderSetup() {
             <input className={inputClass} type="password" value={form.gmailClientSecret} onChange={(event) => set('gmailClientSecret', event.target.value)} placeholder={saved?.gmailClientSecretSet ? 'Saved. Type a new value to replace it.' : ''} />
           </Field>
         </div>
-        <p className="text-sm text-slate">Save the client id and secret, then connect. Mail from the last 30 days is listed in this tab. The reader runs only when a keyword below is present, and that mail is marked Potential order.</p>
-        <Field label="Order keywords, one per line">
+        <p className="text-sm text-slate">Save the client id and secret, then connect. Mail from the last 30 days is listed in this tab.</p>
+        <Field label="Order keywords for mail and WhatsApp, one per line">
+          <span className="mt-1 block text-sm font-normal text-slate">A message with one of these words is marked Potential order and read by AI. Others are listed only.</span>
           <textarea className={`${inputClass} min-h-36 font-mono text-xs`} value={form.orderKeywords} onChange={(event) => set('orderKeywords', event.target.value)} />
         </Field>
       </Section>
@@ -185,17 +170,9 @@ export function DraftOrderSetup() {
         {saving ? 'Saving…' : 'Save setup'}
       </button>
 
-      <Section title="Paste a message">
-        <Field label="Text to read without WhatsApp">
-          <textarea className={`${inputClass} min-h-28`} value={paste} onChange={(event) => setPaste(event.target.value)} />
-        </Field>
-        <button type="button" onClick={onPaste} disabled={pasting} className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60">
-          {pasting ? 'Reading…' : 'Create a test draft'}
-        </button>
-      </Section>
-
       <p className="text-sm text-slate">
-        Back to the <Link to="/draft-orders" className="font-semibold text-accent">draft list</Link>.
+        To test the reader without WhatsApp or mail, use <Link to="/draft-orders/new" className="font-semibold text-accent">New draft</Link> and paste a message. Back to the{' '}
+        <Link to="/draft-orders" className="font-semibold text-accent">draft list</Link>.
       </p>
     </form>
   );
