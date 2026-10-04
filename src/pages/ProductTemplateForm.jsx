@@ -57,14 +57,7 @@ export function ProductTemplateForm() {
         name: productName,
         code: spec.productCode,
         isActive,
-        ...itemToPayload({
-          ...spec,
-          manufacturing: {
-            ...spec.manufacturing,
-            color: spec.color,
-            requiredQuantity: spec.quantity ? `${spec.quantity} ${spec.unit || 'pcs'}`.trim() : '',
-          },
-        }),
+        ...itemToPayload(spec),
       };
       if (isEdit) await salesSettingsApi.updateTemplate(id, payload);
       else await salesSettingsApi.createTemplate(payload);

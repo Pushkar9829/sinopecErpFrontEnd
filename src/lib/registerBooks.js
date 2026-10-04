@@ -22,6 +22,7 @@ export const STAGE_COLUMNS = {
     { key: 'gross', label: 'Gross wt', edit: true },
     { key: 'tare', label: 'Tare', edit: true },
     { key: 'net', label: 'Net wt', edit: true },
+    { key: 'wastage', label: 'wastage (kg)', edit: true, qty: 'waste' },
     { key: 'description', label: 'Description', edit: true, long: true },
   ],
   printing: [
@@ -33,7 +34,7 @@ export const STAGE_COLUMNS = {
     { key: 'jobSize', label: 'Job size' },
     { key: 'quantity', label: 'Quantity', edit: true, qty: 'output' },
     { key: 'impression', label: 'impression' },
-    { key: 'colorUsed', label: 'color used' },
+    { key: 'colorUsed', label: 'colour used' },
     { key: 'artwork', label: 'Artwork', artwork: true },
     { key: 'cylinderSize', label: 'Cylinder size', edit: true },
     { key: 'wastage', label: 'wastage', edit: true, qty: 'waste' },
@@ -46,6 +47,7 @@ export const STAGE_COLUMNS = {
     { key: 'rollSize', label: 'Roll size' },
     { key: 'size', label: 'Size' },
     { key: 'quantity', label: 'Quantity', edit: true, qty: 'output' },
+    { key: 'wastage', label: 'wastage', edit: true, qty: 'waste' },
     { key: 'tubeUsed', label: 'Tape used', edit: true },
     { key: 'hole', label: 'Hole' },
     { key: 'rollType', label: 'Hole type', edit: true },
@@ -103,25 +105,25 @@ export const OPERATOR_LABEL = {
 
 export function paperQuantities(stage, details) {
   const fields = details || {};
+  const wasteText = String(fields.wastage ?? '').trim();
+  const wasteNumber = Number(wasteText);
+  const wasteOk = wasteText === '' || (Number.isFinite(wasteNumber) && wasteNumber >= 0);
+  const wasteQty = wasteOk ? wasteNumber || 0 : 0;
   if (stage === 'printing' || stage === 'cutting') {
-    const wasteText = String(fields.wastage ?? '').trim();
-    const waste = Number(wasteText);
-    const wasteOk = stage !== 'printing' || wasteText === '' || (Number.isFinite(waste) && waste >= 0);
-    return {
-      outputQty: Number(fields.quantity),
-      wasteQty: stage === 'printing' && wasteOk ? waste || 0 : 0,
-      wasteOk,
-    };
+    return { outputQty: Number(fields.quantity), wasteQty, wasteOk };
   }
   const netText = String(fields.net ?? '').trim();
   const net = Number(netText);
   const gross = Number(String(fields.gross ?? fields.weight ?? '').trim());
-  const outputQty = netText !== '' && Number.isFinite(net) ? net : gross;
+  const tare = Number(String(fields.tare ?? '').trim()) || 0;
+  const outputQty = netText !== '' && Number.isFinite(net) ? net : Math.round((gross - tare) * 1000) / 1000;
   let weightError = '';
   if (netText !== '' && Number.isFinite(net) && Number.isFinite(gross) && gross > 0 && net > gross) {
     weightError = 'Net weight cannot be more than gross weight.';
+  } else if (netText === '' && Number.isFinite(gross) && tare > gross) {
+    weightError = 'Tare cannot be more than gross weight.';
   }
-  return { outputQty, wasteQty: 0, weightError };
+  return { outputQty, wasteQty, wasteOk, weightError };
 }
 
 export function orderValue(line, key) {

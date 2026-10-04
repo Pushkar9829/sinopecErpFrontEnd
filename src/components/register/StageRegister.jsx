@@ -7,17 +7,10 @@ import { ArtworkButton } from './ArtworkButton';
 import { LongText } from './LongText';
 import { useAuth } from '../../context/AuthContext';
 import { OPERATOR_LABEL, STAGE_COLUMNS, bookColumns, frozenColumns, isSuperAdmin, orderValue, paperQuantities, savedValue, typedDetails } from '../../lib/registerBooks';
-import { DELIVERY_PARTNERS, PRODUCTION_SHIFTS, formatDate, formatQty, toDateInput } from '../../lib/sales';
+import { DELIVERY_PARTNERS, formatDate, formatQty, toDateInput } from '../../lib/sales';
 
 const cell = 'whitespace-nowrap border-b border-r border-stone-300 px-2 py-1.5 align-middle text-sm';
 const head = 'whitespace-nowrap border-b border-r border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
-
-function todayShift() {
-  const hour = new Date().getHours();
-  if (hour < 14) return 'morning';
-  if (hour < 22) return 'afternoon';
-  return 'night';
-}
 
 function qtyOf(value, unit) {
   return `${formatQty(value)} ${unit || ''}`.trim();
@@ -35,21 +28,20 @@ function blankDraft() {
     handoverPerson: '',
     vehicleNumber: '',
     machineId: '',
-    shift: todayShift(),
     workDate: toDateInput(new Date()),
     prefilled: [],
     autoNet: true,
   };
 }
 
-// Fields that usually stay the same from one shift to the next on the same line.
+// Fields that usually stay the same from one entry to the next on the same line.
 const CARRY_OVER = {
   rolling: ['rollType', 'tare'],
   printing: ['cylinderSize', 'printDescription'],
   cutting: ['tubeUsed', 'rollType'],
 };
-// Figures written fresh every shift.
-const SHIFT_KEYS = new Set(['gross', 'net', 'quantity']);
+// Figures written fresh for every entry.
+const FRESH_KEYS = new Set(['gross', 'net', 'quantity']);
 
 function carryOver(stage, line, machines) {
   const last = (line?.entries || []).at(-1);
@@ -238,7 +230,7 @@ function entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDeliv
   const pickedLot = (chosen?.sourceLots || []).find((lot) => lot.id === draft.lotId) || chosen?.sourceLots?.[0];
   const sourceUnit = editing ? '' : chosen?.pickup?.unit || pickedLot?.unit || chosen?.unit || '';
   const unitsDiffer = editing
-    ? !isDelivery && Math.abs(Number(editing.inputQty) - (Number(editing.outputQty) + Number(editing.wasteQty || 0))) > 1e-6
+    ? Math.abs(Number(editing.inputQty) - (Number(editing.outputQty) + (isDelivery ? 0 : Number(editing.wasteQty || 0)))) > 1e-6
     : Boolean(chosen) && sourceUnit.toLowerCase() !== String(chosen.unit || '').toLowerCase();
   const usedOver =
     !isDelivery &&
@@ -283,7 +275,7 @@ function entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDeliv
     if (stage === 'rolling' && key === 'net' && draft.autoNet !== false && draft.details?.net) return `${label} · gross − tare`;
     return label;
   };
-  const needsValue = (key) => !editing && SHIFT_KEYS.has(key) && !String(draft.details?.[key] ?? '').trim();
+  const needsValue = (key) => !editing && FRESH_KEYS.has(key) && !String(draft.details?.[key] ?? '').trim();
 
   const setTop = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
   const canSubmit =
@@ -559,7 +551,7 @@ function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery,
       {fromTask && !editing ? (
         <p className="text-sm text-sky-950">
           <span className="font-semibold">From task {fromTask}.</span> The yellow row in the register below is filled from the order
-          {draft.prefilled?.length ? ' and the last entry (light blue boxes)' : ''}. Type this shift&apos;s figures in the{' '}
+          {draft.prefilled?.length ? ' and the last entry (light blue boxes)' : ''}. Type today&apos;s figures in the{' '}
           <span className="font-semibold text-amber-800">orange-bordered</span> boxes and press Enter. You&apos;ll go back to your tasks.
         </p>
       ) : (
@@ -568,17 +560,6 @@ function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery,
         </p>
       )}
       <div className="flex flex-wrap items-end gap-3">
-        {columns ? null : (
-          <BarField label="Shift">
-            <select form={ENTRY_FORM} value={draft.shift} onChange={form.setTop('shift')} className={barBox}>
-              {PRODUCTION_SHIFTS.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </BarField>
-        )}
         {machines?.length ? (
           <BarField label={form.fieldLabel('machineId', 'Machine')}>
             <select
@@ -666,7 +647,6 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     inputQty: '',
     outputQty: '',
     wasteQty: '',
-    shift: todayShift(),
     workDate: toDateInput(new Date()),
     deliveryPartner: '',
     handoverPerson: '',
@@ -800,7 +780,6 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
           inputQty: draft.inputQty === '' ? undefined : Number(draft.inputQty),
           machineId: draft.machineId || undefined,
           workDate: draft.workDate,
-          shift: draft.shift || undefined,
           vehicleNumber: draft.vehicleNumber,
           handoverPerson: draft.handoverPerson,
           deliveryPartner: draft.deliveryPartner,
@@ -822,7 +801,6 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
         lotId: draft.lotId || undefined,
         machineId: draft.machineId || undefined,
         workDate: draft.workDate,
-        shift: draft.shift || todayShift(),
         vehicleNumber: draft.vehicleNumber,
         handoverPerson: draft.handoverPerson,
         deliveryPartner: draft.deliveryPartner,
@@ -856,7 +834,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
   function startEdit(entry) {
     const details = { ...(entry.details || {}) };
     if (stage === 'printing' || stage === 'cutting') details.quantity = String(entry.outputQty || '');
-    if (stage === 'printing' && !details.wastage && entry.wasteQty) details.wastage = String(entry.wasteQty);
+    if (!details.wastage && entry.wasteQty) details.wastage = String(entry.wasteQty);
     const differ = Math.abs(Number(entry.inputQty) - (Number(entry.outputQty) + Number(entry.wasteQty || 0))) > 1e-6;
     setError('');
     setNotice('');
@@ -868,7 +846,6 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
       inputQty: differ ? String(entry.inputQty ?? '') : '',
       outputQty: String(entry.outputQty ?? ''),
       wasteQty: entry.wasteQty ? String(entry.wasteQty) : '',
-      shift: entry.shift || todayShift(),
       workDate: toDateInput(entry.workDate || entry.markedAt || new Date()),
       deliveryPartner: entry.deliveryPartner || '',
       handoverPerson: entry.handoverPerson || '',

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { analyticsApi } from '../api/analytics.api';
 import { productionApi } from '../api/production.api';
 import { salesOrdersApi } from '../api/salesOrders.api';
-import { ActiveBadge, Badge, PriorityBadge, panelTones, valueTones } from '../components/ui/Badge';
+import { Badge, PriorityBadge, panelTones, stepTone, valueTones } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +13,17 @@ import { tasksApi } from '../api/tasks.api';
 import { stageJobKey, TASKS_CHANGED_EVENT } from '../lib/tasks';
 import { useFloorWorker, usePermission } from '../hooks/usePermission';
 import { useTaskSummary } from '../hooks/useTaskSummary';
-import { PRODUCTION_STAGES, PRODUCTION_VIEW_KEYS, canViewAnalytics, canViewSalesOrders, formatDate, formatQty } from '../lib/sales';
+import {
+  PRODUCTION_STAGES,
+  PRODUCTION_VIEW_KEYS,
+  canSeeCommercial,
+  canViewAnalytics,
+  canViewSalesOrders,
+  formatDate,
+  formatMoney,
+  formatQty,
+  statusLabel,
+} from '../lib/sales';
 
 const DONE_LABEL = {
   rolling: 'Rolled',
@@ -214,12 +225,153 @@ function FloorDashboard() {
 const outlineLink =
   'inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper';
 
-function Stat({ label, children }) {
-  return (
-    <div className="rounded-xl border border-line bg-card px-4 py-3">
+function ymd(date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+function formatPct(value) {
+  if (value == null) return '—';
+  return `${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 1 })}%`;
+}
+
+function trend(value, suffix = '%') {
+  if (value == null) return 'vs previous 7 days: —';
+  return `${value > 0 ? '+' : ''}${value}${suffix} vs previous 7 days`;
+}
+
+function MetricCard({ label, value, hint, tone = 'muted', to }) {
+  const body = (
+    <>
       <p className="text-sm font-semibold text-ink">{label}</p>
-      <div className="mt-1 text-base font-semibold text-ink">{children}</div>
-    </div>
+      <p className={`mt-1 text-xl font-semibold ${valueTones[tone]}`}>{value}</p>
+      {hint ? <p className="mt-0.5 text-sm font-normal text-slate">{hint}</p> : null}
+    </>
+  );
+  const className = `rounded-xl border px-4 py-3 ${panelTones[tone]}`;
+  return to ? (
+    <Link to={to} className={`${className} transition hover:brightness-95`}>
+      {body}
+    </Link>
+  ) : (
+    <section className={className}>{body}</section>
+  );
+}
+
+function OperationsOverview({ showMoney, canOpenOrder }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    const end = new Date();
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    analyticsApi
+      .get({ from: ymd(start), to: ymd(end) })
+      .then((payload) => alive && setData(payload))
+      .catch((err) => alive && setError(err.message));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) return <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>;
+  if (!data) return <p className="text-sm text-slate">Loading operations…</p>;
+
+  const kpis = data.kpis || {};
+  const previous = kpis.previous || {};
+  const attention = (data.orders || []).filter((row) => row.overdue || row.atRisk).slice(0, 8);
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">Last 7 days</h2>
+        <Link to="/analytics" className="text-sm font-semibold text-accent hover:underline">
+          Full analytics
+        </Link>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <MetricCard label="Production output" value={kpis.outputText || formatQty(kpis.output)} hint={trend(previous.outputDelta)} tone="success" to="/analytics" />
+        <MetricCard label="Waste rate" value={formatPct(kpis.wastePct)} hint={trend(previous.wastePctDelta, ' pts')} tone="warning" to="/analytics" />
+        <MetricCard label="Yield" value={formatPct(kpis.yieldPct)} hint={trend(previous.yieldDelta, ' pts')} tone="info" to="/analytics" />
+        <MetricCard label="Dispatched" value={kpis.dispatchedText || formatQty(kpis.dispatched)} hint={trend(previous.dispatchedDelta)} tone="teal" to="/analytics" />
+        <MetricCard
+          label="On-time delivery"
+          value={formatPct(kpis.onTimePct)}
+          hint={`${kpis.delivered || 0} delivered · ${kpis.late || 0} late`}
+          tone={kpis.onTimePct != null && kpis.onTimePct < 80 ? 'warning' : 'success'}
+          to="/analytics"
+        />
+        <MetricCard
+          label="Open orders"
+          value={kpis.openOrders ?? 0}
+          hint={showMoney && kpis.openValue != null ? `${formatMoney(kpis.openValue)} in hand` : `${kpis.booked || 0} booked this week`}
+          tone="accent"
+          to={canOpenOrder ? '/sales-orders' : undefined}
+        />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-line bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2">
+            <h3 className="font-semibold">Orders needing attention</h3>
+            <p className="text-sm font-normal text-slate">
+              <span className="font-semibold text-rose-700">{kpis.overdue || 0} overdue</span> ·{' '}
+              <span className="font-semibold text-amber-700">{kpis.atRisk || 0} due in 3 days</span>
+            </p>
+          </div>
+          {attention.length ? (
+            <ul className="divide-y divide-line">
+              {attention.map((row) => {
+                const body = (
+                  <>
+                    <div className="min-w-0">
+                      <p className="font-semibold">{row.number}</p>
+                      <p className="truncate text-sm font-normal text-slate">
+                        {row.customer || '—'} · {statusLabel(row.status)}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <Badge tone={row.overdue ? 'danger' : 'warning'}>{row.overdue ? 'Overdue' : 'At risk'}</Badge>
+                      <p className="mt-0.5 text-sm font-normal text-slate">Due {formatDate(row.deliveryDate)}</p>
+                    </div>
+                  </>
+                );
+                return (
+                  <li key={row.id}>
+                    {canOpenOrder ? (
+                      <Link to={`/sales-orders/${row.id}`} className="flex items-center justify-between gap-3 px-4 py-2 hover:bg-paper/70">
+                        {body}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3 px-4 py-2">{body}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="px-4 py-6 text-sm font-normal text-slate">No open orders are overdue or due in the next 3 days.</p>
+          )}
+        </div>
+        <div className="rounded-xl border border-line bg-card">
+          <div className="border-b border-line px-4 py-2">
+            <h3 className="font-semibold">Stage output</h3>
+          </div>
+          <ul className="divide-y divide-line">
+            {(data.byStage || []).map((row) => (
+              <li key={row.id} className="flex items-center justify-between gap-3 px-4 py-2">
+                <Badge tone={stepTone(row.id)}>{row.label}</Badge>
+                <div className="text-right">
+                  <p className="font-semibold">{row.outputText || formatQty(row.output)}</p>
+                  <p className="text-sm font-normal text-slate">
+                    {formatPct(row.yieldPct)} yield · {row.entries} entries
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -228,6 +380,7 @@ function AdminDashboard() {
   const { can } = usePermission();
   const showSales = canViewSalesOrders(can);
   const showAnalytics = canViewAnalytics(can);
+  const showMoney = canSeeCommercial(can);
   const [summary, setSummary] = useState(null);
 
   useEffect(() => {
@@ -266,7 +419,13 @@ function AdminDashboard() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
-        <h1 className="px-1 text-lg font-semibold">Dashboard</h1>
+        <div className="px-1">
+          <h1 className="text-lg font-semibold">Dashboard</h1>
+          <p className="text-sm font-normal text-slate">
+            {user?.fullName || user?.username || ''}
+            {user?.role?.name ? ` · ${user.role.name}` : ''}
+          </p>
+        </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {can('sales:read') ? (
             <Link to="/customers" className={outlineLink}>
@@ -316,13 +475,7 @@ function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Name">{user?.fullName || user?.username || '—'}</Stat>
-        <Stat label="Role">{user?.role?.name || '—'}</Stat>
-        <Stat label="Status">
-          <ActiveBadge active={Boolean(user?.isActive)} />
-        </Stat>
-      </div>
+      {showAnalytics ? <OperationsOverview showMoney={showMoney} canOpenOrder={showSales} /> : null}
 
       {can('tasks:read') ? <MyTasksPanel /> : null}
 
@@ -331,10 +484,10 @@ function AdminDashboard() {
       {showSales ? (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Orders</h2>
+            <h2 className="text-lg font-semibold">Order pipeline</h2>
             <p className="text-sm font-normal text-slate">{summary?.total ?? 0} orders</p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {salesCards.map((card) => (
               <Link
                 key={card.label}

@@ -15,8 +15,8 @@ import {
   formatDate,
   formatMoney,
   isFloorStatus,
-  itemFromApi,
-  itemToPayload,
+  copyItemsForNewOrder,
+  deliveryDateForCopy,
   ORDER_TYPES,
   orderActiveStages,
   orderTypeLabel,
@@ -27,9 +27,9 @@ import {
 } from '../lib/sales';
 
 const PAGE_SIZE = 8;
-const STATUS_ORDER = Object.keys(STATUS_LABELS).filter(
-  (status) => status !== 'ready_for_packing' && status !== 'packed'
-);
+// No route has a packing stage any more; these only show for older orders still in them.
+const LEGACY_STATUSES = new Set(['ready_for_packing', 'packed']);
+const STATUS_ORDER = Object.keys(STATUS_LABELS);
 
 const STATUS_CHIPS = {
   all: { chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -38,6 +38,8 @@ const STATUS_CHIPS = {
   approved: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
   production_planned: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
   in_production: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
+  ready_for_packing: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  packed: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
   ready_for_dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
   dispatched: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
   delivered: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
@@ -47,7 +49,10 @@ const STATUS_CHIPS = {
 
 function StatusMenu({ value, counts, onChange }) {
   const [open, setOpen] = useState(false);
-  const options = [{ id: 'all', label: 'All' }, ...STATUS_ORDER.map((id) => ({ id, label: STATUS_LABELS[id] }))];
+  const options = [
+    { id: 'all', label: 'All' },
+    ...STATUS_ORDER.filter((id) => !LEGACY_STATUSES.has(id) || counts[id] > 0 || id === value).map((id) => ({ id, label: STATUS_LABELS[id] })),
+  ];
   const current = options.find((item) => item.id === value) || options[0];
   const tone = STATUS_CHIPS[current.id] || STATUS_CHIPS.all;
 
@@ -237,7 +242,7 @@ export function SalesOrders() {
         orderType: source.orderType || 'sales_order',
         customerId: source.customer?.id,
         orderDate: toDateInput(new Date()),
-        deliveryDate: toDateInput(source.deliveryDate),
+        deliveryDate: deliveryDateForCopy(source.deliveryDate),
         priority: source.priority,
         paymentTerms: source.paymentTerms,
         paymentMethod: source.paymentMethod,
@@ -251,7 +256,7 @@ export function SalesOrders() {
         remarks: source.remarks,
         productionInstructions: source.productionInstructions,
         discount: source.discount,
-        items: (source.items || []).map((item) => itemToPayload(itemFromApi(item))),
+        items: copyItemsForNewOrder(source.items),
       });
       navigate(`/sales-orders/${created.id}`);
     } catch (err) {

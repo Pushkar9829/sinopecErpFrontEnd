@@ -10,6 +10,7 @@ const pageLinks = [
   { to: '/analytics', label: 'Analytics', anyOf: ANALYTICS_VIEW_KEYS },
   { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },
   { to: '/customers', label: 'Customers', permission: 'sales:read' },
+  { to: '/draft-orders', label: 'Draft orders', permission: 'sales:create' },
   { to: '/inventory', label: 'Inventory', permission: 'inventory:read' },
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },

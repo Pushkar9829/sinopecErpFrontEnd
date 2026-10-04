@@ -51,12 +51,6 @@ export const PRODUCTION_STAGES = [
   { id: 'dispatch', label: 'Dispatch', read: 'dispatch:read', update: 'dispatch:update' },
 ];
 
-export const PRODUCTION_SHIFTS = [
-  { id: 'morning', label: 'Morning' },
-  { id: 'afternoon', label: 'Afternoon' },
-  { id: 'night', label: 'Night' },
-];
-
 export const DELIVERY_PARTNERS = ['In-house', 'Delhivery', 'Customer'];
 
 export const PRODUCTION_VIEW_KEYS = [
@@ -137,12 +131,10 @@ export const OPTION_GROUPS = [
   { id: 'productType', label: 'Product type', hint: 'Bag, roll, finished product' },
   { id: 'material', label: 'Material', hint: 'HDPE, LDPE, PP' },
   { id: 'unit', label: 'Unit', hint: 'pcs, kg, roll' },
-  { id: 'color', label: 'Color', hint: 'Red, black, green, golden' },
-  { id: 'thickness', label: 'Thickness', hint: '40 micron, 50 micron' },
-  { id: 'size', label: 'Size', hint: '20 × 30 inch' },
+  { id: 'color', label: 'Colour', hint: 'Red, black, green, golden' },
+  { id: 'thickness', label: 'Gauge', hint: '150, 200' },
   { id: 'width', label: 'Width', hint: '20 inch, 500 mm' },
   { id: 'length', label: 'Length', hint: '30 inch, 800 m' },
-  { id: 'rawMaterial', label: 'Raw material', hint: 'HDPE granules' },
   { id: 'materialType', label: 'Material type', hint: 'LD - Plain, LD - BST' },
   { id: 'materialGrade', label: 'Material grade', hint: 'Film grade' },
   { id: 'additive', label: 'Additives', hint: 'UV stabilizer, EVA' },
@@ -159,8 +151,8 @@ export const OPTION_GROUPS = [
 
 export const OPTION_LIST_SECTIONS = [
   { id: 'product', label: 'Product', groups: ['productType', 'material', 'unit'] },
-  { id: 'size', label: 'Size & colour', groups: ['size', 'width', 'length', 'thickness', 'color'] },
-  { id: 'factory', label: 'Rolling', groups: ['rawMaterial', 'materialType', 'materialGrade', 'additive', 'specialRequirement'] },
+  { id: 'size', label: 'Size & colour', groups: ['width', 'length', 'thickness', 'color'] },
+  { id: 'factory', label: 'Rolling', groups: ['materialType', 'materialGrade', 'additive', 'specialRequirement'] },
   { id: 'print', label: 'Printing', groups: ['printImpression', 'printColor', 'printDesign'] },
   { id: 'finish', label: 'Cutting / holes & tape', groups: ['holeType', 'holeCount', 'holeSize', 'holePosition', 'tapeType'] },
 ];
@@ -175,6 +167,10 @@ export function canViewAnalytics(can) {
 
 export function canSeeCommercial(can) {
   return can('sales:read') || can('accounts:read');
+}
+
+export function routeHasRoll(route) {
+  return String(route || '').startsWith('roll');
 }
 
 export function routeHasPrint(route) {
@@ -327,6 +323,7 @@ export function emptyManufacturing() {
     materialGrade: '',
     requiredWeight: '',
     requiredQuantity: '',
+    materialRate: '',
     width: '',
     length: '',
     thickness: '',
@@ -399,8 +396,34 @@ export function lineImages(item) {
   }));
 }
 
+function sizeParts(size) {
+  const match = String(size || '').match(/^\s*([\d.]+)\s*[×x*]\s*([\d.]+)\s*(.*)$/i);
+  if (!match) return { width: '', length: '' };
+  const unit = match[3].trim();
+  return { width: unit ? `${match[1]} ${unit}` : match[1], length: unit ? `${match[2]} ${unit}` : match[2] };
+}
+
+function joinUnique(values) {
+  const seen = [];
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text && !seen.some((item) => item.toLowerCase() === text.toLowerCase())) seen.push(text);
+  }
+  return seen.join('; ');
+}
+
+export function impressionColours(impressions) {
+  const match = String(impressions || '').match(/\d+(?:\s*\+\s*\d+)+/);
+  if (!match) return 0;
+  return match[0].split('+').reduce((sum, part) => sum + Number(part), 0);
+}
+
 export function itemFromApi(item) {
   const base = emptyLineItem();
+  const m = item.manufacturing || {};
+  const printing = item.printing || {};
+  const fromSize = sizeParts(item.size);
+  const special = joinUnique([m.specialRequirements, printing.specialRequirements, item.holes?.specialRequirements]);
   return {
     ...base,
     uid: base.uid,
@@ -410,21 +433,21 @@ export function itemFromApi(item) {
     productCode: item.productCode || '',
     productType: item.productType || '',
     size: item.size || '',
-    material: item.material || '',
-    thickness: item.thickness || '',
-    width: item.width || '',
-    length: item.length || '',
-    color: item.color || '',
+    material: item.material || m.rawMaterial || '',
+    thickness: item.thickness || m.thickness || '',
+    width: item.width || m.width || item.bag?.width || fromSize.width,
+    length: item.length || m.length || item.bag?.length || fromSize.length,
+    color: item.color || m.color || '',
     quantity: item.quantity == null ? '' : String(item.quantity),
     unit: item.unit || 'pcs',
     rate: item.rate == null ? '' : String(item.rate),
     discount: item.discount == null ? '0' : String(item.discount),
     taxPercent: item.taxPercent == null ? '18' : String(item.taxPercent),
     productionRoute: item.productionRoute || base.productionRoute,
-    manufacturing: { ...base.manufacturing, ...(item.manufacturing || {}) },
+    manufacturing: { ...base.manufacturing, ...m, specialRequirements: special },
     roll: { ...base.roll, ...(item.roll || {}) },
     bag: { ...base.bag, ...(item.bag || {}) },
-    printing: { ...base.printing, ...(item.printing || {}) },
+    printing: { ...base.printing, ...printing, artwork: joinUnique([printing.artwork, printing.requirement]), requirement: '' },
     holes: { ...base.holes, ...(item.holes || {}) },
     tape: { ...base.tape, ...(item.tape || {}) },
     image: lineImages(item)[0] || emptyImage(),
@@ -439,18 +462,36 @@ export function applyTemplate(item, template) {
     uid: item.uid || next.uid,
     id: item.id,
     templateId: template.id,
-    quantity: item.quantity || next.quantity,
+    quantity: item.quantity,
     discount: item.discount || '0',
+    taxPercent: item.taxPercent,
   };
 }
 
+export function copyItemsForNewOrder(items) {
+  return (items || []).map((item) => ({ ...itemToPayload(itemFromApi(item)), id: undefined }));
+}
+
+export function deliveryDateForCopy(value) {
+  const date = toDateInput(value);
+  return date && date >= toDateInput(new Date()) ? date : '';
+}
+
+export function lineSize(item) {
+  const parts = [item.width, item.length].map((part) => String(part || '').trim()).filter(Boolean);
+  const size = parts.join(' × ');
+  return parts.length === 2 && parts.every((part) => /^\d+(\.\d+)?$/.test(part)) ? `${size} inch` : size;
+}
+
 export function itemToPayload(item) {
+  const shared = { width: item.width, length: item.length };
+  const special = item.manufacturing?.specialRequirements || '';
   return {
     id: item.id,
     product: item.product,
     productCode: item.productCode,
     productType: item.productType,
-    size: item.size,
+    size: lineSize(item) || item.size,
     material: item.material,
     thickness: item.thickness,
     width: item.width,
@@ -463,14 +504,16 @@ export function itemToPayload(item) {
     taxPercent: Number(item.taxPercent) || 0,
     templateId: item.templateId || '',
     productionRoute: item.productionRoute,
-    manufacturing: item.manufacturing,
+    manufacturing: { ...item.manufacturing, ...shared, thickness: item.thickness, color: item.color, rawMaterial: item.material },
     roll: item.roll,
-    bag: item.bag,
+    bag: { ...item.bag, ...shared },
     printing: {
       ...item.printing,
       required: routeHasPrint(item.productionRoute) || Boolean(item.printing?.required),
+      requirement: '',
+      specialRequirements: special,
     },
-    holes: { ...item.holes, required: Boolean(item.holes?.required) },
+    holes: { ...item.holes, required: Boolean(item.holes?.required), specialRequirements: special },
     tape: { ...item.tape, required: Boolean(item.tape?.required) },
     image: lineImages(item)[0] || emptyImage(),
     images: lineImages(item),

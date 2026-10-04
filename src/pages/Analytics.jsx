@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { analyticsApi } from '../api/analytics.api';
 import { BarChart, CHART_COLORS, StackedBarChart } from '../components/charts/BarChart';
-import { Badge, StatusBadge, orderStatusTone, panelTones, stepTone, valueTones } from '../components/ui/Badge';
+import { Badge, StatusBadge, panelTones, stepTone, valueTones } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Section } from '../components/ui/FormField';
 import { Modal } from '../components/ui/Modal';
@@ -26,7 +26,9 @@ const RANGES = [
   { id: '7', label: 'Last 7 days' },
   { id: '14', label: 'Last 14 days' },
   { id: '30', label: 'Last 30 days' },
+  { id: '90', label: 'Last 90 days' },
   { id: 'month', label: 'This month' },
+  { id: 'lastMonth', label: 'Last month' },
   { id: 'custom', label: 'Custom dates' },
 ];
 
@@ -44,20 +46,28 @@ const TONE_CHIPS = {
 const VIEWS = [
   { id: 'overview', label: 'Overview', tone: 'accent' },
   { id: 'operators', label: 'Operators', tone: 'info' },
-  { id: 'stages', label: 'Stages', tone: 'purple' },
+  { id: 'stages', label: 'Stages & machines', tone: 'purple' },
   { id: 'products', label: 'Products', tone: 'success' },
+  { id: 'customers', label: 'Customers', tone: 'info' },
   { id: 'orders', label: 'Orders', tone: 'teal' },
   { id: 'waste', label: 'Waste', tone: 'warning' },
 ];
 
+const ORDER_TYPE_OPTIONS = [
+  { id: 'all', label: 'All order types', tone: 'muted' },
+  { id: 'sales_order', label: 'Sales orders', tone: 'accent' },
+  { id: 'job_work', label: 'Job work', tone: 'purple' },
+];
+
 const ORDER_FILTERS = [
   { id: 'all', label: 'All', tone: 'muted' },
-  { id: 'at_risk', label: 'At risk', tone: 'danger' },
-  { id: 'in_production', label: 'In production', tone: 'accent' },
-  { id: 'dispatched', label: 'Dispatched', tone: 'teal' },
+  { id: 'overdue', label: 'Overdue', tone: 'danger' },
+  { id: 'at_risk', label: 'At risk', tone: 'warning' },
+  { id: 'open', label: 'Open', tone: 'accent' },
   { id: 'delivered', label: 'Delivered', tone: 'success' },
-  { id: 'completed', label: 'Completed', tone: 'success' },
 ];
+
+const EMPTY_FILTERS = { stage: 'all', orderType: 'all', customer: 'all', product: 'all', operator: 'all', machine: 'all' };
 
 function ymd(date) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -76,16 +86,13 @@ function addDays(value, amount) {
 
 function rangeBounds(preset, customFrom, customTo) {
   const today = ymd(new Date());
-  if (preset === '7') return { from: addDays(today, -6), to: today };
-  if (preset === '30') return { from: addDays(today, -29), to: today };
+  if (['7', '14', '30', '90'].includes(preset)) return { from: addDays(today, 1 - Number(preset)), to: today };
   if (preset === 'month') return { from: `${today.slice(0, 7)}-01`, to: today };
-  if (preset === 'custom') {
-    return {
-      from: customFrom || addDays(today, -13),
-      to: customTo || today,
-    };
+  if (preset === 'lastMonth') {
+    const lastDay = addDays(`${today.slice(0, 7)}-01`, -1);
+    return { from: `${lastDay.slice(0, 7)}-01`, to: lastDay };
   }
-  return { from: addDays(today, -13), to: today };
+  return { from: customFrom || addDays(today, -29), to: customTo || today };
 }
 
 function shortDate(value) {
@@ -99,14 +106,32 @@ function formatPct(value) {
   return `${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 1 })}%`;
 }
 
-function formatDelta(value) {
-  if (value == null) return 'vs previous period';
+function formatDelta(value, suffix = '%') {
+  if (value == null) return 'No earlier data to compare';
   const sign = value > 0 ? '+' : '';
-  return `${sign}${value}% vs previous`;
+  return `${sign}${value}${suffix} vs previous period`;
+}
+
+function outputLabel(row) {
+  return row?.outputText || formatQty(row?.output);
+}
+
+function wasteLabel(row) {
+  return row?.wasteText || formatQty(row?.waste);
+}
+
+function perDayLabel(row) {
+  return `${formatQty(row?.perDay)} ${row?.outputUnit || ''}`.trim();
 }
 
 function stageColor(id) {
   return CHART_COLORS[id] || CHART_COLORS.muted;
+}
+
+function filterOptions(list = [], allLabel, value, tone) {
+  const options = [{ id: 'all', label: allLabel, tone: 'muted' }, ...list.map((item) => ({ ...item, tone }))];
+  if (value !== 'all' && !options.some((item) => item.id === value)) options.push({ id: value, label: value, count: 0, tone });
+  return options;
 }
 
 function ChipMenu({ label, value, options, onChange }) {
@@ -144,7 +169,7 @@ function ChipMenu({ label, value, options, onChange }) {
         </svg>
       </button>
       {open ? (
-        <div className="absolute left-0 z-20 mt-1 max-h-80 w-56 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
+        <div className="absolute left-0 z-20 mt-1 max-h-80 w-64 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
           {options.map((item) => {
             const itemTone = TONE_CHIPS[item.tone] || TONE_CHIPS.muted;
             return (
@@ -159,8 +184,8 @@ function ChipMenu({ label, value, options, onChange }) {
                   item.id === value ? itemTone.chip : 'text-ink hover:bg-paper'
                 }`}
               >
-                <span className={`h-2 w-2 rounded-full ${itemTone.dot}`} />
-                <span className="flex-1 font-semibold">{item.label}</span>
+                <span className={`h-2 w-2 shrink-0 rounded-full ${itemTone.dot}`} />
+                <span className="flex-1 truncate font-semibold">{item.label}</span>
                 {item.count != null ? <span className="text-xs font-normal">{item.count}</span> : null}
               </button>
             );
@@ -209,7 +234,7 @@ function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
     return empty || <EmptyState title="Nothing to show" />;
   }
   return (
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
+    <div className="overflow-hidden rounded-xl border border-line bg-card">
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-ink text-paper">
@@ -260,6 +285,27 @@ function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
   );
 }
 
+function StageBadges({ stages = [] }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {stages.map((id) => (
+        <Badge key={id} tone={stepTone(id)}>
+          {stageLabel(id)}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+const PERFORMANCE_COLUMNS = [
+  { key: 'entries', label: 'Entries', align: 'right' },
+  { key: 'activeDays', label: 'Active days', align: 'right' },
+  { key: 'output', label: 'Output', align: 'right', render: outputLabel },
+  { key: 'perDay', label: 'Per day', align: 'right', render: perDayLabel },
+  { key: 'yieldPct', label: 'Yield', align: 'right', render: (row) => formatPct(row.yieldPct) },
+  { key: 'waste', label: 'Waste', align: 'right', render: (row) => (row.waste ? `${wasteLabel(row)} · ${formatPct(row.wastePct)}` : '—') },
+];
+
 function WorkTable({ rows, canOpenOrder, onClose }) {
   const columns = [
     { key: 'date', label: 'Date', render: (row) => formatDate(row.date) },
@@ -279,18 +325,24 @@ function WorkTable({ rows, canOpenOrder, onClose }) {
         </div>
       ),
     },
+    { key: 'customer', label: 'Customer', render: (row) => row.customer || '—' },
     { key: 'stage', label: 'Stage', render: (row) => <Badge tone={stepTone(row.stage)}>{row.stageLabel}</Badge> },
-    { key: 'operator', label: 'Operator' },
-    { key: 'shift', label: 'Shift', render: (row) => row.shiftLabel },
-    { key: 'output', label: 'Output', align: 'right', render: (row) => formatQty(row.output) },
-    { key: 'waste', label: 'Waste', align: 'right', render: (row) => formatQty(row.waste) },
+    { key: 'operator', label: 'Operator', render: (row) => row.operator || '—' },
+    { key: 'machine', label: 'Machine', render: (row) => row.machine || '—' },
+    { key: 'output', label: 'Output', align: 'right', render: (row) => `${formatQty(row.output)} ${row.unit || ''}`.trim() },
+    {
+      key: 'waste',
+      label: 'Waste',
+      align: 'right',
+      render: (row) => (row.waste ? `${formatQty(row.waste)} ${row.wasteUnit || ''}`.trim() : formatQty(0)),
+    },
   ];
   return (
     <DataTable
       columns={columns}
       rows={rows}
       resetKey={rows.map((row) => `${row.orderId}-${row.date}-${row.stage}`).join('|')}
-      empty={<EmptyState title="No shifts in this view" hint="Try a wider date range or another filter." />}
+      empty={<EmptyState title="No register entries in this view" hint="Try a wider date range or clear a filter." />}
     />
   );
 }
@@ -299,28 +351,26 @@ export function Analytics() {
   const { can } = usePermission();
   const showMoney = canSeeCommercial(can);
   const canOpenOrder = canViewSalesOrders(can);
-  const [preset, setPreset] = useState('14');
+  const [preset, setPreset] = useState('30');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [stage, setStage] = useState('all');
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [tab, setTab] = useState('overview');
   const [orderTab, setOrderTab] = useState('all');
-  const [operatorQuery, setOperatorQuery] = useState('');
-  const [orderQuery, setOrderQuery] = useState('');
-  const [wasteQuery, setWasteQuery] = useState('');
-  const [productQuery, setProductQuery] = useState('');
+  const [search, setSearch] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
 
   const bounds = useMemo(() => rangeBounds(preset, customFrom, customTo), [preset, customFrom, customTo]);
+  const filterKey = JSON.stringify(filters);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     analyticsApi
-      .get({ from: bounds.from, to: bounds.to, stage })
+      .get({ from: bounds.from, to: bounds.to, ...JSON.parse(filterKey) })
       .then((payload) => {
         if (!cancelled) {
           setData(payload);
@@ -336,146 +386,154 @@ export function Analytics() {
     return () => {
       cancelled = true;
     };
-  }, [bounds.from, bounds.to, stage]);
+  }, [bounds.from, bounds.to, filterKey]);
 
-  const details = data?.details || [];
+  function changeTab(next) {
+    setTab(next);
+    setSearch('');
+  }
+
+  function setFilter(key, value) {
+    setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  const activeFilters = Object.entries(filters).filter(([, value]) => value !== 'all').length;
+  const kpis = data?.kpis || {};
+  const previous = kpis.previous || {};
+  const options = data?.options || {};
+  const details = useMemo(() => data?.details || [], [data]);
+  const q = search.trim().toLowerCase();
+  const matches = (...values) => !q || values.some((value) => String(value || '').toLowerCase().includes(q));
+
   const drillRows = useMemo(() => {
     if (!drill) return [];
-    if (drill.type === 'operator') return details.filter((row) => row.operator === drill.key);
-    if (drill.type === 'stage') return details.filter((row) => row.stage === drill.key);
-    if (drill.type === 'date') return details.filter((row) => row.date === drill.key);
-    if (drill.type === 'shift') return details.filter((row) => row.shift === drill.key);
-    if (drill.type === 'status') return details.filter((row) => row.status === drill.key);
-    if (drill.type === 'order') return details.filter((row) => row.orderId === drill.key);
-    if (drill.type === 'product') {
-      return details.filter((row) => (row.productCode || row.product) === drill.key);
-    }
-    if (drill.type === 'machine') return details.filter((row) => row.machine === drill.key);
-    return details;
+    const test = {
+      operator: (row) => row.operator === drill.key,
+      stage: (row) => row.stage === drill.key,
+      date: (row) => row.date === drill.key,
+      order: (row) => row.orderId === drill.key,
+      product: (row) => (row.productCode || row.product) === drill.key,
+      machine: (row) => row.machine === drill.key,
+      customer: (row) => row.customerId === drill.key,
+    }[drill.type];
+    return test ? details.filter(test) : details;
   }, [details, drill]);
 
   const daily = (data?.byDate || []).map((row) => ({ ...row, label: shortDate(row.date) }));
-  const stageBars = (data?.byStage || []).map((row) => ({
-    ...row,
-    label: row.label,
-    color: stageColor(row.id),
-    value: row.output,
-  }));
-  const operatorBars = (data?.byOperator || []).map((row) => ({
-    ...row,
-    label: row.name.split(' ')[0],
-    value: row.output,
-  }));
-  const shiftBars = (data?.byShift || []).map((row) => ({
-    ...row,
-    label: row.label,
-    color: stageColor(row.id),
-    value: row.output,
-  }));
-  const wasteBars = (data?.waste?.byStage || []).map((row) => ({
-    ...row,
-    label: row.label,
-    color: CHART_COLORS.waste,
-    value: row.waste,
-  }));
+  const stageBars = (data?.byStage || []).map((row) => ({ ...row, color: stageColor(row.id), value: row.output }));
+  const operatorBars = (data?.byOperator || []).slice(0, 10).map((row) => ({ ...row, label: row.name.split(' ')[0], value: row.output }));
+  const productBars = (data?.byProduct || []).slice(0, 10).map((row) => ({ ...row, label: row.code, value: row.output }));
+  const customerBars = (data?.byCustomer || []).slice(0, 8).map((row) => ({ ...row, label: row.name.split(' ')[0], value: row.output }));
+  const wasteBars = (data?.waste?.byStage || []).map((row) => ({ ...row, color: CHART_COLORS.waste, value: row.waste }));
 
-  const operators = useMemo(() => {
-    const q = operatorQuery.trim().toLowerCase();
-    return (data?.byOperator || []).filter((row) => !q || row.name.toLowerCase().includes(q));
-  }, [data?.byOperator, operatorQuery]);
+  const operators = (data?.byOperator || []).filter((row) => matches(row.name));
+  const products = (data?.byProduct || []).filter((row) => matches(row.code, row.name));
+  const customers = (data?.byCustomer || []).filter((row) => matches(row.name));
+  const machines = data?.byMachine || [];
+  const wasteLots = (data?.waste?.inventory || []).filter((lot) => matches(lot.name, lot.stage, lot.kind, lot.unit));
 
-  const orders = useMemo(() => {
-    const q = orderQuery.trim().toLowerCase();
-    return (data?.orders || []).filter((row) => {
-      if (orderTab === 'at_risk' && !row.atRisk) return false;
-      if (orderTab !== 'all' && orderTab !== 'at_risk' && row.status !== orderTab) return false;
-      if (!q) return true;
-      return [row.number, row.customer, statusLabel(row.status)].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(q)
-      );
-    });
-  }, [data?.orders, orderQuery, orderTab]);
-
-  const wasteLots = useMemo(() => {
-    const q = wasteQuery.trim().toLowerCase();
-    return (data?.waste?.inventory || []).filter((lot) => {
-      if (!q) return true;
-      return [lot.name, lot.stage, lot.kind, lot.unit].some((value) =>
-        String(value || '')
-          .toLowerCase()
-          .includes(q)
-      );
-    });
-  }, [data?.waste?.inventory, wasteQuery]);
-
-  const products = useMemo(() => {
-    const q = productQuery.trim().toLowerCase();
-    return (data?.byProduct || []).filter((row) => {
-      if (!q) return true;
-      return [row.code, row.name].some((value) => String(value || '').toLowerCase().includes(q));
-    });
-  }, [data?.byProduct, productQuery]);
-
-  const productBars = (data?.byProduct || []).map((row) => ({
-    ...row,
-    label: row.code,
-    value: row.output,
-  }));
+  const allOrders = data?.orders || [];
+  const orderTest = {
+    all: () => true,
+    overdue: (row) => row.overdue,
+    at_risk: (row) => row.atRisk,
+    open: (row) => !row.delivered,
+    delivered: (row) => row.delivered,
+  };
+  const orderCounts = Object.fromEntries(ORDER_FILTERS.map((item) => [item.id, allOrders.filter(orderTest[item.id]).length]));
+  const orders = allOrders.filter((row) => orderTest[orderTab](row) && matches(row.number, row.customer, statusLabel(row.status)));
 
   const views = VIEWS.map((item) => {
-    if (item.id === 'operators') return { ...item, count: data?.kpis?.operators ?? 0 };
-    if (item.id === 'stages') return { ...item, count: data?.byStage?.length ?? 0 };
-    if (item.id === 'products') return { ...item, count: data?.byProduct?.length ?? 0 };
-    if (item.id === 'orders') return { ...item, count: data?.orders?.length ?? 0 };
-    if (item.id === 'waste') return { ...item, count: data?.waste?.inventory?.length ?? 0 };
-    return item;
+    const count = {
+      operators: data?.byOperator?.length,
+      stages: data?.byStage?.length,
+      products: data?.byProduct?.length,
+      customers: data?.byCustomer?.length,
+      orders: allOrders.length,
+      waste: data?.waste?.inventory?.length,
+    }[item.id];
+    return count == null ? item : { ...item, count };
   });
   const ranges = RANGES.map((item) => ({ ...item, tone: 'muted' }));
-  const stages = [{ id: 'all', label: 'All stages' }, ...PRODUCTION_STAGES];
+  const stages = [{ id: 'all', label: 'All stages' }, ...PRODUCTION_STAGES.filter((item) => item.id !== 'dispatch')];
 
-  const orderCounts = {
-    all: data?.orders?.length || 0,
-    in_production: (data?.orders || []).filter((row) => row.status === 'in_production').length,
-    dispatched: (data?.orders || []).filter((row) => row.status === 'dispatched').length,
-    delivered: (data?.orders || []).filter((row) => row.status === 'delivered').length,
-    completed: (data?.orders || []).filter((row) => row.status === 'completed').length,
-    at_risk: (data?.orders || []).filter((row) => row.atRisk).length,
-  };
-
-  function openDrill(next) {
-    setDrill(next);
+  function openOrders(id) {
+    changeTab('orders');
+    setOrderTab(id);
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
-        <h1 className="px-1 text-lg font-semibold">Analytics</h1>
-        <ChipMenu label="View" value={tab} options={views} onChange={setTab} />
-        <ChipMenu label="Range" value={preset} options={ranges} onChange={setPreset} />
-        <StageMenu stages={stages} value={stage} onChange={setStage} />
-        {preset === 'custom' ? (
-          <>
-            <input
-              type="date"
-              aria-label="From"
-              className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent"
-              value={customFrom || bounds.from}
-              onChange={(event) => setCustomFrom(event.target.value)}
+      <div className="space-y-2 rounded-xl border border-line bg-card px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="px-1 text-lg font-semibold">Analytics</h1>
+          <ChipMenu label="View" value={tab} options={views} onChange={changeTab} />
+          <ChipMenu label="Range" value={preset} options={ranges} onChange={setPreset} />
+          {preset === 'custom' ? (
+            <>
+              <input
+                type="date"
+                aria-label="From"
+                className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent"
+                value={customFrom || bounds.from}
+                max={customTo || bounds.to}
+                onChange={(event) => setCustomFrom(event.target.value)}
+              />
+              <input
+                type="date"
+                aria-label="To"
+                className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent"
+                value={customTo || bounds.to}
+                min={customFrom || bounds.from}
+                onChange={(event) => setCustomTo(event.target.value)}
+              />
+            </>
+          ) : null}
+          <p className="ml-auto text-sm font-normal text-slate">
+            {loading ? 'Updating…' : `${formatDate(bounds.from)} – ${formatDate(bounds.to)}`}
+            {data?.previousFrom && !loading ? ` · compared with ${formatDate(data.previousFrom)} – ${formatDate(data.previousTo)}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
+          <span className="px-1 text-sm font-semibold text-slate">Filters</span>
+          <StageMenu stages={stages} value={filters.stage} onChange={(value) => setFilter('stage', value)} />
+          <ChipMenu label="Order type" value={filters.orderType} options={ORDER_TYPE_OPTIONS} onChange={(value) => setFilter('orderType', value)} />
+          <ChipMenu
+            label="Customer"
+            value={filters.customer}
+            options={filterOptions(options.customers, 'All customers', filters.customer, 'info')}
+            onChange={(value) => setFilter('customer', value)}
+          />
+          <ChipMenu
+            label="Product"
+            value={filters.product}
+            options={filterOptions(options.products, 'All products', filters.product, 'success')}
+            onChange={(value) => setFilter('product', value)}
+          />
+          <ChipMenu
+            label="Operator"
+            value={filters.operator}
+            options={filterOptions(options.operators, 'All operators', filters.operator, 'info')}
+            onChange={(value) => setFilter('operator', value)}
+          />
+          {(options.machines || []).length || filters.machine !== 'all' ? (
+            <ChipMenu
+              label="Machine"
+              value={filters.machine}
+              options={filterOptions(options.machines, 'All machines', filters.machine, 'purple')}
+              onChange={(value) => setFilter('machine', value)}
             />
-            <input
-              type="date"
-              aria-label="To"
-              className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-normal text-ink outline-none focus:border-accent"
-              value={customTo || bounds.to}
-              onChange={(event) => setCustomTo(event.target.value)}
-            />
-          </>
-        ) : null}
-        <p className="ml-auto text-sm font-normal text-slate">
-          {loading ? 'Updating…' : `${formatDate(bounds.from)} – ${formatDate(bounds.to)}`}
-        </p>
+          ) : null}
+          {activeFilters ? (
+            <button
+              type="button"
+              onClick={() => setFilters(EMPTY_FILTERS)}
+              className="rounded-lg px-2 py-1.5 text-sm font-semibold text-accent hover:underline"
+            >
+              Clear {activeFilters} filter{activeFilters === 1 ? '' : 's'}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p> : null}
@@ -486,55 +544,66 @@ export function Analytics() {
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi
-              label="Output"
-              value={formatQty(data?.kpis?.output)}
-              hint={formatDelta(data?.kpis?.previous?.outputDelta)}
+              label="Production output"
+              value={outputLabel(kpis)}
+              hint={formatDelta(previous.outputDelta)}
               tone="success"
+              onClick={() => changeTab('stages')}
             />
             <Kpi
-              label="Waste"
-              value={`${formatQty(data?.kpis?.waste)} · ${data?.kpis?.wastePct || 0}%`}
-              hint={formatDelta(data?.kpis?.previous?.wasteDelta)}
+              label="Waste rate"
+              value={formatPct(kpis.wastePct)}
+              hint={`${wasteLabel(kpis)} · ${formatDelta(previous.wastePctDelta, ' pts')}`}
               tone="warning"
-              onClick={() => setTab('waste')}
+              onClick={() => changeTab('waste')}
             />
             <Kpi
               label="Yield"
-              value={formatPct(data?.kpis?.yieldPct)}
-              hint={`Output ÷ input · ${formatQty(data?.kpis?.perShift)} / shift`}
+              value={formatPct(kpis.yieldPct)}
+              hint={`Output ÷ input · ${formatDelta(previous.yieldDelta, ' pts')}`}
               tone="info"
             />
             <Kpi
-              label="Delivered"
-              value={data?.kpis?.completed ?? 0}
-              hint={
-                showMoney && data?.kpis?.completedValue != null
-                  ? `${formatMoney(data.kpis.completedValue)} · ${formatDelta(data?.kpis?.previous?.completedDelta)}`
-                  : formatDelta(data?.kpis?.previous?.completedDelta)
-              }
+              label="Dispatched"
+              value={kpis.dispatchedText || formatQty(kpis.dispatched)}
+              hint={formatDelta(previous.dispatchedDelta)}
               tone="teal"
-              onClick={() => setTab('orders')}
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="Shifts" value={data?.kpis?.shifts ?? 0} hint={`${data?.kpis?.operators || 0} operators`} tone="muted" onClick={() => setTab('operators')} />
-            <Kpi label="On time" value={data?.kpis?.onTime ?? 0} hint={`${data?.kpis?.late || 0} late vs delivery date`} tone="success" onClick={() => setTab('orders')} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Kpi
-              label="At risk"
-              value={data?.kpis?.atRisk ?? 0}
-              hint="Due in 3 days, still open"
-              tone="danger"
-              onClick={() => {
-                setTab('orders');
-                setOrderTab('at_risk');
-              }}
+              label="Delivered orders"
+              value={kpis.delivered ?? 0}
+              hint={showMoney && kpis.deliveredValue != null ? formatMoney(kpis.deliveredValue) : formatDelta(previous.deliveredDelta)}
+              tone="success"
+              onClick={() => openOrders('delivered')}
             />
             <Kpi
-              label="Products"
-              value={data?.byProduct?.length ?? 0}
-              hint="SKUs with work in range"
-              tone="purple"
-              onClick={() => setTab('products')}
+              label="On-time delivery"
+              value={formatPct(kpis.onTimePct)}
+              hint={`${kpis.onTime || 0} on time · ${kpis.late || 0} late`}
+              tone={kpis.onTimePct != null && kpis.onTimePct < 80 ? 'warning' : 'success'}
+              onClick={() => openOrders('delivered')}
+            />
+            <Kpi
+              label="Avg lead time"
+              value={kpis.avgLeadDays != null ? `${formatQty(kpis.avgLeadDays)} days` : '—'}
+              hint="Order date to delivery"
+              tone="muted"
+            />
+            <Kpi
+              label="Open orders"
+              value={kpis.openOrders ?? 0}
+              hint={showMoney && kpis.openValue != null ? `${formatMoney(kpis.openValue)} in hand` : `${kpis.booked || 0} booked in range`}
+              tone="accent"
+              onClick={() => openOrders('open')}
+            />
+            <Kpi
+              label="Overdue · At risk"
+              value={`${kpis.overdue ?? 0} · ${kpis.atRisk ?? 0}`}
+              hint="Past due · due within 3 days"
+              tone={kpis.overdue ? 'danger' : 'warning'}
+              onClick={() => openOrders(kpis.overdue ? 'overdue' : 'at_risk')}
             />
           </div>
           <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
@@ -544,18 +613,27 @@ export function Analytics() {
             >
               <StackedBarChart
                 data={daily}
-                onBarClick={(row) => openDrill({ type: 'date', key: row.date, title: formatDate(row.date) })}
+                onBarClick={(row) => setDrill({ type: 'date', key: row.date, title: formatDate(row.date) })}
               />
+              <p className="mt-2 text-sm font-normal text-slate">
+                {kpis.entries || 0} register entries over {kpis.activeDays || 0} working days · {perDayLabel(kpis)} per day ·{' '}
+                {kpis.operators || 0} operators · {kpis.ordersWorked || 0} orders
+              </p>
             </Section>
             <div className="grid gap-4">
-              <Section title="By shift">
-                <BarChart data={shiftBars} onBarClick={(row) => openDrill({ type: 'shift', key: row.id, title: row.label })} />
-              </Section>
               <Section title="By stage">
-                <BarChart
-                  data={stageBars}
-                  onBarClick={(row) => openDrill({ type: 'stage', key: row.id, title: row.label })}
-                />
+                <BarChart data={stageBars} onBarClick={(row) => setDrill({ type: 'stage', key: row.id, title: row.label })} />
+              </Section>
+              <Section title="Top customers">
+                {customerBars.length ? (
+                  <BarChart
+                    data={customerBars}
+                    color={CHART_COLORS.printing}
+                    onBarClick={(row) => setDrill({ type: 'customer', key: row.id, title: row.name })}
+                  />
+                ) : (
+                  <p className="text-sm text-slate">No customer work in this range.</p>
+                )}
               </Section>
             </div>
           </div>
@@ -564,43 +642,27 @@ export function Analytics() {
 
       {tab === 'operators' ? (
         <Section
-          title="Operators"
-          actions={<SearchField value={operatorQuery} onChange={setOperatorQuery} placeholder="Search operator" className="w-48" />}
+          title="Operator performance"
+          actions={<SearchField value={search} onChange={setSearch} placeholder="Search operator" className="w-48" />}
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
             <DataTable
-              resetKey={`${operatorQuery}|${operators.map((row) => row.name).join('|')}`}
+              resetKey={`${search}|${operators.map((row) => row.name).join('|')}`}
               empty={<EmptyState title="No operator work in this range" />}
-              onRowClick={(row) => openDrill({ type: 'operator', key: row.name, title: row.name })}
+              onRowClick={(row) => setDrill({ type: 'operator', key: row.name, title: row.name })}
               rows={operators.map((row) => ({ ...row, id: row.name }))}
               columns={[
                 { key: 'name', label: 'Operator', render: (row) => <span className="font-semibold">{row.name}</span> },
-                {
-                  key: 'stages',
-                  label: 'Stages',
-                  render: (row) => (
-                    <div className="flex flex-wrap gap-1">
-                      {row.stages.map((id) => (
-                        <Badge key={id} tone={stepTone(id)}>
-                          {stageLabel(id)}
-                        </Badge>
-                      ))}
-                    </div>
-                  ),
-                },
-                { key: 'shifts', label: 'Shifts', align: 'right' },
-                { key: 'output', label: 'Output', align: 'right', render: (row) => formatQty(row.output) },
-                { key: 'perShift', label: 'Per shift', align: 'right', render: (row) => formatQty(row.perShift) },
-                { key: 'yieldPct', label: 'Yield', align: 'right', render: (row) => formatPct(row.yieldPct) },
-                { key: 'waste', label: 'Waste', align: 'right', render: (row) => formatQty(row.waste) },
+                { key: 'stages', label: 'Stages', render: (row) => <StageBadges stages={row.stages} /> },
+                ...PERFORMANCE_COLUMNS,
               ]}
             />
             <div className="rounded-lg border border-line bg-paper p-3">
-              <p className="mb-2 text-sm font-semibold text-ink">Output</p>
+              <p className="mb-2 text-sm font-semibold text-ink">Top output</p>
               <BarChart
                 data={operatorBars}
                 color={CHART_COLORS.printing}
-                onBarClick={(row) => openDrill({ type: 'operator', key: row.name, title: row.name })}
+                onBarClick={(row) => setDrill({ type: 'operator', key: row.name, title: row.name })}
               />
             </div>
           </div>
@@ -609,15 +671,15 @@ export function Analytics() {
 
       {tab === 'stages' ? (
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             {(data?.byStage || []).map((row) => (
               <Kpi
                 key={row.id}
                 label={row.label}
-                value={formatQty(row.output)}
-                hint={`${row.shifts} shifts · ${formatPct(row.yieldPct)} yield`}
+                value={outputLabel(row)}
+                hint={`${formatPct(row.yieldPct)} yield · ${perDayLabel(row)} per day · ${row.entries} entries`}
                 tone={stepTone(row.id)}
-                onClick={() => openDrill({ type: 'stage', key: row.id, title: row.label })}
+                onClick={() => setDrill({ type: 'stage', key: row.id, title: row.label })}
               />
             ))}
           </div>
@@ -625,52 +687,34 @@ export function Analytics() {
             title="Output vs waste by stage"
             actions={<Legend items={[{ label: 'Output', color: CHART_COLORS.output }, { label: 'Waste', color: CHART_COLORS.waste }]} />}
           >
-            <StackedBarChart
-              data={stageBars}
-              onBarClick={(row) => openDrill({ type: 'stage', key: row.id, title: row.label })}
+            <StackedBarChart data={stageBars} onBarClick={(row) => setDrill({ type: 'stage', key: row.id, title: row.label })} />
+          </Section>
+          <Section title="Machines">
+            <DataTable
+              resetKey={machines.map((row) => row.name).join('|')}
+              empty={<EmptyState title="No machine recorded on entries in this range" />}
+              onRowClick={(row) => setDrill({ type: 'machine', key: row.name, title: row.name })}
+              rows={machines.map((row) => ({ ...row, id: row.name }))}
+              columns={[
+                { key: 'name', label: 'Machine', render: (row) => <span className="font-semibold">{row.name}</span> },
+                { key: 'stages', label: 'Stage', render: (row) => <StageBadges stages={row.stages} /> },
+                ...PERFORMANCE_COLUMNS,
+              ]}
             />
           </Section>
-          {(data?.byMachine || []).length ? (
-            <Section title="Machines">
-              <DataTable
-                resetKey={(data?.byMachine || []).map((row) => row.name).join('|')}
-                onRowClick={(row) => openDrill({ type: 'machine', key: row.name, title: row.name })}
-                rows={(data?.byMachine || []).map((row) => ({ ...row, id: row.name }))}
-                columns={[
-                  { key: 'name', label: 'Machine', render: (row) => <span className="font-semibold">{row.name}</span> },
-                  {
-                    key: 'stages',
-                    label: 'Stage',
-                    render: (row) => (
-                      <div className="flex flex-wrap gap-1">
-                        {(row.stages || []).map((id) => (
-                          <Badge key={id} tone={stepTone(id)}>
-                            {stageLabel(id)}
-                          </Badge>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  { key: 'shifts', label: 'Shifts', align: 'right' },
-                  { key: 'output', label: 'Output', align: 'right', render: (row) => formatQty(row.output) },
-                  { key: 'yieldPct', label: 'Yield', align: 'right', render: (row) => formatPct(row.yieldPct) },
-                ]}
-              />
-            </Section>
-          ) : null}
         </div>
       ) : null}
 
       {tab === 'products' ? (
         <Section
-          title="Products"
-          actions={<SearchField value={productQuery} onChange={setProductQuery} placeholder="Search code or name" className="w-52" />}
+          title="Product performance"
+          actions={<SearchField value={search} onChange={setSearch} placeholder="Search code or name" className="w-52" />}
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
             <DataTable
-              resetKey={`${productQuery}|${products.map((row) => row.code).join('|')}`}
+              resetKey={`${search}|${products.map((row) => row.code).join('|')}`}
               empty={<EmptyState title="No product work in this range" />}
-              onRowClick={(row) => openDrill({ type: 'product', key: row.code, title: row.name || row.code })}
+              onRowClick={(row) => setDrill({ type: 'product', key: row.code, title: row.name || row.code })}
               rows={products.map((row) => ({ ...row, id: row.code }))}
               columns={[
                 {
@@ -679,22 +723,50 @@ export function Analytics() {
                   render: (row) => (
                     <div>
                       <p className="font-semibold">{row.code}</p>
-                      <p className="text-sm font-normal text-slate">{row.name}</p>
+                      {row.name && row.name !== row.code ? <p className="text-sm font-normal text-slate">{row.name}</p> : null}
                     </div>
                   ),
                 },
-                { key: 'shifts', label: 'Shifts', align: 'right' },
-                { key: 'output', label: 'Output', align: 'right', render: (row) => formatQty(row.output) },
-                { key: 'waste', label: 'Waste', align: 'right', render: (row) => formatQty(row.waste) },
-                { key: 'yieldPct', label: 'Yield', align: 'right', render: (row) => formatPct(row.yieldPct) },
+                { key: 'orderCount', label: 'Orders', align: 'right' },
+                ...PERFORMANCE_COLUMNS,
               ]}
             />
             <div className="rounded-lg border border-line bg-paper p-3">
-              <p className="mb-2 text-sm font-semibold text-ink">Output</p>
+              <p className="mb-2 text-sm font-semibold text-ink">Top output</p>
               <BarChart
                 data={productBars}
                 color={CHART_COLORS.cutting}
-                onBarClick={(row) => openDrill({ type: 'product', key: row.code, title: row.name || row.code })}
+                onBarClick={(row) => setDrill({ type: 'product', key: row.code, title: row.name || row.code })}
+              />
+            </div>
+          </div>
+        </Section>
+      ) : null}
+
+      {tab === 'customers' ? (
+        <Section
+          title="Customer volume"
+          actions={<SearchField value={search} onChange={setSearch} placeholder="Search customer" className="w-48" />}
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
+            <DataTable
+              resetKey={`${search}|${customers.map((row) => row.id).join('|')}`}
+              empty={<EmptyState title="No customer work in this range" />}
+              onRowClick={(row) => setDrill({ type: 'customer', key: row.id, title: row.name })}
+              rows={customers}
+              columns={[
+                { key: 'name', label: 'Customer', render: (row) => <span className="font-semibold">{row.name}</span> },
+                { key: 'orderCount', label: 'Orders', align: 'right' },
+                { key: 'stages', label: 'Stages', render: (row) => <StageBadges stages={row.stages} /> },
+                ...PERFORMANCE_COLUMNS.filter((column) => column.key !== 'perDay'),
+              ]}
+            />
+            <div className="rounded-lg border border-line bg-paper p-3">
+              <p className="mb-2 text-sm font-semibold text-ink">Top output</p>
+              <BarChart
+                data={customerBars}
+                color={CHART_COLORS.printing}
+                onBarClick={(row) => setDrill({ type: 'customer', key: row.id, title: row.name })}
               />
             </div>
           </div>
@@ -704,27 +776,22 @@ export function Analytics() {
       {tab === 'orders' ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Overdue" value={orderCounts.overdue} hint="Past delivery date, still open" tone="danger" onClick={() => setOrderTab('overdue')} />
+            <Kpi label="At risk" value={orderCounts.at_risk} hint="Due within 3 days, still open" tone="warning" onClick={() => setOrderTab('at_risk')} />
             <Kpi
-              label="At risk"
-              value={orderCounts.at_risk}
-              hint="Due in 3 days, still open"
-              tone="danger"
-              onClick={() => setOrderTab('at_risk')}
+              label="Open"
+              value={orderCounts.open}
+              hint={showMoney && kpis.openValue != null ? formatMoney(kpis.openValue) : 'Not yet delivered'}
+              tone="accent"
+              onClick={() => setOrderTab('open')}
             />
-            {['in_production', 'dispatched', 'delivered', 'completed'].map((id) => (
-              <Kpi
-                key={id}
-                label={statusLabel(id)}
-                value={orderCounts[id]}
-                hint={
-                  showMoney
-                    ? formatMoney((data?.byStatus || []).find((row) => row.id === id)?.value)
-                    : 'Open this list'
-                }
-                tone={orderStatusTone(id)}
-                onClick={() => setOrderTab(id)}
-              />
-            ))}
+            <Kpi
+              label="Delivered in range"
+              value={orderCounts.delivered}
+              hint={`${formatPct(kpis.onTimePct)} on time${showMoney && kpis.deliveredValue != null ? ` · ${formatMoney(kpis.deliveredValue)}` : ''}`}
+              tone="success"
+              onClick={() => setOrderTab('delivered')}
+            />
           </div>
           <Section
             title="Orders"
@@ -736,27 +803,31 @@ export function Analytics() {
                   options={ORDER_FILTERS.map((item) => ({ ...item, count: orderCounts[item.id] }))}
                   onChange={setOrderTab}
                 />
-                <SearchField value={orderQuery} onChange={setOrderQuery} placeholder="Search order or customer" className="w-56" />
+                <SearchField value={search} onChange={setSearch} placeholder="Search order or customer" className="w-56" />
               </div>
             }
           >
             <DataTable
-              resetKey={`${orderTab}|${orderQuery}`}
-              empty={<EmptyState title="No matching orders" hint="Delivered, dispatched, and in-production orders appear here." />}
-              onRowClick={(row) => openDrill({ type: 'order', key: row.id, title: row.number })}
+              resetKey={`${orderTab}|${search}`}
+              empty={<EmptyState title="No matching orders" hint="Open orders and orders delivered in this range appear here." />}
+              onRowClick={(row) => setDrill({ type: 'order', key: row.id, title: row.number })}
               rows={orders}
               columns={[
                 {
                   key: 'number',
                   label: 'Order',
-                  render: (row) =>
-                    canOpenOrder ? (
-                      <Link to={`/sales-orders/${row.id}`} className="font-semibold text-accent hover:underline" onClick={(event) => event.stopPropagation()}>
-                        {row.number}
-                      </Link>
-                    ) : (
-                      <span className="font-semibold">{row.number}</span>
-                    ),
+                  render: (row) => (
+                    <div>
+                      {canOpenOrder ? (
+                        <Link to={`/sales-orders/${row.id}`} className="font-semibold text-accent hover:underline" onClick={(event) => event.stopPropagation()}>
+                          {row.number}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold">{row.number}</span>
+                      )}
+                      <p className="text-sm font-normal text-slate">{row.orderType === 'job_work' ? 'Job work' : 'Sales order'}</p>
+                    </div>
+                  ),
                 },
                 { key: 'customer', label: 'Customer' },
                 {
@@ -765,14 +836,16 @@ export function Analytics() {
                   render: (row) => (
                     <div className="flex flex-wrap gap-1">
                       <StatusBadge status={row.status} label={statusLabel(row.status)} />
-                      {row.atRisk ? <Badge tone="danger">At risk</Badge> : null}
+                      {row.overdue ? <Badge tone="danger">Overdue</Badge> : null}
+                      {row.atRisk ? <Badge tone="warning">At risk</Badge> : null}
                       {row.onTime === true ? <Badge tone="success">On time</Badge> : null}
                       {row.onTime === false ? <Badge tone="warning">Late</Badge> : null}
                     </div>
                   ),
                 },
-                { key: 'deliveryDate', label: 'Delivery', render: (row) => formatDate(row.deliveryDate) },
-                { key: 'completedAt', label: 'Completed', render: (row) => formatDate(row.completedAt) },
+                { key: 'orderDate', label: 'Ordered', render: (row) => formatDate(row.orderDate) },
+                { key: 'deliveryDate', label: 'Due', render: (row) => formatDate(row.deliveryDate) },
+                { key: 'completedAt', label: 'Delivered', render: (row) => (row.completedAt ? formatDate(row.completedAt) : '—') },
                 ...(showMoney
                   ? [{ key: 'grandTotal', label: 'Value', align: 'right', render: (row) => formatMoney(row.grandTotal) }]
                   : []),
@@ -784,29 +857,40 @@ export function Analytics() {
 
       {tab === 'waste' ? (
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Kpi label="Floor waste" value={formatQty(data?.kpis?.waste)} hint="Logged with each register entry" tone="warning" />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Kpi label="Floor waste" value={wasteLabel(kpis)} hint="Logged with each register entry" tone="warning" />
+            <Kpi label="Waste rate" value={formatPct(kpis.wastePct)} hint={formatDelta(previous.wastePctDelta, ' pts')} tone="warning" />
             <Kpi
-              label="Store waste lots"
-              value={formatQty(data?.waste?.inventoryTotal)}
+              label="Waste in store"
+              value={data?.waste?.inventoryText || formatQty(0)}
               hint={`${data?.waste?.inventory?.length || 0} lots in inventory`}
               tone="accent"
             />
           </div>
-          <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start">
+          <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start">
             <Section title="By stage">
               <BarChart
                 data={wasteBars}
                 color={CHART_COLORS.waste}
-                onBarClick={(row) => openDrill({ type: 'stage', key: row.id, title: `${row.label} waste` })}
+                onBarClick={(row) => setDrill({ type: 'stage', key: row.id, title: `${row.label} waste` })}
               />
+              <div className="mt-2 space-y-1 text-sm">
+                {(data?.waste?.byStage || []).map((row) => (
+                  <p key={row.id} className="flex justify-between gap-2">
+                    <span className="font-semibold">{row.label}</span>
+                    <span className="font-normal text-slate">
+                      {row.wasteText || formatQty(row.waste)} · {formatPct(row.wastePct)}
+                    </span>
+                  </p>
+                ))}
+              </div>
             </Section>
             <Section
-              title="Inventory lots"
-              actions={<SearchField value={wasteQuery} onChange={setWasteQuery} placeholder="Search lot or stage" className="w-48" />}
+              title="Waste lots in store"
+              actions={<SearchField value={search} onChange={setSearch} placeholder="Search lot or stage" className="w-48" />}
             >
               <DataTable
-                resetKey={wasteQuery}
+                resetKey={search}
                 empty={<EmptyState title="No waste lots in inventory" />}
                 rows={wasteLots}
                 columns={[
@@ -817,17 +901,8 @@ export function Analytics() {
                     render: (row) =>
                       row.stage ? <Badge tone={stepTone(row.stage)}>{stageLabel(row.stage) || row.stage}</Badge> : '—',
                   },
-                  {
-                    key: 'kind',
-                    label: 'Kind',
-                    render: (row) => (row.kind === 'wip' ? 'Floor' : 'Catalog'),
-                  },
-                  {
-                    key: 'quantity',
-                    label: 'Qty',
-                    align: 'right',
-                    render: (row) => `${formatQty(row.quantity)} ${row.unit || ''}`.trim(),
-                  },
+                  { key: 'kind', label: 'Kind', render: (row) => (row.kind === 'wip' ? 'Floor' : 'Catalog') },
+                  { key: 'quantity', label: 'Qty', align: 'right', render: (row) => `${formatQty(row.quantity)} ${row.unit || ''}`.trim() },
                 ]}
               />
             </Section>
@@ -840,8 +915,10 @@ export function Analytics() {
         wide
         title={
           <div>
-            <h2 className="text-lg font-semibold text-ink">{drill?.title || 'Shifts'}</h2>
-            <p className="mt-0.5 text-sm text-slate">{drillRows.length} shift{drillRows.length === 1 ? '' : 's'} in this range</p>
+            <h2 className="text-lg font-semibold text-ink">{drill?.title || 'Register entries'}</h2>
+            <p className="mt-0.5 text-sm text-slate">
+              {drillRows.length} register entr{drillRows.length === 1 ? 'y' : 'ies'} in this range
+            </p>
           </div>
         }
         onClose={() => setDrill(null)}

@@ -17,12 +17,14 @@ import {
   canSeeCommercial,
   formatDate,
   formatMoney,
-  itemFromApi,
-  itemToPayload,
+  formatQty,
+  copyItemsForNewOrder,
+  deliveryDateForCopy,
   lineImages,
   orderTypeLabel,
   routeHasCut,
   routeHasPrint,
+  routeHasRoll,
   routeLabel,
   stageLabel,
   statusLabel,
@@ -242,7 +244,7 @@ export function SalesOrderDetail() {
                       orderType: order.orderType || 'sales_order',
                       customerId: order.customer?.id,
                       orderDate: toDateInput(new Date()),
-                      deliveryDate: toDateInput(order.deliveryDate),
+                      deliveryDate: deliveryDateForCopy(order.deliveryDate),
                       priority: order.priority,
                       paymentTerms: order.paymentTerms,
                       paymentMethod: order.paymentMethod,
@@ -256,7 +258,7 @@ export function SalesOrderDetail() {
                       remarks: order.remarks,
                       productionInstructions: order.productionInstructions,
                       discount: order.discount,
-                      items: (order.items || []).map((item) => itemToPayload(itemFromApi(item))),
+                      items: copyItemsForNewOrder(order.items),
                     });
                     navigate(`/sales-orders/${created.id}`);
                     setNotice('Duplicated as a new draft.');
@@ -336,7 +338,7 @@ export function SalesOrderDetail() {
 
       <StepProgress steps={tabs} value={activeTab} onChange={setTab} />
 
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="whitespace-pre-line text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
 
       {showTasks && activeTab !== 'tasks' ? <OrderNextStep state={orderTasks} onShowAll={() => setTab('tasks')} /> : null}
@@ -361,15 +363,28 @@ export function SalesOrderDetail() {
                     <Value label="Size">{req.size}</Value>
                     <Value label="Produced">{req.produced != null ? `${req.produced} / ${req.quantity}` : ''}</Value>
                     <Value label="Still to make">{req.remaining}</Value>
-                    {req.rawMaterial ? <Value label="Raw material">{req.rawMaterial}</Value> : null}
-                    {req.requiredWeight ? <Value label="Required weight">{req.requiredWeight}</Value> : null}
-                    {req.roll ? <Value label="Roll">{[req.roll.width, req.roll.length, req.roll.weight].filter(Boolean).join(' · ')}</Value> : null}
-                    {req.printing ? <Value label="Print">{[req.printing.colors, req.printing.design, req.printing.artwork].filter(Boolean).join(' · ')}</Value> : null}
-                    {req.bag ? <Value label="Bag">{[req.bag.width, req.bag.length, req.bag.gusset].filter(Boolean).join(' · ')}</Value> : null}
+                    {req.thickness ? <Value label="Gauge">{req.thickness}</Value> : null}
+                    {req.color ? <Value label="Colour">{req.color}</Value> : null}
+                    {req.material ? <Value label="Material">{req.material}</Value> : null}
+                    {req.materialType || req.materialGrade ? (
+                      <Value label="Type / grade">{[req.materialType, req.materialGrade].filter(Boolean).join(' / ')}</Value>
+                    ) : null}
+                    {req.additives ? <Value label="Additives">{req.additives}</Value> : null}
+                    {req.requiredWeight ? (
+                      <Value label="Required weight">{/[a-z]/i.test(req.requiredWeight) ? req.requiredWeight : `${req.requiredWeight} kg`}</Value>
+                    ) : null}
+                    {req.roll ? <Value label="Roll">{[req.roll.size, req.roll.weight].filter(Boolean).join(' · ')}</Value> : null}
+                    {req.printing ? (
+                      <>
+                        <Value label="Impression">{req.printing.impressions}</Value>
+                        <Value label="Print">{[req.printing.colors, req.printing.design, req.printing.artwork].filter(Boolean).join(' · ')}</Value>
+                      </>
+                    ) : null}
+                    {req.bag?.gusset ? <Value label="Gusset">{req.bag.gusset}</Value> : null}
                     {req.holes?.required ? <Value label="Holes">{[req.holes.count, req.holes.type].filter(Boolean).join(' · ')}</Value> : null}
                     {req.specialRequirements ? <Value label="Special">{req.specialRequirements}</Value> : null}
                     {req.incomingOutput ? (
-                      <Value label="From previous inventory">{`${req.incomingOutput.availableQty} ready from ${req.incomingOutput.stage}`}</Value>
+                      <Value label="From previous inventory">{`${formatQty(req.incomingOutput.availableQty)} ${req.incomingOutput.unit || ''} ready from ${req.incomingOutput.stage}`}</Value>
                     ) : null}
                   </Grid>
                 </div>
@@ -494,31 +509,47 @@ export function SalesOrderDetail() {
         return (
         <Fold key={item.id} title={`${name} · Manufacturing`} tone={tone} defaultOpen={index === 0}>
           <Grid>
-            <Value label="Raw material">{item.manufacturing?.rawMaterial}</Value>
-            <Value label="Type / grade">
-              {[item.manufacturing?.materialType, item.manufacturing?.materialGrade].filter(Boolean).join(' / ')}
-            </Value>
-            <Value label="Required weight">{item.manufacturing?.requiredWeight}</Value>
-            <Value label="Required qty">{item.manufacturing?.requiredQuantity}</Value>
-            <Value label="Thickness">{item.manufacturing?.thickness || item.thickness}</Value>
-            <Value label="Color">{item.manufacturing?.color || item.color}</Value>
-            <Value label="Roll size">{item.roll?.size || [item.roll?.width, item.roll?.length, item.roll?.weight].filter(Boolean).join(' · ')}</Value>
+            {routeHasRoll(item.productionRoute) ? (
+              <>
+                <Value label="Type / grade">
+                  {[item.manufacturing?.materialType, item.manufacturing?.materialGrade].filter(Boolean).join(' / ')}
+                </Value>
+                <Value label="Required weight">{item.manufacturing?.requiredWeight}</Value>
+              </>
+            ) : null}
+            <Value label="Gauge">{item.manufacturing?.thickness || item.thickness}</Value>
+            {routeHasRoll(item.productionRoute) && item.rolling?.ready ? (
+              <>
+                <Value label="Weight per 1,000 pcs">{`${formatQty(item.rolling.weightPer1000)} kg`}</Value>
+                {item.rolling.totalWeight > 0 ? <Value label="Total weight">{`${formatQty(item.rolling.totalWeight)} kg`}</Value> : null}
+                {item.manufacturing?.materialRate ? (
+                  <>
+                    <Value label="Material rate">{`${formatMoney(item.manufacturing.materialRate)} / kg`}</Value>
+                    <Value label="Material per 1,000 pcs">{formatMoney(item.rolling.materialPer1000)}</Value>
+                    {item.rolling.totalWeight > 0 ? <Value label="Total material cost">{formatMoney(item.rolling.totalMaterial)}</Value> : null}
+                  </>
+                ) : null}
+              </>
+            ) : null}
+            <Value label="Colour">{item.manufacturing?.color || item.color}</Value>
+            {routeHasRoll(item.productionRoute) ? <Value label="Roll">{[item.roll?.size, item.roll?.weight].filter(Boolean).join(' · ')}</Value> : null}
             {routeHasPrint(item.productionRoute) ? (
               <>
                 <Value label="Printing">{[item.printing?.colorCount, item.printing?.colors, item.printing?.design].filter(Boolean).join(' · ')}</Value>
                 <Value label="Impressions">{item.printing?.impressions}</Value>
-                <Value label="Artwork">{item.printing?.artwork}</Value>
+                <Value label="Note">{[item.printing?.artwork, item.printing?.requirement].filter(Boolean).join('; ')}</Value>
               </>
             ) : null}
             {routeHasCut(item.productionRoute) ? (
               <>
-                <Value label="Poly bag size">{item.bag?.size || [item.bag?.width, item.bag?.length, item.bag?.gusset].filter(Boolean).join(' · ')}</Value>
+                {item.bag?.gusset ? <Value label="Gusset">{item.bag.gusset}</Value> : null}
                 <Value label="Holes">
                   {item.holes?.required ? [item.holes.count, item.holes.type, item.holes.size, item.holes.position].filter(Boolean).join(' · ') : 'No'}
                 </Value>
                 <Value label="Tape">{item.tape?.required ? item.tape.type || 'Yes' : 'No'}</Value>
               </>
             ) : null}
+            {routeHasRoll(item.productionRoute) && item.manufacturing?.additives ? <Value label="Additives">{item.manufacturing.additives}</Value> : null}
             <Value label="Special requirements">{item.manufacturing?.specialRequirements}</Value>
             <Value label="Now at">{item.currentStage === 'completed' ? 'Done' : item.currentStage ? stageLabel(item.currentStage) : 'Not started'}</Value>
           </Grid>

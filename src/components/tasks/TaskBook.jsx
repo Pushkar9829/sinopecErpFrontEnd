@@ -14,14 +14,14 @@ const BOOKS = [
 
 const LABELS = {
   size: 'Size',
-  thickness: 'Thickness',
+  thickness: 'Gauge',
   colour: 'Colour',
   material: 'Material',
   requiredWeight: 'Req. weight',
   jobSize: 'Job size',
   colours: 'Print colours',
   impression: 'Impression',
-  artwork: 'Artwork',
+  artwork: 'Print note',
   available: 'Ready to pick',
   bagSize: 'Bag size',
   gusset: 'Gusset',

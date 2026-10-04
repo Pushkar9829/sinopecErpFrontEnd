@@ -22,6 +22,9 @@ import { CustomerForm } from './pages/CustomerForm';
 import { SalesOrders } from './pages/SalesOrders';
 import { SalesOrderForm } from './pages/SalesOrderForm';
 import { SalesOrderDetail } from './pages/SalesOrderDetail';
+import { DraftOrders } from './pages/DraftOrders';
+import { DraftOrderSetup } from './pages/DraftOrderSetup';
+import { DraftOrderDetail } from './pages/DraftOrderDetail';
 import { SalesSettings } from './pages/SalesSettings';
 import { ProductTemplateForm } from './pages/ProductTemplateForm';
 import { RateCalculator } from './pages/RateCalculator';
@@ -68,6 +71,11 @@ export default function App() {
               </Route>
               <Route element={<ProtectedRoute anyOf={[...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS]} />}>
                 <Route path="sales-orders/:id" element={<SalesOrderDetail />} />
+              </Route>
+              <Route element={<ProtectedRoute permission="sales:create" />}>
+                <Route path="draft-orders" element={<DraftOrders />} />
+                <Route path="draft-orders/setup" element={<DraftOrderSetup />} />
+                <Route path="draft-orders/:id" element={<DraftOrderDetail />} />
               </Route>
               <Route element={<ProtectedRoute permission="sales:read" />}>
                 <Route path="sales-settings" element={<SalesSettings />} />

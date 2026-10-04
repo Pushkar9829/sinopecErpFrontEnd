@@ -100,11 +100,10 @@ export function ArtworkButton({ orderId, itemId, label = 'View', className = '' 
                 {data.productCode ? ` (${data.productCode})` : ''}
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Line label="Artwork" value={data.note} />
+                <Line label="Printing note" value={data.note} />
                 <Line label="Design" value={data.design} />
                 <Line label="Colours" value={[data.colorCount, data.colors].filter(Boolean).join(' · ')} />
                 <Line label="Impressions" value={data.impressions} />
-                <Line label="Printing note" value={data.requirement} />
               </div>
               {data.images.length ? (
                 <div className="space-y-2">

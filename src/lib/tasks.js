@@ -148,7 +148,7 @@ export function taskGuide(task) {
     case 'material_receive':
       return "Record the customer's material in inventory, linked to this job work. The task then closes by itself.";
     case 'stage_work':
-      return `Work on this item at ${STAGE_NAMES[task.stage] || task.stage} and record each shift on the register. The task closes by itself when the stage is finished.`;
+      return `Work on this item at ${STAGE_NAMES[task.stage] || task.stage} and record each entry on the register. The task closes by itself when the stage is finished.`;
     case 'dispatch':
       return 'Send the ready items out and record each dispatch on the dispatch register.';
     case 'delivery_confirm':

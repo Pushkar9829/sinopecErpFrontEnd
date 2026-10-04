@@ -1,10 +1,16 @@
 export const inputClass =
   'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 font-normal outline-none focus:border-accent disabled:bg-paper';
 
-export function Field({ label, children, className = '' }) {
+// `mark` only shows an asterisk; it does not block saving a draft.
+export function Field({ label, children, className = '', mark = false }) {
   return (
     <label className={`block text-base font-semibold text-ink ${className}`}>
       {label}
+      {mark ? (
+        <span className="text-red-700" aria-hidden="true">
+          {' *'}
+        </span>
+      ) : null}
       {children}
     </label>
   );

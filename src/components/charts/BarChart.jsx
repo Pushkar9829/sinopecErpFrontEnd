@@ -5,9 +5,6 @@ export const CHART_COLORS = {
   printing: '#0284c7',
   cutting: '#7c3aed',
   dispatch: '#0d9488',
-  morning: '#ea580c',
-  afternoon: '#0284c7',
-  night: '#4338ca',
   muted: '#64748b',
 };
 

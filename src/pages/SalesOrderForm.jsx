@@ -245,7 +245,9 @@ export function SalesOrderForm() {
       creditDays: Number(header.creditDays) || 0,
       advanceAmount: Number(header.advanceAmount) || 0,
       discount: Number(header.discount) || 0,
-      items: items.map(itemToPayload),
+      items: items
+        .filter((item) => String(item.product || '').trim() || String(item.productCode || '').trim() || Number(item.quantity) > 0 || item.stageWork?.length)
+        .map(itemToPayload),
     };
   }
 
@@ -351,10 +353,10 @@ export function SalesOrderForm() {
             <Field label={`${typeInfo.label} no.`}>
               <input readOnly value={isEdit ? number : `Assigned on save (${typeInfo.prefix}-YYYY-00001)`} className={inputClass} />
             </Field>
-            <Field label="Order date">
+            <Field label="Order date" mark>
               <input type="date" required value={header.orderDate} disabled={!canSave} onChange={(e) => updateHeader('orderDate', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Customer">
+            <Field label="Customer" mark>
               <select required value={header.customerId} disabled={!canSave} onChange={(e) => applyCustomer(e.target.value)} className={inputClass}>
                 <option value="">Select customer</option>
                 {customers
@@ -369,7 +371,7 @@ export function SalesOrderForm() {
             <Field label="Customer code">
               <input readOnly value={selectedCustomer?.code || ''} className={inputClass} />
             </Field>
-            <Field label="Delivery date">
+            <Field label="Delivery date (needed to submit)" mark>
               <input type="date" value={header.deliveryDate} disabled={!canSave} onChange={(e) => updateHeader('deliveryDate', e.target.value)} className={inputClass} />
             </Field>
             <Field label="Priority">

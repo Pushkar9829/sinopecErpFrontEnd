@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Field, inputClass } from './FormField';
 
-export function ComboField({ label, value, options = [], onChange, disabled, required, className = '', placeholder = 'Select or type' }) {
+export function ComboField({ label, value, options = [], onChange, disabled, required, mark = false, className = '', placeholder = 'Select or type' }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const rootRef = useRef(null);
@@ -56,7 +56,7 @@ export function ComboField({ label, value, options = [], onChange, disabled, req
   }
 
   return (
-    <Field label={label} className={className}>
+    <Field label={label} className={className} mark={mark || required}>
       <div ref={rootRef} className="relative">
         <input
           value={value}
