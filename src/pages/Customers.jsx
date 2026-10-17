@@ -196,6 +196,11 @@ export function Customers() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name, code, contact, GST" />
+          <PermissionGate permission="accounts:create">
+            <Link to="/billing/openings-import" className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
+              Import opening balances
+            </Link>
+          </PermissionGate>
           <PermissionGate permission="sales:create">
             <Link
               to="/customers/new"

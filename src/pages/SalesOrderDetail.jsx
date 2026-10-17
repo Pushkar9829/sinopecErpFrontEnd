@@ -14,6 +14,7 @@ import { imageSrc } from '../lib/images';
 import { OrderNextStep, OrderTasksTab } from '../components/tasks/OrderTasksTab';
 import { useOrderTasks } from '../hooks/useOrderTasks';
 import { OrderPayments } from '../components/sales/OrderPayments';
+import { OrderInvoices } from '../components/billing/OrderInvoices';
 import {
   ATTACHMENT_KINDS,
   STEP_LABELS,
@@ -687,6 +688,9 @@ export function SalesOrderDetail() {
                 <span className={Number(order.remainingAmount) > 0 ? 'text-red-700' : 'text-emerald-700'}>{formatMoney(order.remainingAmount)}</span>
               </Value>
             </Grid>
+          </Section>
+          <Section title="Invoices">
+            <OrderInvoices orderId={order.id} canCreate={isSuperAdmin || can('accounts:create') || can('sales:update')} />
           </Section>
           <Section title="Payments">
             <OrderPayments

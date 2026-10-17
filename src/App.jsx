@@ -22,6 +22,9 @@ const MachineForm = lazy(() => import('./pages/MachineForm').then((m) => ({ defa
 const Machines = lazy(() => import('./pages/Machines').then((m) => ({ default: m.Machines })));
 const Suppliers = lazy(() => import('./pages/Suppliers').then((m) => ({ default: m.Suppliers })));
 const SupplierForm = lazy(() => import('./pages/SupplierForm').then((m) => ({ default: m.SupplierForm })));
+const CustomerAccount = lazy(() => import('./pages/CustomerAccount').then((m) => ({ default: m.CustomerAccount })));
+const OpeningImport = lazy(() => import('./pages/OpeningImport').then((m) => ({ default: m.OpeningImport })));
+const InvoicePrint = lazy(() => import('./pages/InvoicePrint').then((m) => ({ default: m.InvoicePrint })));
 const CompanySettings = lazy(() => import('./pages/CompanySettings').then((m) => ({ default: m.CompanySettings })));
 const StageDetail = lazy(() => import('./pages/StageDetail').then((m) => ({ default: m.StageDetail })));
 const Stages = lazy(() => import('./pages/Stages').then((m) => ({ default: m.Stages })));
@@ -55,6 +58,9 @@ function AppRoutes() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<ProtectedRoute />}>
+            <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
+              <Route path="invoices/:id/print" element={<InvoicePrint />} />
+            </Route>
             <Route element={<AppShell />}>
               <Route index element={<Dashboard />} />
               <Route element={<ProtectedRoute permission="users:read" />}>
@@ -127,6 +133,12 @@ function AppRoutes() {
                 <Route path="machines/:id" element={<MachineForm />} />
               </Route>
               <Route path="company" element={<CompanySettings />} />
+              <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
+                <Route path="customers/:id/account" element={<CustomerAccount />} />
+              </Route>
+              <Route element={<ProtectedRoute permission="accounts:create" />}>
+                <Route path="billing/openings-import" element={<OpeningImport />} />
+              </Route>
               <Route element={<ProtectedRoute anyOf={['inventory:read', 'production:read', 'sales:read']} />}>
                 <Route path="suppliers" element={<Suppliers />} />
                 <Route element={<ProtectedRoute permission="inventory:create" />}>

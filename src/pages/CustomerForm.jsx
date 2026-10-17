@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { companyApi } from '../api/company.api';
 import { customersApi } from '../api/customers.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
@@ -11,12 +11,17 @@ import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePermission } from '../hooks/usePermission';
 import { emptyLineItem, itemFromApi, itemToPayload } from '../lib/sales';
 
-function FormBar({ title, extra }) {
+function FormBar({ title, extra, accountId }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
       <BackButton fallback="/customers" />
       <h1 className="px-1 text-lg font-semibold">{title}</h1>
       {extra ? <span className="text-sm text-slate">{extra}</span> : null}
+      {accountId ? (
+        <Link to={`/customers/${accountId}/account`} className="ml-auto rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
+          Account: bills and payments
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -50,6 +55,7 @@ export function CustomerForm() {
   const { can } = usePermission();
   const isEdit = Boolean(id);
   const canSave = isEdit ? can('sales:update') : can('sales:create');
+  const canSeeAccount = can('accounts:read') || can('sales:read');
 
   const [form, setForm] = useState(emptyForm);
   const [products, setProducts] = useState([]);
@@ -140,7 +146,7 @@ export function CustomerForm() {
 
   return (
     <div className="space-y-5">
-      <FormBar title={isEdit ? form.name || 'Customer' : 'Add customer'} extra={isEdit && code ? code : ''} />
+      <FormBar title={isEdit ? form.name || 'Customer' : 'Add customer'} extra={isEdit && code ? code : ''} accountId={isEdit && canSeeAccount ? id : ''} />
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <Section title="Customer">
