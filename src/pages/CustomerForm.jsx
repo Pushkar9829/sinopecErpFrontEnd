@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { useNavigate, useParams } from 'react-router-dom';
+import { companyApi } from '../api/company.api';
 import { customersApi } from '../api/customers.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
 import { SalesOrderLineCard } from '../components/sales/SalesOrderLineCard';
@@ -38,6 +39,8 @@ const emptyForm = {
   billingAddress: '',
   shippingAddress: '',
   priceCategory: '',
+  creditDays: '',
+  creditLimit: '',
   isActive: true,
 };
 
@@ -56,6 +59,7 @@ export function CustomerForm() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(!isEdit);
+  const [defaultCreditDays, setDefaultCreditDays] = useState(30);
   const { markSaved } = useUnsavedChanges({ form, products }, loaded);
 
   useEffect(() => {
@@ -65,6 +69,10 @@ export function CustomerForm() {
         setOptions(optionData.byGroup || {});
       })
       .catch((err) => setError(err.message));
+    companyApi
+      .get()
+      .then((company) => setDefaultCreditDays(company.defaultCreditDays ?? 30))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -83,6 +91,8 @@ export function CustomerForm() {
           billingAddress: customer.billingAddress || '',
           shippingAddress: customer.shippingAddress || '',
           priceCategory: customer.priceCategory || '',
+          creditDays: customer.creditDays == null ? '' : String(customer.creditDays),
+          creditLimit: customer.creditLimit ? String(customer.creditLimit) : '',
           isActive: customer.isActive !== false,
         });
         setProducts((customer.products || []).map(itemFromApi));
@@ -160,6 +170,12 @@ export function CustomerForm() {
             </Field>
             <Field label="Price category">
               <input value={form.priceCategory} disabled={!canSave} onChange={(e) => update('priceCategory', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Credit days">
+              <input type="number" min="0" max="365" step="1" value={form.creditDays} disabled={!canSave} onChange={(e) => update('creditDays', e.target.value)} placeholder={`Company default (${defaultCreditDays})`} className={inputClass} />
+            </Field>
+            <Field label="Credit limit (₹)">
+              <input type="number" min="0" step="any" value={form.creditLimit} disabled={!canSave} onChange={(e) => update('creditLimit', e.target.value)} placeholder="No limit" className={inputClass} />
             </Field>
           </Grid>
           <div className="grid gap-3 sm:grid-cols-2">

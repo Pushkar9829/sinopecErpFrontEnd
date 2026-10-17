@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
 import { salesOrdersApi } from '../api/salesOrders.api';
+import { suppliersApi } from '../api/suppliers.api';
 import { BackButton } from '../components/ui/BackButton';
 import { usePermission } from '../hooks/usePermission';
 
@@ -178,6 +179,7 @@ const emptyForm = {
   notes: '',
   kind: 'catalog',
   salesOrderId: '',
+  supplierId: '',
 };
 
 export function InventoryForm() {
@@ -196,6 +198,7 @@ export function InventoryForm() {
     salesOrderId: searchParams.get('order') || '',
   });
   const [jobWorks, setJobWorks] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
 
   useEffect(() => {
     salesOrdersApi
@@ -204,6 +207,10 @@ export function InventoryForm() {
         setJobWorks(orders.filter((order) => order.orderType === 'job_work' && !['cancelled', 'completed'].includes(order.status)))
       )
       .catch(() => setJobWorks([]));
+    suppliersApi
+      .list(true)
+      .then(setSuppliers)
+      .catch(() => setSuppliers([]));
   }, []);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -243,6 +250,8 @@ export function InventoryForm() {
           notes: item.notes || '',
           kind: item.kind || 'catalog',
           salesOrderId: item.kind === 'wip' ? '' : item.salesOrderId || '',
+          supplierId: item.supplierId || '',
+          supplierName: item.supplierName || '',
           canDelete: item.canDelete !== false,
         });
       })
@@ -285,6 +294,7 @@ export function InventoryForm() {
           stageId: needsStage ? form.stageId : null,
           unitPrice: hidePrice || form.unitPrice === '' ? null : Number(form.unitPrice),
           salesOrderId: form.category === 'raw' ? form.salesOrderId || null : null,
+          supplierId: form.category === 'raw' && !form.salesOrderId ? form.supplierId || null : null,
         };
 
     try {
@@ -388,6 +398,21 @@ export function InventoryForm() {
                 Saving this closes the job work's "Receive customer material" task.
               </span>
             ) : null}
+          </label>
+        ) : null}
+
+        {form.category === 'raw' && !isWip && !form.salesOrderId ? (
+          <label className="block text-base font-semibold text-ink">
+            Supplier <span className="font-normal text-slate">(optional)</span>
+            <select disabled={locked} value={form.supplierId} onChange={(event) => update('supplierId', event.target.value)} className={inputClass}>
+              <option value="">Not recorded</option>
+              {form.supplierId && !suppliers.some((s) => s.id === form.supplierId) ? <option value={form.supplierId}>{form.supplierName || 'Current supplier'}</option> : null}
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
           </label>
         ) : null}
 

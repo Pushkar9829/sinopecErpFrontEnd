@@ -11,6 +11,9 @@ const pageLinks = [
   { to: '/analytics', label: 'Analytics', anyOf: ANALYTICS_VIEW_KEYS },
   { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },
   { to: '/customers', label: 'Customers', permission: 'sales:read' },
+  // No role holds this key, so only the Super Admin (who passes every check) sees it.
+  { to: '/company', label: 'Company details', permission: 'company:update' },
+  { to: '/suppliers', label: 'Suppliers', anyOf: ['inventory:read', 'production:read'] },
   { to: '/draft-orders', label: 'Draft orders', permission: 'intake:read', badge: 'drafts' },
   { to: '/inventory', label: 'Inventory', permission: 'inventory:read' },
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },

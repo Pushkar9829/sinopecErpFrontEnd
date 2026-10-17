@@ -378,6 +378,9 @@ export function SalesOrderLineCard({
         <ComboField label="Material" mark value={item.material} options={opts(options, 'material')} disabled={!canEdit} onChange={(value) => update('material', value)} />
         <ComboField label="Gauge" value={item.thickness} options={opts(options, 'thickness')} disabled={!canEdit} onChange={(value) => update('thickness', value)} />
         <ComboField label="Colour" value={item.color} options={opts(options, 'color')} disabled={!canEdit} onChange={(value) => update('color', value)} />
+        <Field label="HSN code">
+          <input value={item.hsnCode || ''} disabled={!canEdit} onChange={(e) => update('hsnCode', e.target.value)} placeholder="3923" inputMode="numeric" className={inputClass} />
+        </Field>
         {hideTemplate ? null : (
           <Field label="Quantity" mark>
             <input type="number" min="0" step="any" value={item.quantity} disabled={!canEdit} onChange={(e) => update('quantity', e.target.value)} className={inputClass} />

@@ -20,6 +20,9 @@ const InventoryForm = lazy(() => import('./pages/InventoryForm').then((m) => ({ 
 const InventoryStages = lazy(() => import('./pages/InventoryStages').then((m) => ({ default: m.InventoryStages })));
 const MachineForm = lazy(() => import('./pages/MachineForm').then((m) => ({ default: m.MachineForm })));
 const Machines = lazy(() => import('./pages/Machines').then((m) => ({ default: m.Machines })));
+const Suppliers = lazy(() => import('./pages/Suppliers').then((m) => ({ default: m.Suppliers })));
+const SupplierForm = lazy(() => import('./pages/SupplierForm').then((m) => ({ default: m.SupplierForm })));
+const CompanySettings = lazy(() => import('./pages/CompanySettings').then((m) => ({ default: m.CompanySettings })));
 const StageDetail = lazy(() => import('./pages/StageDetail').then((m) => ({ default: m.StageDetail })));
 const Stages = lazy(() => import('./pages/Stages').then((m) => ({ default: m.Stages })));
 const Customers = lazy(() => import('./pages/Customers').then((m) => ({ default: m.Customers })));
@@ -122,6 +125,14 @@ function AppRoutes() {
                   <Route path="machines/new" element={<MachineForm />} />
                 </Route>
                 <Route path="machines/:id" element={<MachineForm />} />
+              </Route>
+              <Route path="company" element={<CompanySettings />} />
+              <Route element={<ProtectedRoute anyOf={['inventory:read', 'production:read', 'sales:read']} />}>
+                <Route path="suppliers" element={<Suppliers />} />
+                <Route element={<ProtectedRoute permission="inventory:create" />}>
+                  <Route path="suppliers/new" element={<SupplierForm />} />
+                </Route>
+                <Route path="suppliers/:id" element={<SupplierForm />} />
               </Route>
               <Route element={<ProtectedRoute permission="inventory:read" />}>
                 <Route path="inventory" element={<Inventory />} />

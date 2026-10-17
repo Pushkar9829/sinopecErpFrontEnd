@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { companyApi } from '../api/company.api';
 import { customersApi } from '../api/customers.api';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { salesOrdersApi } from '../api/salesOrders.api';
@@ -153,6 +154,7 @@ export function SalesOrderForm() {
   const [templates, setTemplates] = useState([]);
   const [options, setOptions] = useState({});
   const [paidAmount, setPaidAmount] = useState(0);
+  const [companyCreditDays, setCompanyCreditDays] = useState(30);
 
   const { markSaved } = useUnsavedChanges({ header, items, orderType }, loaded && canSave);
   const selectedCustomer = customers.find((customer) => customer.id === header.customerId);
@@ -169,6 +171,16 @@ export function SalesOrderForm() {
         setOptions(optionData.byGroup || {});
       })
       .catch((err) => setError(err.message));
+    companyApi
+      .get()
+      .then((company) => {
+        const days = company.defaultCreditDays ?? 30;
+        setCompanyCreditDays(days);
+        if (!id) setHeader((prev) => ({ ...prev, creditDays: String(days) }));
+      })
+      .catch(() => {});
+    // Loaded once; `id` only decides whether a new order takes the default.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -217,6 +229,8 @@ export function SalesOrderForm() {
     setHeader((prev) => ({
       ...prev,
       customerId,
+      // The customer's own credit days, else the company default.
+      creditDays: String(listed?.creditDays ?? companyCreditDays),
       billingAddress: listed?.billingAddress || prev.billingAddress,
       shippingAddress: listed?.shippingAddress || prev.shippingAddress,
       deliveryLocation: listed?.shippingAddress || listed?.billingAddress || prev.deliveryLocation,
