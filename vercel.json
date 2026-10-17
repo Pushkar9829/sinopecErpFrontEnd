@@ -3,6 +3,14 @@
     {
       "source": "/api/:path*",
       "destination": "https://sinopecbackenderp.onrender.com/api/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://sinopecbackenderp.onrender.com/uploads/:path*"
+    },
+    {
+      "source": "/((?!api/|uploads/|assets/).*)",
+      "destination": "/index.html"
     }
   ]
 }

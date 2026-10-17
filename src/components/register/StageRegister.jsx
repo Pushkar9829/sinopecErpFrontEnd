@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
 import { registersApi } from '../../api/registers.api';
-import { confirmAction } from '../ui/ConfirmHost';
+import { confirmAction } from '../ui/confirm';
 import { ArtworkButton } from './ArtworkButton';
 import { LongText } from './LongText';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import { OPERATOR_LABEL, STAGE_COLUMNS, bookColumns, frozenColumns, isSuperAdmin, orderValue, paperQuantities, savedValue, typedDetails } from '../../lib/registerBooks';
 import { DELIVERY_PARTNERS, formatDate, formatQty, toDateInput } from '../../lib/sales';
 
@@ -640,7 +640,10 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
   const [entryOpen, setEntryOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [machines, setMachines] = useState([]);
-  const openedJob = useRef('');
+  // Job links (?job=) open the entry form once per job id; see below.
+  const [handledPreset, setHandledPreset] = useState('');
+  const [missedPreset, setMissedPreset] = useState('');
+  const [carriedFor, setCarriedFor] = useState('');
   const [draft, setDraft] = useState({
     jobId: '',
     lotId: '',
@@ -655,19 +658,26 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     details: {},
   });
 
+  // Machines are only picked when making entries, and only people who can make
+  // entries may read the machine list; viewers (sales, store, accounts) skip it.
+  const canMarkStage = Boolean(book?.canMark);
   useEffect(() => {
-    if (!stage || stage === 'dispatch') {
-      setMachines([]);
-      return;
-    }
-    productionApi.machines(stage).then(setMachines).catch(() => setMachines([]));
-  }, [stage]);
+    // The register is keyed by stage (a fresh instance per stage), so there
+    // is never an earlier stage's machine list to clear here.
+    if (!stage || stage === 'dispatch' || !canMarkStage) return undefined;
+    let alive = true;
+    productionApi
+      .machines(stage)
+      .then((list) => alive && setMachines(list))
+      .catch(() => alive && setMachines([]));
+    return () => {
+      alive = false;
+    };
+  }, [stage, canMarkStage]);
 
   useEffect(() => {
     if (!stage) return undefined;
     let alive = true;
-    setError('');
-    setBook(null);
     registersApi
       .stage(stage)
       .then((data) => alive && setBook(data))
@@ -677,54 +687,51 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     };
   }, [stage]);
 
-  useEffect(() => {
-    setDraft((current) => ({
-      ...current,
-      ...blankDraft(),
-    }));
-    setNotice('');
-    setEntryOpen(false);
-    setEditing(null);
-  }, [stage]);
-
-  useEffect(() => {
-    if (!presetJob) openedJob.current = '';
-  }, [presetJob]);
-
-  useEffect(() => {
-    if (!book || !presetJob || openedJob.current === presetJob) return;
+  // A job link (?job=) opens the entry form for that line once, as soon as the
+  // book has loaded. Done while rendering (React's "adjust state when a prop
+  // changes" pattern) rather than in an effect; handledPreset makes it once.
+  if (!presetJob && handledPreset) setHandledPreset('');
+  if (book && presetJob && handledPreset !== presetJob) {
+    setHandledPreset(presetJob);
     const line = (book.open || []).find((item) => item.jobId === presetJob && item.canMark);
     if (!line) {
-      openedJob.current = presetJob;
       setNotice(
         book.canMark
           ? 'This line has nothing waiting at this stage right now.'
           : 'You can view this register. Entries are made by the stage operator.'
       );
-      onConsumePreset?.();
-      return;
+      setMissedPreset(presetJob);
+    } else {
+      setDraft((current) => ({
+        ...current,
+        ...blankDraft(),
+        jobId: presetJob,
+        lotId: line.sourceLots?.[0]?.id || '',
+        ...carryOver(stage, line, machines),
+      }));
+      setEntryOpen(true);
     }
-    openedJob.current = presetJob;
-    setDraft((current) => ({
-      ...current,
-      ...blankDraft(),
-      jobId: presetJob,
-      lotId: line.sourceLots?.[0]?.id || '',
-      ...carryOver(stage, line, machines),
-    }));
-    setEntryOpen(true);
-  }, [book, presetJob]);
-
+  }
+  // Tell the page the link was used up (it clears ?job=); a parent callback,
+  // so it runs after render.
   useEffect(() => {
-    if (!entryOpen || editing || !machines.length) return;
-    setDraft((current) => {
-      if (current.machineId || !current.jobId) return current;
-      const line = (book?.open || []).find((item) => item.jobId === current.jobId);
-      const carried = carryOver(stage, line, machines);
-      if (!carried.machineId) return current;
-      return { ...current, machineId: carried.machineId, prefilled: [...new Set([...(current.prefilled || []), 'machineId'])] };
-    });
-  }, [machines, entryOpen, editing, book, stage]);
+    if (missedPreset) onConsumePreset?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missedPreset]);
+
+  // The machine list can arrive after the entry form opened: fill the machine
+  // from the operator's last entry once per line (the user may clear it after).
+  const carryKey = entryOpen && !editing && machines.length && draft.jobId && !draft.machineId ? `${draft.jobId}|${machines.length}` : '';
+  if (carryKey && carriedFor !== carryKey) {
+    setCarriedFor(carryKey);
+    const line = (book?.open || []).find((item) => item.jobId === draft.jobId);
+    const carried = carryOver(stage, line, machines);
+    if (carried.machineId) {
+      setDraft((current) =>
+        current.machineId ? current : { ...current, machineId: carried.machineId, prefilled: [...new Set([...(current.prefilled || []), 'machineId'])] }
+      );
+    }
+  }
 
   const entries = [...(book?.entries || [])].sort(
     (a, b) => new Date(b.workDate || b.markedAt) - new Date(a.workDate || a.markedAt)
@@ -759,6 +766,17 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     setBook(next);
   }
 
+  // After a successful save a failed refresh must not look like a failed
+  // save, or the operator enters the same work twice.
+  async function reloadAfterSave(message) {
+    try {
+      await reloadStage();
+      setNotice(message);
+    } catch {
+      setNotice(`${message} The list could not refresh; reload the page before entering more.`);
+    }
+  }
+
   async function submitEntry(event) {
     event.preventDefault();
     if (!chosen || !canEnter) return;
@@ -787,8 +805,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
         });
         setEntryOpen(false);
         setEditing(null);
-        await reloadStage();
-        setNotice('Entry updated.');
+        await reloadAfterSave('Entry updated.');
         return;
       }
       await productionApi.enter({
@@ -813,8 +830,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
       setEntryOpen(false);
       onConsumePreset?.();
       if (onSaved?.()) return;
-      await reloadStage();
-      setNotice('Entry saved on the register.');
+      await reloadAfterSave('Entry saved on the register.');
     } catch (err) {
       setError(err.message);
     } finally {

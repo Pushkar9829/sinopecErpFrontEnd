@@ -4,7 +4,8 @@ import { rolesApi } from '../api/roles.api';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
-import { Badge, roleGroupTone } from '../components/ui/Badge';
+import { Badge } from '../components/ui/Badge';
+import { roleGroupTone } from '../components/ui/badgeTones';
 import { usePagedList } from '../hooks/usePagedList';
 
 const PAGE_SIZE = 8;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { rolesApi } from '../api/roles.api';
+import { usePermission } from '../hooks/usePermission';
 import { usersApi } from '../api/users.api';
 import { BackButton } from '../components/ui/BackButton';
 import { RoleMenu } from '../components/ui/RoleMenu';
@@ -19,7 +20,10 @@ function FormBar({ title }) {
 
 export function UserCreate() {
   const navigate = useNavigate();
-  const [roles, setRoles] = useState([]);
+  const { canManageRole } = usePermission();
+  const [allRoles, setRoles] = useState([]);
+  // Only roles you could hand out yourself; the API enforces the same rule.
+  const roles = allRoles.filter(canManageRole);
   const [form, setForm] = useState({
     fullName: '',
     username: '',
@@ -35,9 +39,11 @@ export function UserCreate() {
       .list()
       .then((nextRoles) => {
         setRoles(nextRoles);
-        setForm((prev) => ({ ...prev, roleId: prev.roleId || nextRoles[0]?._id || '' }));
+        setForm((prev) => ({ ...prev, roleId: prev.roleId || nextRoles.find(canManageRole)?._id || '' }));
       })
       .catch((err) => setError(err.message));
+    // Roles load once; canManageRole only picks the default selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function update(field, value) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { salesOrdersApi } from '../../api/salesOrders.api';
 import { tasksApi } from '../../api/tasks.api';
@@ -17,11 +17,13 @@ import {
   taskStatusTone,
 } from '../../lib/tasks';
 import { Badge, PriorityBadge } from '../ui/Badge';
-import { confirmAction } from '../ui/ConfirmHost';
+import { confirmAction } from '../ui/confirm';
 import { inputClass } from '../ui/FormField';
 import { Modal } from '../ui/Modal';
-import { AssigneeSelect, assigneePayload, assigneeValue } from './AssigneeSelect';
-import { ItemQuantityFields, itemQuantityError } from './TaskForm';
+import { AssigneeSelect } from './AssigneeSelect';
+import { assigneePayload, assigneeValue } from '../../lib/assignee';
+import { ItemQuantityFields } from './TaskForm';
+import { itemQuantityError } from '../../lib/itemQuantity';
 import { JobCard } from './TaskBook';
 import { TaskProgress } from './TaskTable';
 
@@ -38,44 +40,64 @@ function Row({ label, children }) {
   );
 }
 
-export function TaskDrawer({ task: initial, onClose, onChanged }) {
+// A fresh drawer per task: opening another task starts with clean state
+// (comment box, errors, drafts) instead of resetting it in an effect.
+export function TaskDrawer(props) {
+  return <TaskDrawerBody key={props.task?.id || 'none'} {...props} />;
+}
+
+const itemDraftOf = (task) => ({ itemId: task?.itemId || '', quantity: task?.quantity ?? '' });
+
+function TaskDrawerBody({ task: initial, onClose, onChanged }) {
   const { can } = usePermission();
-  const [task, setTask] = useState(initial);
+  const [task, setTaskState] = useState(initial);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [people, setPeople] = useState([]);
-  const [assignee, setAssignee] = useState('');
-  const [itemDraft, setItemDraft] = useState({ itemId: '', quantity: '' });
-  const [orderItems, setOrderItems] = useState(null);
+  const [assignee, setAssignee] = useState(() => assigneeValue(initial));
+  const [itemDraft, setItemDraft] = useState(() => itemDraftOf(initial));
+  const [loadedOrder, setLoadedOrder] = useState({ id: '', items: null });
+
+  // Every newer copy of the task (fresh load, after an action) also refreshes
+  // the assignee picker and the item/quantity draft.
+  const shownTask = useRef(initial);
+  function setTask(next) {
+    const before = shownTask.current;
+    shownTask.current = next;
+    setTaskState(next);
+    setAssignee(assigneeValue(next));
+    // Keep an unsaved item edit unless the task's own item/quantity changed.
+    if ((before?.itemId || '') !== (next?.itemId || '') || String(before?.quantity ?? '') !== String(next?.quantity ?? '')) {
+      setItemDraft(itemDraftOf(next));
+    }
+  }
 
   useEffect(() => {
-    setTask(initial);
-    setError('');
-    setComment('');
-    if (!initial) return;
-    setAssignee(assigneeValue(initial));
+    if (!initial) return undefined;
+    let alive = true;
     tasksApi
       .get(initial.id)
-      .then((fresh) => {
-        setTask(fresh);
-        setAssignee(assigneeValue(fresh));
-      })
-      .catch((err) => setError(err.message));
+      .then((fresh) => alive && setTask(fresh))
+      .catch((err) => alive && setError(err.message));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
-  useEffect(() => {
-    setItemDraft({ itemId: task?.itemId || '', quantity: task?.quantity ?? '' });
-  }, [task?.itemId, task?.quantity]);
-
   const orderToLoad = task && isTaskOpen(task) && task.canManage && task.source === 'manual' ? task.order : '';
+  const orderItems = loadedOrder.id && loadedOrder.id === orderToLoad ? loadedOrder.items : null;
   useEffect(() => {
-    setOrderItems(null);
-    if (!orderToLoad) return;
+    if (!orderToLoad) return undefined;
+    let alive = true;
     salesOrdersApi
       .get(orderToLoad)
-      .then((order) => setOrderItems(order.items || []))
-      .catch(() => setOrderItems(null));
+      .then((order) => alive && setLoadedOrder({ id: orderToLoad, items: order.items || [] }))
+      .catch(() => alive && setLoadedOrder({ id: '', items: null }));
+    return () => {
+      alive = false;
+    };
   }, [orderToLoad]);
 
   useEffect(() => {
@@ -98,11 +120,12 @@ export function TaskDrawer({ task: initial, onClose, onChanged }) {
     try {
       const updated = await action();
       setTask(updated);
-      setAssignee(assigneeValue(updated));
       notifyTasksChanged();
       onChanged?.(updated);
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -307,8 +330,8 @@ export function TaskDrawer({ task: initial, onClose, onChanged }) {
             onSubmit={async (event) => {
               event.preventDefault();
               if (!comment.trim()) return;
-              await act(() => tasksApi.comment(task.id, comment));
-              setComment('');
+              // Keep the text if posting failed so it can be retried.
+              if (await act(() => tasksApi.comment(task.id, comment))) setComment('');
             }}
           >
             <input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment" className={`${inputClass} mt-0`} />

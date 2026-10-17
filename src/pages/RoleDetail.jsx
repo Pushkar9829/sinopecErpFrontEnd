@@ -6,7 +6,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { BackButton } from '../components/ui/BackButton';
 import { SearchField } from '../components/ui/SearchField';
 import { usePermission } from '../hooks/usePermission';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 
 const MODULES = [
   { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -16,12 +16,18 @@ const MODULES = [
   { id: 'inventory', label: 'Inventory', chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
   { id: 'dispatch', label: 'Dispatch', chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
   { id: 'accounts', label: 'Accounts', chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  { id: 'intake', label: 'Draft orders', chip: 'border-indigo-300 bg-indigo-100 text-indigo-800', dot: 'bg-indigo-600' },
+  { id: 'tasks', label: 'Tasks', chip: 'border-rose-300 bg-rose-100 text-rose-800', dot: 'bg-rose-600' },
+  { id: 'audit', label: 'Audit', chip: 'border-zinc-300 bg-zinc-100 text-zinc-800', dot: 'bg-zinc-600' },
+  // Catch-all so a permission added on the API is never hidden from this
+  // screen (hidden keys were still flipped by "Select/Clear visible").
+  { id: 'other', label: 'Other', chip: 'border-slate-300 bg-white text-slate-700', dot: 'bg-slate-400' },
 ];
 
 function parentModule(moduleName) {
   if (['users', 'roles', 'permissions'].includes(moduleName)) return 'access';
   if (String(moduleName).startsWith('production')) return 'production';
-  return moduleName;
+  return MODULES.some((item) => item.id === moduleName && item.id !== 'all') ? moduleName : 'other';
 }
 
 function moduleMeta(id) {
@@ -92,10 +98,13 @@ function Stat({ label, children }) {
 
 export function RoleDetail() {
   const { id } = useParams();
-  const { can } = usePermission();
+  const { can, canManageRole } = usePermission();
   const { user, refreshUser } = useAuth();
-  const canEdit = can('roles:update');
   const [role, setRole] = useState(null);
+  // Mirrors the API: no editing your own role or one with access you lack.
+  const canEdit =
+    can('roles:update') &&
+    (user?.role?.slug === 'super_admin' || Boolean(role && role._id !== user?.role?.id && canManageRole(role)));
   const [permissions, setPermissions] = useState([]);
   const [assigned, setAssigned] = useState([]);
   const [moduleTab, setModuleTab] = useState('all');
@@ -104,12 +113,9 @@ export function RoleDetail() {
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
 
-  async function load() {
-    const requests = [rolesApi.list()];
-    if (can('permissions:read') || canEdit) {
-      requests.push(permissionsApi.list());
-    }
-    const [roles, nextPermissions = []] = await Promise.all(requests);
+  const canLoadPermissions = can('permissions:read') || can('roles:update');
+
+  function applyRole([roles, nextPermissions = []]) {
     const nextRole = roles.find((item) => item._id === id);
     if (!nextRole) {
       setError('Role not found.');
@@ -122,8 +128,15 @@ export function RoleDetail() {
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err.message));
-  }, [id]);
+    let alive = true;
+    Promise.all([rolesApi.list(), ...(canLoadPermissions ? [permissionsApi.list()] : [])])
+      .then((data) => alive && applyRole(data))
+      .catch((err) => alive && setError(err.message));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, canLoadPermissions]);
 
   const locked = role?.slug === 'super_admin';
 
@@ -264,7 +277,7 @@ export function RoleDetail() {
             <BackButton fallback="/roles" />
           </div>
         </section>
-      ) : filtered.length === 0 ? (
+      ) : permissions.length && filtered.length === 0 ? (
         <EmptyState title="No permissions match" hint="Clear search or pick another module." />
       ) : canEdit && permissions.length ? (
         <div className="grid gap-4 md:grid-cols-2">

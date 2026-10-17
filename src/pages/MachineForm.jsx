@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { machinesApi } from '../api/machines.api';

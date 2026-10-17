@@ -1,4 +1,4 @@
-import { dotTones, tabActiveTones } from './Badge';
+import { dotTones, tabActiveTones } from './badgeTones';
 
 export function Tabs({ tabs, value, onChange }) {
   return (

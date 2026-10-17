@@ -1,5 +1,4 @@
-import { api, apiUrl } from './client';
-import { getStoredTokens } from '../lib/authTokens';
+import { api, fetchBlob } from './client';
 
 export const registersApi = {
   list: () => api.get('/api/registers'),
@@ -8,12 +7,6 @@ export const registersApi = {
   artwork: (orderId, itemId) => api.get(`/api/registers/artwork/${orderId}/${itemId}`),
 };
 
-export async function fetchArtworkFile(orderId, attachmentId) {
-  const { accessToken } = getStoredTokens();
-  const response = await fetch(apiUrl(`/api/registers/artwork/${orderId}/file/${attachmentId}`), {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
-  if (!response.ok) throw new Error('Could not open the artwork file');
-  return response.blob();
+export function fetchArtworkFile(orderId, attachmentId) {
+  return fetchBlob(`/api/registers/artwork/${orderId}/file/${attachmentId}`, 'Could not open the artwork file');
 }

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { customersApi } from '../api/customers.api';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
 import { SalesOrderLineCard } from '../components/sales/SalesOrderLineCard';
 import { BackButton } from '../components/ui/BackButton';
-import { StepProgress, stepMark } from '../components/ui/StepProgress';
+import { StepProgress } from '../components/ui/StepProgress';
+import { stepMark } from '../lib/steps';
 import { Field, Grid, Section, inputClass } from '../components/ui/FormField';
 import { usePermission } from '../hooks/usePermission';
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import {
   ORDER_TYPES,
   orderTypeLabel,
@@ -130,12 +132,18 @@ export function SalesOrderForm() {
 
   const [customers, setCustomers] = useState([]);
   const [header, setHeader] = useState(() => emptyHeader());
-  const [items, setItems] = useState([emptyLineItem()]);
-  const [number, setNumber] = useState('');
   const [searchParams] = useSearchParams();
-  const [orderType, setOrderType] = useState(() =>
+  const [orderType, setOrderTypeState] = useState(() =>
     ORDER_TYPES.some((type) => type.id === searchParams.get('type')) ? searchParams.get('type') : 'sales_order'
   );
+  const [items, setItems] = useState(() => [fitRoute(emptyLineItem(), orderType)]);
+  const [number, setNumber] = useState('');
+  // Changing Sales order / Job work re-fits every line's production route to
+  // what that order type allows, in the same update.
+  function setOrderType(next) {
+    setOrderTypeState(next);
+    setItems((prev) => prev.map((item) => fitRoute(item, next)));
+  }
   const typeInfo = ORDER_TYPES.find((type) => type.id === orderType) || ORDER_TYPES[0];
   const allowedRoutes = routesFor(orderType);
   const [error, setError] = useState('');
@@ -146,6 +154,7 @@ export function SalesOrderForm() {
   const [options, setOptions] = useState({});
   const [paidAmount, setPaidAmount] = useState(0);
 
+  const { markSaved } = useUnsavedChanges({ header, items, orderType }, loaded && canSave);
   const selectedCustomer = customers.find((customer) => customer.id === header.customerId);
   const totals = useMemo(
     () => calcOrder(items, header.discount, header.advanceAmount, paidAmount),
@@ -163,10 +172,6 @@ export function SalesOrderForm() {
   }, []);
 
   useEffect(() => {
-    setItems((prev) => prev.map((item) => fitRoute(item, orderType)));
-  }, [orderType]);
-
-  useEffect(() => {
     if (!id) return;
     salesOrdersApi
       .get(id)
@@ -177,7 +182,8 @@ export function SalesOrderForm() {
         }
         setNumber(order.number);
         setPaidAmount(Number(order.paidAmount) || 0);
-        setOrderType(order.orderType || 'sales_order');
+        const loadedType = order.orderType || 'sales_order';
+        setOrderTypeState(loadedType);
         setHeader({
           customerId: order.customer?.id || '',
           orderDate: toDateInput(order.orderDate) || todayInput(),
@@ -196,7 +202,7 @@ export function SalesOrderForm() {
           productionInstructions: order.productionInstructions || '',
           discount: String(order.discount ?? 0),
         });
-        setItems(order.items?.length ? order.items.map(itemFromApi) : [emptyLineItem()]);
+        setItems((order.items?.length ? order.items.map(itemFromApi) : [emptyLineItem()]).map((item) => fitRoute(item, loadedType)));
         setLoaded(true);
       })
       .catch((err) => setError(err.message));
@@ -207,14 +213,24 @@ export function SalesOrderForm() {
   }
 
   async function applyCustomer(customerId) {
-    const customer = customers.find((item) => item.id === customerId);
+    const listed = customers.find((item) => item.id === customerId);
     setHeader((prev) => ({
       ...prev,
       customerId,
-      billingAddress: customer?.billingAddress || prev.billingAddress,
-      shippingAddress: customer?.shippingAddress || prev.shippingAddress,
-      deliveryLocation: customer?.shippingAddress || customer?.billingAddress || prev.deliveryLocation,
+      billingAddress: listed?.billingAddress || prev.billingAddress,
+      shippingAddress: listed?.shippingAddress || prev.shippingAddress,
+      deliveryLocation: listed?.shippingAddress || listed?.billingAddress || prev.deliveryLocation,
     }));
+
+    // The customer list carries only a product count; load the saved products.
+    if (!listed?.productCount) return;
+    let customer;
+    try {
+      customer = await customersApi.get(customerId);
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
 
     const attached = (customer?.products || []).map((product) => fitRoute({ ...itemFromApi(product), id: undefined }, orderType));
     if (!attached.length) return;
@@ -268,9 +284,11 @@ export function SalesOrderForm() {
     try {
       if (isEdit) {
         await salesOrdersApi.update(id, payload());
+        markSaved();
         navigate(`/sales-orders/${id}`);
       } else {
         const created = await salesOrdersApi.create({ ...payload(), orderType });
+        markSaved();
         navigate(`/sales-orders/${created.id}`);
       }
     } catch (err) {

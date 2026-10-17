@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 
 const openStack = [];
 
@@ -6,7 +6,44 @@ export function Modal({ open, title, onClose, children, wide = false }) {
   const id = useId();
   const pressedOnBackdrop = useRef(false);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  // Keep the latest onClose for the Escape handler without re-subscribing.
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+  });
+  const dialogRef = useRef(null);
+
+  // Keyboard users: focus moves into the dialog, Tab stays inside it, and
+  // focus returns to whatever opened it when it closes.
+  useEffect(() => {
+    if (!open) return undefined;
+    const opener = document.activeElement;
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) {
+      const preferred = dialog.querySelector('[autofocus], input, textarea, select');
+      (preferred || dialog).focus();
+    }
+    function trap(event) {
+      if (event.key !== 'Tab' || !dialog || openStack[openStack.length - 1] !== id) return;
+      const focusable = [
+        ...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      ].filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', trap);
+    return () => {
+      document.removeEventListener('keydown', trap);
+      if (opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+    };
+  }, [open, id]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -38,6 +75,8 @@ export function Modal({ open, title, onClose, children, wide = false }) {
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : 'Dialog'}

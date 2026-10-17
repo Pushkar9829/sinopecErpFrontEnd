@@ -125,7 +125,6 @@ export const STEP_LABELS = {
   dispatch: 'Dispatch',
 };
 
-export const NEXT_STATUS_LABELS = { ...STATUS_LABELS };
 
 export const OPTION_GROUPS = [
   { id: 'productType', label: 'Product type', hint: 'Bag, roll, finished product' },
@@ -521,7 +520,8 @@ export function itemToPayload(item) {
 }
 
 function money(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
+  const n = Number(value) || 0;
+  return Math.round((n + Math.sign(n) * Number.EPSILON) * 100) / 100;
 }
 
 export function calcLine(item) {
@@ -534,15 +534,20 @@ export function calcLine(item) {
   return { taxable: money(taxable), tax: money(tax), amount: money(taxable) };
 }
 
+// GST on the value after all discounts: the order discount is spread over the
+// lines by value, then each line is taxed at its own rate. Must match
+// calcTotals in backend/src/modules/salesOrder/salesOrder.service.js.
 export function calcOrder(items, orderDiscount, advanceAmount, paidAmount = 0) {
-  let subtotal = 0;
+  const taxables = items.map((item) =>
+    Math.max(0, (Number(item.quantity) || 0) * (Number(item.rate) || 0) - (Number(item.discount) || 0))
+  );
+  const subtotal = taxables.reduce((sum, value) => sum + value, 0);
+  const discount = Math.min(Math.max(0, Number(orderDiscount) || 0), subtotal);
   let tax = 0;
-  for (const item of items) {
-    const taxable = Math.max(0, (Number(item.quantity) || 0) * (Number(item.rate) || 0) - (Number(item.discount) || 0));
-    subtotal += taxable;
-    tax += (taxable * (Number(item.taxPercent) || 0)) / 100;
-  }
-  const discount = Math.max(0, Number(orderDiscount) || 0);
+  taxables.forEach((taxable, index) => {
+    const share = subtotal > 0 ? (discount * taxable) / subtotal : 0;
+    tax += money(((taxable - share) * (Number(items[index].taxPercent) || 0)) / 100);
+  });
   const grandTotal = Math.max(0, subtotal - discount + tax);
   const remaining = Math.max(0, grandTotal - Math.max(0, Number(advanceAmount) || 0) - (Number(paidAmount) || 0));
   return {

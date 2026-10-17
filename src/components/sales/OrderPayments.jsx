@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { salesOrdersApi } from '../../api/salesOrders.api';
 import { PAYMENT_METHODS, formatDate, formatMoney, toDateInput } from '../../lib/sales';
-import { confirmAction } from '../ui/ConfirmHost';
+import { confirmAction } from '../ui/confirm';
 import { Field, inputClass } from '../ui/FormField';
 
 const methodLabel = (id) => PAYMENT_METHODS.find((item) => item.id === id)?.label || id || '—';
@@ -49,16 +49,23 @@ export function OrderPayments({ order, canRecord, onChanged }) {
   }
 
   async function remove(payment) {
-    const ok = await confirmAction({
-      message: `Remove the payment of ${formatMoney(payment.amount)} received ${formatDate(payment.receivedAt)}? The balance goes back up.`,
-      confirmLabel: 'Remove',
+    const reason = await confirmAction({
+      title: 'Void payment',
+      message: `Void the payment of ${formatMoney(payment.amount)} received ${formatDate(payment.receivedAt)}? It stays on the order, struck out, and the balance goes back up.`,
+      confirmLabel: 'Void payment',
       danger: true,
+      withReason: true,
+      reasonLabel: 'Reason (for example refunded, entered twice)',
     });
-    if (!ok) return;
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setError('Give a reason for voiding the payment.');
+      return;
+    }
     setError('');
     try {
-      await salesOrdersApi.removePayment(order.id, payment.id);
-      await onChanged('Payment removed.');
+      await salesOrdersApi.removePayment(order.id, payment.id, reason);
+      await onChanged('Payment voided.');
     } catch (err) {
       setError(err.message);
     }
@@ -81,17 +88,27 @@ export function OrderPayments({ order, canRecord, onChanged }) {
             </thead>
             <tbody>
               {payments.map((payment) => (
-                <tr key={payment.id} className="border-t border-line">
+                <tr key={payment.id} className={`border-t border-line ${payment.voidedAt ? 'text-slate' : ''}`}>
                   <td className="px-3 py-2">{formatDate(payment.receivedAt)}</td>
-                  <td className="px-3 py-2 font-semibold">{formatMoney(payment.amount)}</td>
+                  <td className={`px-3 py-2 font-semibold ${payment.voidedAt ? 'line-through' : ''}`}>{formatMoney(payment.amount)}</td>
                   <td className="px-3 py-2">{methodLabel(payment.method)}</td>
-                  <td className="px-3 py-2">{payment.reference || '—'}</td>
+                  <td className="px-3 py-2">
+                    {payment.reference || '—'}
+                    {payment.voidedAt ? (
+                      <span className="mt-0.5 block text-xs text-red-700">
+                        Voided {formatDate(payment.voidedAt)}
+                        {payment.voidedByName ? ` by ${payment.voidedByName}` : ''}: {payment.voidReason}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 text-slate">{payment.byName || '—'}</td>
                   {canRemove ? (
                     <td className="px-3 py-2 text-right">
-                      <button type="button" onClick={() => remove(payment)} className="text-sm font-semibold text-red-700 hover:underline">
-                        Remove
-                      </button>
+                      {payment.voidedAt ? null : (
+                        <button type="button" onClick={() => remove(payment)} className="text-sm font-semibold text-red-700 hover:underline">
+                          Void
+                        </button>
+                      )}
                     </td>
                   ) : null}
                 </tr>

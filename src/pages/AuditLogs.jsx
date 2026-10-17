@@ -101,14 +101,16 @@ export function AuditLogs() {
     auditApi.meta().then(setMeta).catch(() => {});
   }, []);
 
+  // Filter changes reset the page in the same update, so each change makes
+  // one request (it used to fetch the old page first, then page 1).
   useEffect(() => {
-    const timer = setTimeout(() => setFilters((current) => ({ ...current, q: query })), 300);
+    const timer = setTimeout(() => {
+      setFilters((current) => (current.q === query ? current : { ...current, q: query }));
+      setPage((current) => (filters.q === query ? current : 1));
+    }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [filters]);
 
   useEffect(() => {
     let alive = true;
@@ -124,7 +126,11 @@ export function AuditLogs() {
     };
   }, [filters, page]);
 
-  const setFilter = (key) => (event) => setFilters((current) => ({ ...current, [key]: event.target.value }));
+  const setFilter = (key) => (event) => {
+    const { value } = event.target;
+    setFilters((current) => ({ ...current, [key]: value }));
+    setPage(1);
+  };
 
   return (
     <div className="space-y-5">
@@ -208,9 +214,9 @@ export function AuditLogs() {
         {loading && !data.items.length ? <p className="px-4 py-6 text-sm text-slate">Loading…</p> : null}
         {!loading && !data.items.length ? (
           <EmptyState title="No changes recorded" hint="Every create, edit, delete and login will appear here." />
-        ) : (
+        ) : data.items.length ? (
           <Pagination page={page} totalPages={data.pages} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />
-        )}
+        ) : null}
       </div>
 
       <LogDetail log={selected} onClose={() => setSelected(null)} />

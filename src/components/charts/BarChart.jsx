@@ -1,12 +1,21 @@
-export const CHART_COLORS = {
-  output: '#059669',
-  waste: '#d97706',
-  rolling: '#ea580c',
-  printing: '#0284c7',
-  cutting: '#7c3aed',
-  dispatch: '#0d9488',
-  muted: '#64748b',
-};
+import { CHART_COLORS } from './chartColors';
+
+// The drawing is capped in width so many bars (e.g. 90 days) get thinner
+// instead of the whole chart shrinking until labels are unreadable; labels
+// are then thinned out to about 15.
+function chartWidth(count) {
+  return Math.max(240, Math.min(640, count * 28 + 40));
+}
+
+function labelStep(count) {
+  return Math.max(1, Math.ceil(count / 15));
+}
+
+function barKeyDown(event, row, onBarClick) {
+  if (!onBarClick || (event.key !== 'Enter' && event.key !== ' ')) return;
+  event.preventDefault();
+  onBarClick(row);
+}
 
 function niceMax(value) {
   if (!value || value <= 0) return 1;
@@ -24,8 +33,10 @@ export function BarChart({
   color = CHART_COLORS.output,
   height = 108,
   onBarClick,
+  ariaLabel,
 }) {
-  const width = Math.max(240, data.length * 28 + 40);
+  const width = chartWidth(data.length);
+  const step = labelStep(data.length);
   const pad = { top: 8, right: 6, bottom: 24, left: 32 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
@@ -34,7 +45,7 @@ export function BarChart({
   const barW = data.length ? Math.max(6, innerW / data.length - gap) : 6;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="mx-auto h-28 w-full max-w-lg" role="img">
+    <svg viewBox={`0 0 ${width} ${height}`} className="mx-auto h-28 w-full max-w-3xl" role="img" aria-label={ariaLabel || 'Bar chart'}>
       {[0, 0.5, 1].map((tick) => {
         const y = pad.top + innerH - tick * innerH;
         return (
@@ -63,18 +74,24 @@ export function BarChart({
               fill={fill}
               className={onBarClick ? 'cursor-pointer' : undefined}
               onClick={() => onBarClick?.(row)}
+              tabIndex={onBarClick ? 0 : undefined}
+              role={onBarClick ? 'button' : undefined}
+              aria-label={onBarClick ? `${row[labelKey]}: ${value}` : undefined}
+              onKeyDown={(event) => barKeyDown(event, row, onBarClick)}
             >
               <title>{`${row[labelKey]}: ${value}`}</title>
             </rect>
-            <text
-              x={x + barW / 2}
-              y={height - 8}
-              textAnchor="middle"
-              className="fill-steel"
-              fontSize="9"
-            >
-              {row[labelKey]}
-            </text>
+            {index % step === 0 ? (
+              <text
+                x={x + barW / 2}
+                y={height - 8}
+                textAnchor="middle"
+                className="fill-steel"
+                fontSize="9"
+              >
+                {row[labelKey]}
+              </text>
+            ) : null}
           </g>
         );
       })}
@@ -91,8 +108,10 @@ export function StackedBarChart({
   labelKey = 'label',
   height = 108,
   onBarClick,
+  ariaLabel,
 }) {
-  const width = Math.max(240, data.length * 28 + 40);
+  const width = chartWidth(data.length);
+  const step = labelStep(data.length);
   const pad = { top: 8, right: 6, bottom: 24, left: 32 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
@@ -102,7 +121,7 @@ export function StackedBarChart({
   const barW = data.length ? Math.max(6, innerW / data.length - gap) : 6;
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="mx-auto h-28 w-full max-w-lg" role="img">
+    <svg viewBox={`0 0 ${width} ${height}`} className="mx-auto h-28 w-full max-w-3xl" role="img" aria-label={ariaLabel || 'Bar chart'}>
       {[0, 0.5, 1].map((tick) => {
         const y = pad.top + innerH - tick * innerH;
         return (
@@ -122,6 +141,10 @@ export function StackedBarChart({
             key={`${row[labelKey]}-${index}`}
             className={onBarClick ? 'cursor-pointer' : undefined}
             onClick={() => onBarClick?.(row)}
+            tabIndex={onBarClick ? 0 : undefined}
+            role={onBarClick ? 'button' : undefined}
+            aria-label={onBarClick ? String(row[labelKey]) : undefined}
+            onKeyDown={(event) => barKeyDown(event, row, onBarClick)}
           >
             {series.map((item) => {
               const value = Number(row[item.key]) || 0;
@@ -133,9 +156,11 @@ export function StackedBarChart({
                 </rect>
               );
             })}
-            <text x={x + barW / 2} y={height - 8} textAnchor="middle" className="fill-steel" fontSize="9">
-              {row[labelKey]}
-            </text>
+            {index % step === 0 ? (
+              <text x={x + barW / 2} y={height - 8} textAnchor="middle" className="fill-steel" fontSize="9">
+                {row[labelKey]}
+              </text>
+            ) : null}
           </g>
         );
       })}

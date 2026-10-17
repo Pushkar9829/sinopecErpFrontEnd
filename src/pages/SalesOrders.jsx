@@ -1,5 +1,5 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
-import { useEffect, useMemo, useState } from 'react';
+import { confirmAction } from '../components/ui/confirm';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { PermissionGate } from '../components/PermissionGate';
@@ -7,7 +7,6 @@ import { ProductionProgressModal } from '../components/sales/ProductionProgressM
 import { EmptyState } from '../components/ui/EmptyState';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
-import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 import { Badge, PriorityBadge, StatusBadge } from '../components/ui/Badge';
 import {
@@ -18,7 +17,6 @@ import {
   copyItemsForNewOrder,
   deliveryDateForCopy,
   ORDER_TYPES,
-  orderActiveStages,
   orderTypeLabel,
   STATUS_LABELS,
   stageLabel,
@@ -165,13 +163,16 @@ export function SalesOrders() {
   const showMoney = canSeeCommercial(can);
   const canCreate = can('sales:create');
   const [searchParams, setSearchParams] = useSearchParams();
-  const [orders, setOrders] = useState([]);
+  const EMPTY = { items: [], total: 0, pages: 1, counts: { all: 0 } };
+  const [data, setData] = useState(EMPTY);
+  const [page, setPage] = useState(1);
   const requested = searchParams.get('status') || 'all';
   const tab = requested === 'all' || STATUS_ORDER.includes(requested) ? requested : 'all';
   function setTab(next) {
     const params = new URLSearchParams(searchParams);
     if (next === 'all') params.delete('status');
     else params.set('status', next);
+    setPage(1);
     setSearchParams(params, { replace: true });
   }
   const requestedType = searchParams.get('type') || 'all';
@@ -180,60 +181,59 @@ export function SalesOrders() {
     const params = new URLSearchParams(searchParams);
     if (next === 'all') params.delete('type');
     else params.set('type', next);
+    setPage(1);
     setSearchParams(params, { replace: true });
   }
   const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
   const [error, setError] = useState('');
+  const [duplicating, setDuplicating] = useState('');
   const [notice, setNotice] = useState('');
   const [progressOrder, setProgressOrder] = useState(null);
 
-  async function load() {
-    setOrders(await salesOrdersApi.list());
+  // The server filters, counts and pages the orders; only the visible page
+  // (with just the table's columns) is downloaded.
+  const [loaded, setLoaded] = useState(false);
+  const latest = useRef(0);
+
+  async function load(targetPage = page) {
+    const request = ++latest.current;
+    const next = await salesOrdersApi.page({ page: targetPage, pageSize: PAGE_SIZE, status: tab, type: typeFilter, q: search });
+    if (request === latest.current) setData(next);
   }
 
-  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const next = query.trim();
+      if (next === search) return;
+      setSearch(next);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   useEffect(() => {
-    load()
+    load(page)
       .catch((err) => setError(err.message))
       .finally(() => setLoaded(true));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, tab, typeFilter, search]);
 
-  const typed = useMemo(
-    () => (typeFilter === 'all' ? orders : orders.filter((order) => (order.orderType || 'sales_order') === typeFilter)),
-    [orders, typeFilter]
-  );
+  const counts = data.counts || { all: 0 };
 
-  const counts = useMemo(() => {
-    const next = { all: typed.length };
-    for (const status of STATUS_ORDER) {
-      next[status] = typed.filter((order) => order.status === status).length;
+  async function openProgress(order) {
+    setError('');
+    try {
+      setProgressOrder(await salesOrdersApi.get(order.id));
+    } catch (err) {
+      setError(err.message);
     }
-    return next;
-  }, [typed]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return typed.filter((order) => {
-      if (tab !== 'all' && order.status !== tab) return false;
-      if (!q) return true;
-      return [
-        order.number,
-        orderTypeLabel(order.orderType),
-        order.customer?.name,
-        order.customer?.code,
-        order.customer?.companyName,
-        statusLabel(order.status),
-        ...orderActiveStages(order).map(stageLabel),
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q));
-    });
-  }, [typed, tab, query]);
-
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${typeFilter}|${tab}|${query}` });
+  }
 
   async function duplicateOrder(order) {
+    if (duplicating) return;
+    setDuplicating(order.id);
     setError('');
     setNotice('');
     try {
@@ -261,6 +261,8 @@ export function SalesOrders() {
       navigate(`/sales-orders/${created.id}`);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setDuplicating('');
     }
   }
 
@@ -331,7 +333,7 @@ export function SalesOrders() {
             </tr>
           </thead>
           <tbody>
-            {list.paged.map((order) => (
+            {data.items.map((order) => (
               <tr
                 key={order.id}
                 tabIndex={0}
@@ -364,7 +366,7 @@ export function SalesOrders() {
                 <td className="px-4 py-3">
                   {isFloorStatus(order.status) ? (
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {orderActiveStages(order).map((stage) => (
+                      {(order.activeStages || []).map((stage) => (
                         <Badge key={stage} tone="accent">
                           {stageLabel(stage)}
                         </Badge>
@@ -375,7 +377,7 @@ export function SalesOrders() {
                         aria-label={`Production stages for ${order.number}`}
                         onClick={(event) => {
                           event.stopPropagation();
-                          setProgressOrder(order);
+                          openProgress(order);
                         }}
                         className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-line text-xs font-semibold text-ink hover:bg-paper"
                       >
@@ -393,7 +395,7 @@ export function SalesOrders() {
                       <PencilIcon />
                     </IconButton>
                     {canCreate ? (
-                      <IconButton label="Duplicate order" className="text-ink hover:bg-paper" onClick={() => duplicateOrder(order)}>
+                      <IconButton label="Duplicate order" className="text-ink hover:bg-paper" disabled={Boolean(duplicating)} onClick={() => duplicateOrder(order)}>
                         <CopyIcon />
                       </IconButton>
                     ) : null}
@@ -410,16 +412,10 @@ export function SalesOrders() {
         </table>
         {!loaded ? (
           <p className="px-4 py-6 text-sm text-slate">Loading…</p>
-        ) : list.total === 0 ? (
+        ) : data.total === 0 ? (
           <EmptyState title="No orders found" hint="Create a sales order or job work draft, then submit it for approval." />
         ) : (
-          <Pagination
-            page={list.page}
-            totalPages={list.totalPages}
-            total={list.total}
-            pageSize={list.pageSize}
-            onPage={list.setPage}
-          />
+          <Pagination page={data.page || page} totalPages={data.pages} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />
         )}
       </div>
       <ProductionProgressModal order={progressOrder} onClose={() => setProgressOrder(null)} />

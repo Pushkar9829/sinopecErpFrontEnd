@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
@@ -208,6 +208,9 @@ export function InventoryForm() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  // Stock as loaded. Sent back so the API applies only the change the user
+  // made, not a stale absolute number over floor pickups made meanwhile.
+  const [loadedQuantity, setLoadedQuantity] = useState(null);
 
   const needsStage = form.category === 'output' || form.category === 'waste';
   const hidePrice = form.category === 'waste';
@@ -228,6 +231,7 @@ export function InventoryForm() {
     inventoryApi
       .getItem(id)
       .then((item) => {
+        setLoadedQuantity(item.quantity ?? null);
         setForm({
           category: item.category,
           name: item.name,
@@ -274,7 +278,9 @@ export function InventoryForm() {
           name: form.name,
           materialType: form.materialType,
           unit: form.unit,
-          quantity: Number(form.quantity),
+          ...(isEdit && loadedQuantity !== null && Number(form.quantity) === Number(loadedQuantity)
+            ? {}
+            : { quantity: Number(form.quantity), expectedQuantity: isEdit ? loadedQuantity : undefined }),
           notes: form.notes,
           stageId: needsStage ? form.stageId : null,
           unitPrice: hidePrice || form.unitPrice === '' ? null : Number(form.unitPrice),
@@ -283,7 +289,11 @@ export function InventoryForm() {
 
     try {
       if (isEdit) {
-        await inventoryApi.updateItem(id, payload);
+        const saved = await inventoryApi.updateItem(id, payload);
+        if (saved && saved.quantity !== undefined) {
+          setLoadedQuantity(saved.quantity);
+          update('quantity', String(saved.quantity));
+        }
         setNotice('Saved.');
       } else {
         await inventoryApi.createItem(payload);

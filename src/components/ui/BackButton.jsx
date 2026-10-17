@@ -1,17 +1,5 @@
-import { useLocation, useNavigate } from 'react-router-dom';
-
-export function useGoBack(fallback) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  return () => {
-    if (location.key !== 'default') {
-      navigate(-1);
-      return;
-    }
-    navigate(fallback);
-  };
-}
+import { useNavigate } from 'react-router-dom';
+import { useGoBack } from '../../hooks/useGoBack';
 
 export function BackButton({ fallback, to, label = 'Back', className = '' }) {
   const goBack = useGoBack(fallback);

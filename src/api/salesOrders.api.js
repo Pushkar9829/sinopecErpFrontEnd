@@ -1,8 +1,15 @@
-import { api, apiUrl } from './client';
-import { getStoredTokens } from '../lib/authTokens';
+import { api, fetchBlob, saveBlob } from './client';
 
 export const salesOrdersApi = {
   list: () => api.get('/api/sales-orders'),
+  // One page of slim rows: { items, total, page, pageSize, pages, counts }.
+  page: (params) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params || {})) {
+      if (value !== undefined && value !== null && value !== '' && value !== 'all') query.set(key, value);
+    }
+    return api.get(`/api/sales-orders?${query.toString()}`);
+  },
   summary: () => api.get('/api/sales-orders/summary'),
   meta: () => api.get('/api/sales-orders/meta'),
   get: (id) => api.get(`/api/sales-orders/${id}`),
@@ -23,25 +30,10 @@ export const salesOrdersApi = {
   },
   removeAttachment: (id, attachmentId) => api.delete(`/api/sales-orders/${id}/attachments/${attachmentId}`),
   recordPayment: (id, payload) => api.post(`/api/sales-orders/${id}/payments`, payload),
-  removePayment: (id, paymentId) => api.delete(`/api/sales-orders/${id}/payments/${paymentId}`),
+  removePayment: (id, paymentId, reason) => api.delete(`/api/sales-orders/${id}/payments/${paymentId}`, { reason }),
 };
 
 export async function downloadSalesOrderFile(orderId, attachmentId, fileName) {
-  const { accessToken } = getStoredTokens();
-  const response = await fetch(apiUrl(`/api/sales-orders/${orderId}/attachments/${attachmentId}/file`), {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
-  if (!response.ok) {
-    throw new Error('Download failed');
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName || 'attachment';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  const blob = await fetchBlob(`/api/sales-orders/${orderId}/attachments/${attachmentId}/file`);
+  saveBlob(blob, fileName || 'attachment');
 }

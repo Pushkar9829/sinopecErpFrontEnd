@@ -1,7 +1,7 @@
-import { clearStoredTokens, getStoredTokens, setStoredTokens } from '../lib/authTokens';
+import { clearAccessToken, getAccessToken, takeAuthTokens } from '../lib/authTokens';
 import { notifyTasksChanged } from '../lib/tasks';
 
-const TASK_SOURCES = /^\/api\/(sales-orders|production|inventory)(\/|$)/;
+const TASK_SOURCES = /^\/api\/(sales-orders|production|inventory|intake)(\/|$)/;
 
 const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -36,17 +36,52 @@ async function parseBody(response) {
 }
 
 function authHeaders() {
-  const { accessToken } = getStoredTokens();
+  const accessToken = getAccessToken();
   return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }
 
-async function request(path, options = {}, retry = true) {
+async function postRefresh() {
+  const refreshed = await fetch(apiUrl('/api/auth/refresh'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (refreshed.ok) {
+    const payload = await parseBody(refreshed);
+    takeAuthTokens(payload.data !== undefined ? payload.data : payload);
+  } else {
+    clearAccessToken();
+  }
+  return refreshed.ok;
+}
+
+// The API rotates the refresh cookie on every use and the cookie is shared by
+// all tabs. The Web Lock makes tabs refresh one after another, so each one
+// sends the newest cookie instead of racing on the same old token.
+export function refreshSession() {
+  refreshPromise =
+    refreshPromise ||
+    (typeof navigator !== 'undefined' && navigator.locks
+      ? navigator.locks.request('sinopec-auth-refresh', postRefresh)
+      : postRefresh()
+    ).finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
+function shouldRefresh(response, path, retry) {
+  return response.status === 401 && retry && path !== '/api/auth/refresh' && path !== '/api/auth/login';
+}
+
+async function send(path, options = {}, retry = true) {
   const { body, headers, ...rest } = options;
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const response = await fetch(apiUrl(path), {
     credentials: 'include',
     headers: {
-      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+      ...(isForm || body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders(),
       ...(headers || {}),
     },
@@ -54,58 +89,46 @@ async function request(path, options = {}, retry = true) {
     body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   });
 
-  if (
-    response.status === 401 &&
-    retry &&
-    path !== '/api/auth/refresh' &&
-    path !== '/api/auth/login'
-  ) {
-    refreshPromise =
-      refreshPromise ||
-      (async () => {
-        const { refreshToken } = getStoredTokens();
-        const refreshed = await fetch(apiUrl('/api/auth/refresh'), {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders(),
-          },
-          body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-        });
-        if (refreshed.ok) {
-          const payload = await parseBody(refreshed);
-          const data = payload.data !== undefined ? payload.data : payload;
-          if (data?.accessToken || data?.refreshToken) {
-            setStoredTokens({
-              accessToken: data.accessToken,
-              refreshToken: data.refreshToken,
-            });
-          }
-        } else {
-          clearStoredTokens();
-        }
-        return refreshed;
-      })().finally(() => {
-        refreshPromise = null;
-      });
-
-    const refreshed = await refreshPromise;
-    if (refreshed.ok) {
-      return request(path, options, false);
-    }
+  if (shouldRefresh(response, path, retry)) {
+    if (await refreshSession()) return send(path, options, false);
     window.dispatchEvent(new Event('auth:expired'));
   }
+  return response;
+}
 
+async function request(path, options = {}) {
+  const response = await send(path, options);
   const payload = await parseBody(response);
   if (!response.ok) {
     if (response.status === 403 && !path.startsWith('/api/auth/')) window.dispatchEvent(new Event('auth:stale'));
     throw new Error(payload.message || 'Request failed');
   }
 
-  if (rest.method && rest.method !== 'GET' && TASK_SOURCES.test(path)) notifyTasksChanged();
+  if (options.method && options.method !== 'GET' && TASK_SOURCES.test(path)) notifyTasksChanged();
 
   return payload.data !== undefined ? payload.data : payload;
+}
+
+// Authenticated binary download with the same refresh-on-401 handling.
+export async function fetchBlob(path, errorMessage = 'Download failed') {
+  const response = await send(path);
+  if (!response.ok) {
+    const payload = await parseBody(response);
+    throw new Error(payload.message || errorMessage);
+  }
+  return response.blob();
+}
+
+export function saveBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName || 'download';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoking straight after click() can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
 }
 
 export const api = {
@@ -113,6 +136,6 @@ export const api = {
   post: (path, body) => request(path, { method: 'POST', body }),
   patch: (path, body) => request(path, { method: 'PATCH', body }),
   put: (path, body) => request(path, { method: 'PUT', body }),
-  delete: (path) => request(path, { method: 'DELETE' }),
+  delete: (path, body) => request(path, { method: 'DELETE', body }),
   upload: (path, body) => request(path, { method: 'POST', body }),
 };

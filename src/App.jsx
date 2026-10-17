@@ -1,50 +1,54 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ConfirmHost } from './components/ui/ConfirmHost';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
-import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
-import { RoleDetail } from './pages/RoleDetail';
-import { Roles } from './pages/Roles';
-import { UserCreate } from './pages/UserCreate';
-import { UserEdit } from './pages/UserEdit';
-import { Users } from './pages/Users';
-import { Inventory } from './pages/Inventory';
-import { InventoryForm } from './pages/InventoryForm';
-import { InventoryStages } from './pages/InventoryStages';
-import { MachineForm } from './pages/MachineForm';
-import { Machines } from './pages/Machines';
-import { StageDetail } from './pages/StageDetail';
-import { Stages } from './pages/Stages';
-import { Customers } from './pages/Customers';
-import { CustomerForm } from './pages/CustomerForm';
-import { SalesOrders } from './pages/SalesOrders';
-import { SalesOrderForm } from './pages/SalesOrderForm';
-import { SalesOrderDetail } from './pages/SalesOrderDetail';
-import { DraftOrders } from './pages/DraftOrders';
-import { DraftOrderSetup } from './pages/DraftOrderSetup';
-import { DraftOrderDetail } from './pages/DraftOrderDetail';
-import { DraftOrderForm } from './pages/DraftOrderForm';
-import { SalesSettings } from './pages/SalesSettings';
-import { ProductTemplateForm } from './pages/ProductTemplateForm';
-import { RateCalculator } from './pages/RateCalculator';
-import { OrderRegister } from './pages/OrderRegister';
-import { Registers } from './pages/Registers';
-import { AuditLogs } from './pages/AuditLogs';
-import { Analytics } from './pages/Analytics';
-import { Tasks } from './pages/Tasks';
 import { ANALYTICS_VIEW_KEYS, PRODUCTION_VIEW_KEYS, SALES_ORDER_VIEW_KEYS } from './lib/sales';
+
+// Each screen is its own download, fetched the first time it is opened, so
+// the first page load doesn't carry the whole app (it was one 500+ KB file).
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const RoleDetail = lazy(() => import('./pages/RoleDetail').then((m) => ({ default: m.RoleDetail })));
+const Roles = lazy(() => import('./pages/Roles').then((m) => ({ default: m.Roles })));
+const UserCreate = lazy(() => import('./pages/UserCreate').then((m) => ({ default: m.UserCreate })));
+const UserEdit = lazy(() => import('./pages/UserEdit').then((m) => ({ default: m.UserEdit })));
+const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })));
+const Inventory = lazy(() => import('./pages/Inventory').then((m) => ({ default: m.Inventory })));
+const InventoryForm = lazy(() => import('./pages/InventoryForm').then((m) => ({ default: m.InventoryForm })));
+const InventoryStages = lazy(() => import('./pages/InventoryStages').then((m) => ({ default: m.InventoryStages })));
+const MachineForm = lazy(() => import('./pages/MachineForm').then((m) => ({ default: m.MachineForm })));
+const Machines = lazy(() => import('./pages/Machines').then((m) => ({ default: m.Machines })));
+const StageDetail = lazy(() => import('./pages/StageDetail').then((m) => ({ default: m.StageDetail })));
+const Stages = lazy(() => import('./pages/Stages').then((m) => ({ default: m.Stages })));
+const Customers = lazy(() => import('./pages/Customers').then((m) => ({ default: m.Customers })));
+const CustomerForm = lazy(() => import('./pages/CustomerForm').then((m) => ({ default: m.CustomerForm })));
+const SalesOrders = lazy(() => import('./pages/SalesOrders').then((m) => ({ default: m.SalesOrders })));
+const SalesOrderForm = lazy(() => import('./pages/SalesOrderForm').then((m) => ({ default: m.SalesOrderForm })));
+const SalesOrderDetail = lazy(() => import('./pages/SalesOrderDetail').then((m) => ({ default: m.SalesOrderDetail })));
+const DraftOrders = lazy(() => import('./pages/DraftOrders').then((m) => ({ default: m.DraftOrders })));
+const DraftOrderSetup = lazy(() => import('./pages/DraftOrderSetup').then((m) => ({ default: m.DraftOrderSetup })));
+const DraftOrderDetail = lazy(() => import('./pages/DraftOrderDetail').then((m) => ({ default: m.DraftOrderDetail })));
+const DraftOrderForm = lazy(() => import('./pages/DraftOrderForm').then((m) => ({ default: m.DraftOrderForm })));
+const SalesSettings = lazy(() => import('./pages/SalesSettings').then((m) => ({ default: m.SalesSettings })));
+const ProductTemplateForm = lazy(() => import('./pages/ProductTemplateForm').then((m) => ({ default: m.ProductTemplateForm })));
+const RateCalculator = lazy(() => import('./pages/RateCalculator').then((m) => ({ default: m.RateCalculator })));
+const OrderRegister = lazy(() => import('./pages/OrderRegister').then((m) => ({ default: m.OrderRegister })));
+const Registers = lazy(() => import('./pages/Registers').then((m) => ({ default: m.Registers })));
+const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default: m.AuditLogs })));
+const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
+const Tasks = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.Tasks })));
 
 function ToRegister() {
   const { search } = useLocation();
   return <Navigate to={`/registers${search}`} replace />;
 }
 
-export default function App() {
+function AppRoutes() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <>
+      <Suspense fallback={<p className="p-6 text-sm text-slate">Loading…</p>}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<ProtectedRoute />}>
@@ -73,10 +77,14 @@ export default function App() {
               <Route element={<ProtectedRoute anyOf={[...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS]} />}>
                 <Route path="sales-orders/:id" element={<SalesOrderDetail />} />
               </Route>
-              <Route element={<ProtectedRoute permission="sales:create" />}>
+              <Route element={<ProtectedRoute permission="intake:read" />}>
                 <Route path="draft-orders" element={<DraftOrders />} />
-                <Route path="draft-orders/setup" element={<DraftOrderSetup />} />
-                <Route path="draft-orders/new" element={<DraftOrderForm />} />
+                <Route element={<ProtectedRoute permission="intake:settings" />}>
+                  <Route path="draft-orders/setup" element={<DraftOrderSetup />} />
+                </Route>
+                <Route element={<ProtectedRoute permission="intake:update" />}>
+                  <Route path="draft-orders/new" element={<DraftOrderForm />} />
+                </Route>
                 <Route path="draft-orders/:id" element={<DraftOrderDetail />} />
               </Route>
               <Route element={<ProtectedRoute permission="sales:read" />}>
@@ -127,8 +135,20 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        <ConfirmHost />
-      </BrowserRouter>
+      </Suspense>
+      <ConfirmHost />
+    </>
+  );
+}
+
+// A data router (rather than <BrowserRouter>) so forms can block navigation
+// while they have unsaved changes (useBlocker).
+const router = createBrowserRouter([{ path: '*', element: <AppRoutes /> }]);
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <RouterProvider router={router} />
     </AuthProvider>
   );
 }

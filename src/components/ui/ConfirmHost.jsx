@@ -1,36 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { inputClass } from './FormField';
-
-let show = null;
-
-export function confirmAction(options) {
-  const settings = typeof options === 'string' ? { message: options } : options || {};
-  if (!show) return Promise.resolve(settings.withReason ? null : false);
-  return new Promise((resolve) => show({ ...settings, resolve }));
-}
-
-export function notify(message, title = 'Notice') {
-  return confirmAction({ title, message, confirmLabel: 'OK', hideCancel: true });
-}
+import { setConfirmHandler } from './confirm';
 
 export function ConfirmHost() {
   const [request, setRequest] = useState(null);
   const [reason, setReason] = useState('');
+  const pending = useRef(null);
 
   useEffect(() => {
-    show = (next) => {
+    setConfirmHandler((next) => {
+      // Only one dialog at a time: answer the one being replaced as "cancel"
+      // so its caller's await doesn't hang forever.
+      const previous = pending.current;
+      if (previous) previous.resolve(previous.withReason ? null : false);
+      pending.current = next;
       setReason('');
       setRequest(next);
-    };
+    });
     return () => {
-      show = null;
+      setConfirmHandler(null);
     };
   }, []);
 
   function finish(ok) {
     if (!request) return;
     const { resolve, withReason } = request;
+    pending.current = null;
     setRequest(null);
     if (withReason) resolve(ok ? reason.trim() : null);
     else resolve(ok);

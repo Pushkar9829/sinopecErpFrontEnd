@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
@@ -141,23 +141,29 @@ export function Stages() {
   const [saving, setSaving] = useState(false);
   const assignSeq = useRef({});
 
-  async function load() {
-    const [nextStages, nextMachines, nextUsers] = await Promise.all([
-      inventoryApi.listStages(),
-      machinesApi.list(),
-      usersApi.directory(),
-    ]);
+  const fetchPage = () => Promise.all([inventoryApi.listStages(), machinesApi.list(), usersApi.directory()]);
+  const apply = ([nextStages, nextMachines, nextUsers]) => {
     setStages(nextStages);
     setMachines(nextMachines);
     setUsers(nextUsers);
+  };
+
+  async function load() {
+    apply(await fetchPage());
   }
 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
+    let alive = true;
+    fetchPage()
+      .then((data) => alive && apply(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const machineOptions = useMemo(

@@ -1,38 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { tasksApi } from '../../api/tasks.api';
 import { usePermission } from '../../hooks/usePermission';
-import { TASKS_CHANGED_EVENT, dueText, isTaskOpen, notifyTasksChanged, taskAction, taskGuide, taskOwner } from '../../lib/tasks';
+import { dueText, isTaskOpen, notifyTasksChanged, taskAction, taskGuide, taskOwner } from '../../lib/tasks';
 import { EmptyState } from '../ui/EmptyState';
 import { TaskDrawer } from './TaskDrawer';
 import { TaskForm } from './TaskForm';
 import { TaskTable } from './TaskTable';
-
-export function useOrderTasks(orderId) {
-  const [tasks, setTasks] = useState([]);
-  const [error, setError] = useState('');
-  const [loaded, setLoaded] = useState(false);
-
-  const load = useCallback(() => {
-    if (!orderId) return Promise.resolve();
-    return tasksApi
-      .forOrder(orderId)
-      .then((data) => {
-        setTasks(data);
-        setError('');
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
-  }, [orderId]);
-
-  useEffect(() => {
-    load();
-    window.addEventListener(TASKS_CHANGED_EVENT, load);
-    return () => window.removeEventListener(TASKS_CHANGED_EVENT, load);
-  }, [load]);
-
-  return { tasks, error, loaded, load, openCount: tasks.filter(isTaskOpen).length };
-}
 
 function useClaim(onDone) {
   const [busyId, setBusyId] = useState('');

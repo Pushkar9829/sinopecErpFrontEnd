@@ -60,22 +60,24 @@ function FileRow({ orderId, file }) {
 
 export function ArtworkButton({ orderId, itemId, label = 'View', className = '' }) {
   const [open, setOpen] = useState(false);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  // Each answer is tagged with the request it belongs to; anything for an
+  // earlier order/item (or a closed viewer) is simply not shown.
+  const requestKey = open && orderId && itemId ? `${orderId}:${itemId}` : '';
+  const [result, setResult] = useState({ key: '', data: null, error: '' });
+  const data = result.key === requestKey ? result.data : null;
+  const error = result.key === requestKey ? result.error : '';
 
   useEffect(() => {
-    if (!open || !orderId || !itemId) return undefined;
+    if (!requestKey) return undefined;
     let alive = true;
-    setData(null);
-    setError('');
     registersApi
       .artwork(orderId, itemId)
-      .then((next) => alive && setData(next))
-      .catch((err) => alive && setError(err.message));
+      .then((next) => alive && setResult({ key: requestKey, data: next, error: '' }))
+      .catch((err) => alive && setResult({ key: requestKey, data: null, error: err.message }));
     return () => {
       alive = false;
     };
-  }, [open, orderId, itemId]);
+  }, [requestKey, orderId, itemId]);
 
   if (!orderId || !itemId) return null;
   const empty = data && !data.note && !data.design && !data.images.length && !data.files.length;

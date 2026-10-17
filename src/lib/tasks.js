@@ -19,6 +19,7 @@ export const TASK_CATEGORY_LABELS = {
   delivery_confirm: 'Confirm delivery',
   order_complete: 'Complete order',
   payment_collect: 'Collect payment',
+  intake_review: 'Review draft order',
   custom: 'Manual',
 };
 
@@ -38,6 +39,7 @@ export const ROLE_LABELS = {
 export const TASK_SCOPES = [
   { id: 'inbox', label: 'My tasks' },
   { id: 'mine', label: 'Assigned to me' },
+  { id: 'queue', label: 'Waiting for my role' },
   { id: 'role', label: 'Whole team' },
   { id: 'created', label: 'Created by me' },
 ];
@@ -128,6 +130,8 @@ export function taskAction(task) {
       return order && { label: 'Mark completed', to: order };
     case 'payment_collect':
       return order && { label: 'Record payment', to: `${order}?tab=amounts` };
+    case 'intake_review':
+      return task.intake && { label: 'Review draft', to: `/draft-orders/${task.intake}` };
     default:
       return order && { label: 'Open order', to: order };
   }

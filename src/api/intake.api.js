@@ -1,17 +1,43 @@
-import { api } from './client';
+import { api, fetchBlob } from './client';
+
+function query(params) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value !== undefined && value !== null && value !== '') search.set(key, value);
+  }
+  const text = search.toString();
+  return text ? `?${text}` : '';
+}
+
+export const INTAKE_CHANGED_EVENT = 'intake:changed';
+
+// Review actions change the counts in the sidebar badge and dashboard card.
+function changes(promise) {
+  return promise.then((result) => {
+    window.dispatchEvent(new Event(INTAKE_CHANGED_EVENT));
+    return result;
+  });
+}
 
 export const intakeApi = {
-  list: () => api.get('/api/intake'),
+  list: (params) => api.get(`/api/intake${query(params)}`),
+  summary: () => api.get('/api/intake/summary'),
   get: (id) => api.get(`/api/intake/${id}`),
+  match: (id) => api.get(`/api/intake/${id}/match`),
+  file: (id, fileId) => fetchBlob(`/api/intake/${id}/files/${fileId}`, 'Could not open the file'),
   settings: () => api.get('/api/intake/settings'),
   saveSettings: (payload) => api.put('/api/intake/settings', payload),
-  paste: (text) => api.post('/api/intake/paste', { text }),
-  createPanel: (payload) => api.post('/api/intake/panel', payload),
-  readPanel: (formData) => api.upload('/api/intake/panel/read', formData),
-  saveProposal: (id, proposal) => api.put(`/api/intake/${id}`, { proposal }),
-  markPotential: (id) => api.post(`/api/intake/${id}/potential`),
-  markNotOrder: (id) => api.post(`/api/intake/${id}/not-order`),
-  reread: (id) => api.post(`/api/intake/${id}/reread`),
-  discard: (id) => api.post(`/api/intake/${id}/discard`),
-  gmailStart: () => api.post('/api/intake/gmail/start'),
+  createPanel: (payload) => changes(api.post('/api/intake/panel', payload)),
+  readPanel: (formData) => changes(api.upload('/api/intake/panel/read', formData)),
+  saveProposal: (id, proposal, version) => changes(api.put(`/api/intake/${id}`, { proposal, version })),
+  useReading: (id, readingId, version) => changes(api.post(`/api/intake/${id}/readings/${readingId}/use`, { version })),
+  reread: (id) => changes(api.post(`/api/intake/${id}/reread`, {})),
+  markNotOrder: (id, version) => changes(api.post(`/api/intake/${id}/not-order`, { version })),
+  discard: (id, reason, version) => changes(api.post(`/api/intake/${id}/discard`, { reason, version })),
+  restore: (id) => changes(api.post(`/api/intake/${id}/restore`, {})),
+  confirmCustomer: (id, payload) => changes(api.post(`/api/intake/${id}/customer`, payload)),
+  clearCustomer: (id, version) => changes(api.delete(`/api/intake/${id}/customer`, { version })),
+  convert: (id, payload) => changes(api.post(`/api/intake/${id}/convert`, payload)),
+  gmailStart: () => api.post('/api/intake/gmail/start', {}),
+  gmailDisconnect: () => api.post('/api/intake/gmail/disconnect', {}),
 };

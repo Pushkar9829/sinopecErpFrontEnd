@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { StageRegister } from '../components/register/StageRegister';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
 import { StageMenu } from '../components/ui/StageMenu';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { usePermission } from '../hooks/usePermission';
 import { isSuperAdmin } from '../lib/registerBooks';
 import { PRODUCTION_STAGES, formatDate, orderTypeLabel, statusLabel } from '../lib/sales';
@@ -32,14 +32,18 @@ export function Registers() {
   const presetJob = searchParams.get('job') || '';
   const backTo = safeBack(searchParams.get('back') || '');
   const fromTask = backTo.startsWith('/tasks') ? searchParams.get('task') || '' : '';
-  const openedFromJob = useRef(Boolean(presetJob));
+  // Whether this visit started from a job link (fixed for the visit).
+  const [openedFromJob] = useState(() => Boolean(presetJob));
   const stages = useMemo(
     () => (isAdmin ? PRODUCTION_STAGES : PRODUCTION_STAGES.filter((item) => can(item.read))),
     [can, isAdmin]
   );
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  // Order-wise list: loaded the first time that view opens; a later visit
+  // shows the last list while the fresh one loads.
+  const [orderList, setOrderList] = useState({ loaded: false, rows: [], error: '' });
+  const rows = orderList.rows;
+  const loading = view === 'orders' && !orderList.loaded;
+  const error = view === 'orders' ? orderList.error : '';
   const [entryAction, setEntryAction] = useState(null);
   const onEntryState = useCallback((next) => setEntryAction(next), []);
 
@@ -54,13 +58,10 @@ export function Registers() {
   useEffect(() => {
     if (view !== 'orders') return undefined;
     let alive = true;
-    setError('');
-    setLoading(true);
     registersApi
       .list()
-      .then((data) => alive && setRows(data))
-      .catch((err) => alive && setError(err.message))
-      .finally(() => alive && setLoading(false));
+      .then((data) => alive && setOrderList({ loaded: true, rows: data, error: '' }))
+      .catch((err) => alive && setOrderList((current) => ({ ...current, loaded: true, error: err.message })));
     return () => {
       alive = false;
     };
@@ -105,7 +106,7 @@ export function Registers() {
           <div className="flex flex-wrap items-center gap-2">
             {backTo ? (
               <BackButton to={backTo} label={backTo.startsWith('/tasks') ? 'Tasks' : 'Order book'} />
-            ) : openedFromJob.current ? (
+            ) : openedFromJob ? (
               <BackButton fallback={fallback} />
             ) : null}
             <h1 className="text-lg font-semibold text-stone-900">Register</h1>
@@ -205,6 +206,7 @@ export function Registers() {
           </>
         ) : (
           <StageRegister
+            key={stage}
             stage={stage}
             isAdmin={isAdmin}
             presetJob={presetJob}

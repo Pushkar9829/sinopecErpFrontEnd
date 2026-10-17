@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 
 function matchesPermission(ownedKeys, requiredKey) {
   if (!ownedKeys?.length) return false;
@@ -25,7 +25,24 @@ export function usePermission() {
     [user]
   );
 
-  return { can, user };
+  // May this user manage people in `role`, or hand `role` out? Mirrors the
+  // API: Super Admin manages everyone; others only roles whose every
+  // permission they hold themselves, and never Super Admin. When the role's
+  // permissions aren't known (no roles:read), let the API decide.
+  const canManageRole = useCallback(
+    (role) => {
+      if (!user || !role) return false;
+      if (user.role?.slug === 'super_admin') return true;
+      if (role.slug === 'super_admin') return false;
+      if (!Array.isArray(role.permissions)) return true;
+      return role.permissions.every((permission) =>
+        matchesPermission(user.permissions, typeof permission === 'string' ? permission : permission.key)
+      );
+    },
+    [user]
+  );
+
+  return { can, user, canManageRole };
 }
 
 const OFFICE_KEYS = ['sales:read', 'users:read', 'production:read', 'inventory:read', 'accounts:read'];

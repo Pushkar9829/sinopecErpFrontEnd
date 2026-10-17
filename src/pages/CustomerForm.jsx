@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { useNavigate, useParams } from 'react-router-dom';
 import { customersApi } from '../api/customers.api';
 import { salesSettingsApi } from '../api/salesSettings.api';
@@ -55,6 +56,7 @@ export function CustomerForm() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(!isEdit);
+  const { markSaved } = useUnsavedChanges({ form, products }, loaded);
 
   useEffect(() => {
     Promise.all([salesSettingsApi.listTemplates(), salesSettingsApi.options()])
@@ -108,6 +110,7 @@ export function CustomerForm() {
       } else {
         await customersApi.create(payload);
       }
+      markSaved();
       navigate('/customers');
     } catch (err) {
       setError(err.message);

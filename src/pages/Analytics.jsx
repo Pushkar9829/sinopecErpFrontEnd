@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { analyticsApi } from '../api/analytics.api';
-import { BarChart, CHART_COLORS, StackedBarChart } from '../components/charts/BarChart';
-import { Badge, StatusBadge, panelTones, stepTone, valueTones } from '../components/ui/Badge';
+import { BarChart, StackedBarChart } from '../components/charts/BarChart';
+import { CHART_COLORS } from '../components/charts/chartColors';
+import { Badge, StatusBadge } from '../components/ui/Badge';
+import { panelTones, stepTone, valueTones } from '../components/ui/badgeTones';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Section } from '../components/ui/FormField';
 import { Modal } from '../components/ui/Modal';
@@ -358,35 +360,32 @@ export function Analytics() {
   const [tab, setTab] = useState('overview');
   const [orderTab, setOrderTab] = useState('all');
   const [search, setSearch] = useState('');
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState(null);
 
   const bounds = useMemo(() => rangeBounds(preset, customFrom, customTo), [preset, customFrom, customTo]);
   const filterKey = JSON.stringify(filters);
+  // The last answer stays on screen while a new range/filter loads; "loading"
+  // means the shown answer is for an older request.
+  const requestKey = `${bounds.from}|${bounds.to}|${filterKey}`;
+  const [result, setResult] = useState({ key: '', data: null, error: '' });
+  const data = result.data;
+  const error = result.key === requestKey ? result.error : '';
+  const loading = result.key !== requestKey;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     analyticsApi
       .get({ from: bounds.from, to: bounds.to, ...JSON.parse(filterKey) })
       .then((payload) => {
-        if (!cancelled) {
-          setData(payload);
-          setError('');
-        }
+        if (!cancelled) setResult({ key: requestKey, data: payload, error: '' });
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setResult((current) => ({ ...current, key: requestKey, error: err.message }));
       });
     return () => {
       cancelled = true;
     };
-  }, [bounds.from, bounds.to, filterKey]);
+  }, [bounds.from, bounds.to, filterKey, requestKey]);
 
   function changeTab(next) {
     setTab(next);

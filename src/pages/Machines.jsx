@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { machinesApi } from '../api/machines.api';
@@ -7,6 +7,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
+import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
 
 const PAGE_SIZE = 8;
@@ -124,16 +125,25 @@ export function Machines() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const fetchPage = () => machinesApi.list();
+  const apply = (data) => setMachines(data);
+
   async function load() {
-    setMachines(await machinesApi.list());
+    apply(await fetchPage());
   }
 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
+    let alive = true;
+    fetchPage()
+      .then((data) => alive && apply(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const counts = useMemo(
@@ -156,6 +166,9 @@ export function Machines() {
   }, [machines, status, query]);
 
   const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${status}|${query}` });
+
+  const { guard: once, pending: updating } = useSingleFlight();
+  const handleStatusOnce = once(handleStatus);
 
   async function handleStatus(machine, isActive) {
     setError('');
@@ -229,8 +242,8 @@ export function Machines() {
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                   <StatusToggle
                     checked={machine.isActive}
-                    disabled={!canUpdate}
-                    onChange={(isActive) => handleStatus(machine, isActive)}
+                    disabled={updating || !canUpdate}
+                    onChange={(isActive) => handleStatusOnce(machine, isActive)}
                   />
                 </td>
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>

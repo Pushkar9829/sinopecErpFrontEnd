@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTaskSummary } from '../../hooks/useTaskSummary';
 import { dueText, taskCategoryLabel, taskOwner } from '../../lib/tasks';
-import { PriorityBadge, panelTones, valueTones } from '../ui/Badge';
+import { PriorityBadge } from '../ui/Badge';
+import { panelTones, valueTones } from '../ui/badgeTones';
 import { TaskDrawer } from './TaskDrawer';
 import { TaskActions } from './TaskTable';
 
@@ -13,7 +14,7 @@ export function MyTasksPanel() {
 
   const cards = [
     { label: 'Assigned to me', value: summary.assigned, tone: 'info', to: '/tasks?scope=mine' },
-    { label: 'Waiting for my role', value: summary.roleQueue, tone: 'accent', to: '/tasks?scope=inbox' },
+    { label: 'Waiting for my role', value: summary.roleQueue, tone: 'accent', to: '/tasks?scope=queue' },
     { label: 'Overdue', value: summary.overdue, tone: summary.overdue ? 'danger' : 'muted', to: '/tasks?scope=inbox&overdue=1' },
   ];
 

@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { customersApi } from '../api/customers.api';
@@ -122,16 +122,25 @@ export function Customers() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const fetchPage = () => customersApi.list();
+  const apply = (data) => setCustomers(data);
+
   async function load() {
-    setCustomers(await customersApi.list());
+    apply(await fetchPage());
   }
 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
+    let alive = true;
+    fetchPage()
+      .then((data) => alive && apply(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const counts = useMemo(
@@ -242,7 +251,7 @@ export function Customers() {
                 </td>
                 <td className="px-4 py-3 text-slate">{customer.gstNumber || '—'}</td>
                 <td className="px-4 py-3 text-slate">{customer.priceCategory || '—'}</td>
-                <td className="px-4 py-3 text-slate">{customer.products?.length || 0}</td>
+                <td className="px-4 py-3 text-slate">{customer.productCount ?? customer.products?.length ?? 0}</td>
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                   <StatusToggle
                     checked={customer.isActive}

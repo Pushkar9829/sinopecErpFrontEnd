@@ -4,17 +4,18 @@ import { Main } from './Main';
 import { Sidebar } from './Sidebar';
 
 export function AppShell() {
-  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [location.pathname, location.search]);
+  // The menu is open "for" the page it was opened on, so navigating anywhere
+  // closes it without an effect.
+  const here = `${location.pathname}${location.search}`;
+  const [openOn, setOpenOn] = useState(null);
+  const menuOpen = openOn === here;
+  const setMenuOpen = (open) => setOpenOn(open ? here : null);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
     function onKey(event) {
-      if (event.key === 'Escape') setMenuOpen(false);
+      if (event.key === 'Escape') setOpenOn(null);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

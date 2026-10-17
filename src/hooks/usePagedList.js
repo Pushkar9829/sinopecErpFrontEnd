@@ -1,27 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 export function usePagedList(items, { pageSize = 8, resetKey } = {}) {
-  const [page, setPage] = useState(1);
+  // The page belongs to the current filters (resetKey) and page size; when
+  // either changes the list starts again at page 1 without an extra render.
+  const key = `${resetKey}|${pageSize}`;
+  const [state, setState] = useState({ key, page: 1 });
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
-
-  useEffect(() => {
-    setPage(1);
-  }, [resetKey, pageSize]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
+  const page = Math.min(state.key === key ? state.page : 1, totalPages);
 
   const paged = useMemo(() => {
-    const start = (Math.min(page, totalPages) - 1) * pageSize;
+    const start = (page - 1) * pageSize;
     return items.slice(start, start + pageSize);
-  }, [items, page, pageSize, totalPages]);
+  }, [items, page, pageSize]);
 
   return {
-    page: Math.min(page, totalPages),
-    setPage,
+    page,
+    setPage: (next) => setState({ key, page: next }),
     totalPages,
     paged,
     total: items.length,

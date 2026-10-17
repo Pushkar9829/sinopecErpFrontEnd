@@ -1,22 +1,25 @@
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 
-const DEMO_ACCOUNTS =
-  import.meta.env.VITE_HIDE_DEMO_LOGINS === 'true'
-    ? []
-    : [
-        { username: 'owner', label: 'Owner (Super Admin)', password: import.meta.env.VITE_OWNER_PASSWORD || 'ChangeMe123!' },
-        { username: 'sales', label: 'Sales' },
-        { username: 'production', label: 'Production' },
-        { username: 'inventory', label: 'Inventory' },
-        { username: 'rolling', label: 'Rolling' },
-        { username: 'printing', label: 'Printing' },
-        { username: 'cutting', label: 'Cutting' },
-        { username: 'dispatch', label: 'Dispatch' },
-        { username: 'accounts', label: 'Accounts' },
-      ];
-const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || 'Demo@1234';
+// Demo shortcuts exist only in `vite dev`. Production builds drop this
+// branch entirely, so no usernames or passwords ship in the public bundle.
+// The owner password comes from VITE_DEV_OWNER_PASSWORD in frontend/.env
+// (not committed); without it you type the password yourself.
+const DEMO_ACCOUNTS = import.meta.env.DEV
+  ? [
+      { username: 'owner', label: 'Owner (Super Admin)', password: import.meta.env.VITE_DEV_OWNER_PASSWORD || '' },
+      { username: 'sales', label: 'Sales' },
+      { username: 'production', label: 'Production' },
+      { username: 'inventory', label: 'Inventory' },
+      { username: 'rolling', label: 'Rolling' },
+      { username: 'printing', label: 'Printing' },
+      { username: 'cutting', label: 'Cutting' },
+      { username: 'dispatch', label: 'Dispatch' },
+      { username: 'accounts', label: 'Accounts' },
+    ]
+  : [];
+const DEMO_PASSWORD = import.meta.env.DEV ? 'Demo@1234' : '';
 
 export function Login() {
   const { user, loading, login } = useAuth();
@@ -34,7 +37,7 @@ export function Login() {
 
   function fillDemo(account) {
     setUsername(account.username);
-    setPassword(account.password || DEMO_PASSWORD);
+    setPassword(account.password ?? DEMO_PASSWORD);
     setError('');
   }
 

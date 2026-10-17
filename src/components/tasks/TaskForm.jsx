@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { salesOrdersApi } from '../../api/salesOrders.api';
 import { tasksApi } from '../../api/tasks.api';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/auth';
 import { ORDER_TYPES, statusLabel } from '../../lib/sales';
 import { notifyTasksChanged } from '../../lib/tasks';
 import { Field, inputClass } from '../ui/FormField';
 import { Modal } from '../ui/Modal';
-import { AssigneeSelect, assigneePayload } from './AssigneeSelect';
+import { AssigneeSelect } from './AssigneeSelect';
+import { assigneePayload } from '../../lib/assignee';
+import { formatQty, itemQuantityError } from '../../lib/itemQuantity';
 
 const EMPTY = {
   title: '',
@@ -19,23 +21,6 @@ const EMPTY = {
   itemId: '',
   quantity: '',
 };
-const CLOSED_ORDER_STATUSES = ['cancelled', 'completed'];
-
-function formatQty(value) {
-  return Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
-}
-
-export function itemQuantityError(items, itemId, quantity) {
-  if (quantity === '' || quantity === null || quantity === undefined) return '';
-  if (!itemId) return 'Choose the item the quantity is for';
-  const qty = Number(quantity);
-  if (!Number.isFinite(qty) || qty <= 0) return 'Quantity must be more than 0';
-  const item = items.find((entry) => entry.id === itemId);
-  const max = Number(item?.quantity) || 0;
-  if (max > 0 && qty > max) return `Quantity cannot be more than ${formatQty(max)} ${item.unit || ''} ordered`.trim();
-  return '';
-}
-
 export function ItemQuantityFields({ items = [], itemId, quantity, onChange, disabled = false }) {
   const item = items.find((entry) => entry.id === itemId);
   return (
@@ -73,34 +58,56 @@ export function ItemQuantityFields({ items = [], itemId, quantity, onChange, dis
   );
 }
 
-export function TaskForm({ open, onClose, onCreated, orderId = '', orderNumber = '', orderItems = [] }) {
+// Mounted fresh each time it opens, so the form always starts empty.
+export function TaskForm(props) {
+  return props.open ? <TaskFormBody {...props} /> : null;
+}
+
+function TaskFormBody({ open, onClose, onCreated, orderId = '', orderNumber = '', orderItems = [] }) {
   const { user } = useAuth();
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(() => ({ ...EMPTY, assignee: user?.id ? `user:${user.id}` : '' }));
   const [people, setPeople] = useState([]);
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    setForm({ ...EMPTY, assignee: user?.id ? `user:${user.id}` : '' });
-    setError('');
+    let alive = true;
     tasksApi
       .assignees()
-      .then(setPeople)
-      .catch(() => setPeople([]));
-    if (orderId) return;
+      .then((list) => alive && setPeople(list))
+      .catch(() => alive && setPeople([]));
+    if (!orderId) {
+      // Open orders only, as light list rows (no items): the chosen order's
+      // items are fetched when it is picked.
+      salesOrdersApi
+        .page({ page: 1, pageSize: 100, status: 'open' })
+        .then((data) => alive && setOrders(data.items || []))
+        .catch(() => alive && setOrders([]));
+    }
+    return () => {
+      alive = false;
+    };
+  }, [orderId]);
+
+  const [pickedOrder, setPickedOrder] = useState({ id: '', items: [] });
+  useEffect(() => {
+    if (orderId || !form.orderId) return undefined;
+    let alive = true;
     salesOrdersApi
-      .list()
-      .then((list) => setOrders(list.filter((order) => !CLOSED_ORDER_STATUSES.includes(order.status))))
-      .catch(() => setOrders([]));
-  }, [open, user?.id, orderId]);
+      .get(form.orderId)
+      .then((order) => alive && setPickedOrder({ id: form.orderId, items: order.items || [] }))
+      .catch(() => alive && setPickedOrder({ id: form.orderId, items: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [orderId, form.orderId]);
 
   const orderChoices = useMemo(
     () => orders.filter((order) => (order.orderType || 'sales_order') === form.orderType),
     [orders, form.orderType]
   );
-  const items = orderId ? orderItems : orders.find((order) => order.id === form.orderId)?.items || [];
+  const items = orderId ? orderItems : pickedOrder.id === form.orderId ? pickedOrder.items : [];
 
   function set(key, value) {
     setForm((current) => ({ ...current, [key]: value }));

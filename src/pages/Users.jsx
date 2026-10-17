@@ -1,14 +1,16 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usersApi } from '../api/users.api';
+import { rolesApi } from '../api/roles.api';
 import { PermissionGate } from '../components/PermissionGate';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { StatusToggle } from '../components/ui/StatusToggle';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { usePagedList } from '../hooks/usePagedList';
+import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
 
 const PAGE_SIZE = 8;
@@ -117,23 +119,40 @@ function PlusIcon() {
 export function Users() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const { can } = usePermission();
+  const { can, canManageRole } = usePermission();
   const [users, setUsers] = useState([]);
+  const [rolesById, setRolesById] = useState(new Map());
+  useEffect(() => {
+    rolesApi
+      .list()
+      .then((roles) => setRolesById(new Map(roles.map((role) => [role._id, role]))))
+      .catch(() => {});
+  }, []);
+  const canManage = (target) => canManageRole(rolesById.get(target.role?.id) || target.role);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const fetchPage = () => usersApi.list();
+  const apply = (data) => setUsers(data);
+
   async function load() {
-    setUsers(await usersApi.list());
+    apply(await fetchPage());
   }
 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
+    let alive = true;
+    fetchPage()
+      .then((data) => alive && apply(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const counts = useMemo(
@@ -158,6 +177,9 @@ export function Users() {
   }, [users, tab, query]);
 
   const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
+
+  const { guard: once, pending: updating } = useSingleFlight();
+  const handleUpdateOnce = once(handleUpdate);
 
   async function handleUpdate(id, payload) {
     setError('');
@@ -236,8 +258,8 @@ export function Users() {
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                   <StatusToggle
                     checked={user.isActive}
-                    disabled={!can('users:update') || user.id === currentUser?.id}
-                    onChange={(isActive) => handleUpdate(user.id, { isActive })}
+                    disabled={updating || !can('users:update') || user.id === currentUser?.id || !canManage(user)}
+                    onChange={(isActive) => handleUpdateOnce(user.id, { isActive })}
                   />
                 </td>
                 <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
@@ -248,7 +270,7 @@ export function Users() {
                     <PermissionGate permission="users:delete">
                       <IconButton
                         label="Delete user"
-                        disabled={user.id === currentUser?.id}
+                        disabled={user.id === currentUser?.id || !canManage(user)}
                         onClick={() => handleDelete(user.id)}
                         className="text-red-700 hover:bg-red-50"
                       >

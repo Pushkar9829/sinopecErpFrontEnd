@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { tasksApi } from '../api/tasks.api';
 import { TaskDrawer } from '../components/tasks/TaskDrawer';
@@ -8,7 +8,6 @@ import { TaskTable } from '../components/tasks/TaskTable';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
-import { usePagedList } from '../hooks/usePagedList';
 import { useFloorWorker, usePermission } from '../hooks/usePermission';
 import { useTaskSummary } from '../hooks/useTaskSummary';
 import { ORDER_TYPES } from '../lib/sales';
@@ -43,7 +42,10 @@ export function Tasks() {
   const orderType = searchParams.get('type') || 'all';
   const overdue = searchParams.get('overdue') === '1';
 
+  // Floor workers' task book shows every task for their station; the office
+  // table asks the server for one page at a time.
   const [tasks, setTasks] = useState([]);
+  const [paged, setPaged] = useState({ items: [], total: 0, pages: 1 });
   const [query, setQuery] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
@@ -58,24 +60,37 @@ export function Tasks() {
     setSearchParams(params, { replace: true });
   }
 
+  // Filters can change faster than the list loads: only the newest request
+  // may write to the screen.
+  const latestRequest = useRef(0);
+  // A filter change starts again at page 1 (derived, so it costs no extra request).
+  const filterKey = `${scope}|${status}|${category}|${orderType}|${overdue}|${query}`;
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  const page = pageState.key === filterKey ? pageState.page : 1;
+  const setPage = (next) => setPageState({ key: filterKey, page: next });
+
   const load = useCallback(async () => {
+    const request = ++latestRequest.current;
     setError('');
     try {
-      const data = await tasksApi.list({
+      const params = {
         scope,
         status,
         category,
         orderType,
         overdue: overdue ? '1' : '',
         q: query.trim(),
-      });
-      setTasks(data);
+      };
+      const data = floorWorker ? await tasksApi.list(params) : await tasksApi.list({ ...params, page, pageSize: PAGE_SIZE });
+      if (request !== latestRequest.current) return;
+      if (floorWorker) setTasks(data);
+      else setPaged(data);
     } catch (err) {
-      setError(err.message);
+      if (request === latestRequest.current) setError(err.message);
     } finally {
-      setLoaded(true);
+      if (request === latestRequest.current) setLoaded(true);
     }
-  }, [scope, status, category, orderType, overdue, query]);
+  }, [scope, status, category, orderType, overdue, query, page, floorWorker]);
 
   useEffect(() => {
     const timer = window.setTimeout(load, query ? 250 : 0);
@@ -108,7 +123,7 @@ export function Tasks() {
     setSearchParams(params, { replace: true });
   }
 
-  const list = usePagedList(tasks, { pageSize: PAGE_SIZE, resetKey: `${scope}|${status}|${category}|${orderType}|${overdue}|${query}` });
+  const total = floorWorker ? tasks.length : paged.total;
 
   const tabs = scopes.map((item) => ({
     ...item,
@@ -164,7 +179,8 @@ export function Tasks() {
               overdue ? 'border-rose-700 bg-rose-700 text-white' : 'border-rose-300 bg-rose-100 text-rose-800 hover:bg-rose-200'
             }`}
           >
-            Overdue · {overdue ? list.total : (summary?.overdue ?? 0)}
+            {/* summary.overdue counts "My tasks"; on other scopes the number would not match the list. */}
+            {overdue ? `Overdue · ${total}` : scope === 'inbox' ? `Overdue · ${summary?.overdue ?? 0}` : 'Overdue'}
           </button>
         ) : null}
         {filtered ? (
@@ -206,16 +222,16 @@ export function Tasks() {
       ) : null}
 
       <div className={floorWorker && loaded && tasks.length ? 'hidden' : 'overflow-x-auto rounded-xl border border-line bg-card'}>
-        {floorWorker ? null : <TaskTable tasks={list.paged} onOpen={setSelected} onClaim={claim} busyId={claimingId} />}
+        {floorWorker ? null : <TaskTable tasks={paged.items} onOpen={setSelected} onClaim={claim} busyId={claimingId} />}
         {!loaded ? (
           <p className="px-4 py-6 text-sm text-slate">Loading…</p>
-        ) : list.total === 0 ? (
+        ) : total === 0 ? (
           <EmptyState
             title={filtered || query ? 'No tasks match these filters' : "You're all caught up"}
             hint={filtered || query ? 'Try clearing the filters or search.' : 'Tasks appear automatically as orders move forward, or create one with New task.'}
           />
         ) : (
-          <Pagination page={list.page} totalPages={list.totalPages} total={list.total} pageSize={list.pageSize} onPage={list.setPage} />
+          <Pagination page={page} totalPages={floorWorker ? 1 : paged.pages} total={total} pageSize={floorWorker ? Math.max(total, 1) : PAGE_SIZE} onPage={setPage} />
         )}
       </div>
 

@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react';
-import { resolveMediaUrl } from '../../api/client';
-
-export function imageSrc(image) {
-  return resolveMediaUrl(image?.url || image?.dataUrl || '');
-}
+import { imageSrc } from '../../lib/images';
 
 export function ImageLightbox({ images, index, onClose, onIndex }) {
   const image = images[index];

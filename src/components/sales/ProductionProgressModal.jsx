@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Badge, stepTone } from '../ui/Badge';
+import { useState } from 'react';
+import { Badge } from '../ui/Badge';
+import { stepTone } from '../ui/badgeTones';
 import { Modal } from '../ui/Modal';
 import { formatQty, orderActiveStages, orderStageSummary, routeLabel } from '../../lib/sales';
 
@@ -59,22 +60,17 @@ function stageStatus(stage) {
   return <Badge tone="muted">Waiting</Badge>;
 }
 
+// Opens on the order's current stage; a fresh body per order, so no effect
+// has to reset the selected tab.
 export function ProductionProgressModal({ order, onClose }) {
-  const stages = order ? orderStageSummary(order) : [];
-  const current = order ? orderActiveStages(order) : [];
-  const [tab, setTab] = useState('');
-
-  useEffect(() => {
-    if (!order) {
-      setTab('');
-      return;
-    }
-    const summary = orderStageSummary(order);
-    const active = orderActiveStages(order);
-    setTab(active[0] || summary[0]?.id || '');
-  }, [order]);
-
   if (!order) return null;
+  return <ProgressBody key={order.id} order={order} onClose={onClose} />;
+}
+
+function ProgressBody({ order, onClose }) {
+  const stages = orderStageSummary(order);
+  const current = orderActiveStages(order);
+  const [tab, setTab] = useState(() => current[0] || stages[0]?.id || '');
 
   const stage = stages.find((row) => row.id === tab) || stages[0];
 

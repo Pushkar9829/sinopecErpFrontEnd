@@ -3,12 +3,14 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { analyticsApi } from '../api/analytics.api';
 import { productionApi } from '../api/production.api';
 import { salesOrdersApi } from '../api/salesOrders.api';
-import { Badge, PriorityBadge, panelTones, stepTone, valueTones } from '../components/ui/Badge';
+import { Badge, PriorityBadge } from '../components/ui/Badge';
+import { panelTones, stepTone, valueTones } from '../components/ui/badgeTones';
 import { EmptyState } from '../components/ui/EmptyState';
 import { StageMenu } from '../components/ui/StageMenu';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { ArtworkButton } from '../components/register/ArtworkButton';
 import { MyTasksPanel } from '../components/tasks/MyTasksPanel';
+import { DraftOrdersCard } from '../components/intake/DraftOrdersCard';
 import { tasksApi } from '../api/tasks.api';
 import { stageJobKey, TASKS_CHANGED_EVENT } from '../lib/tasks';
 import { useFloorWorker, usePermission } from '../hooks/usePermission';
@@ -46,9 +48,16 @@ function FloorDashboard() {
     if (can('production:read')) return PRODUCTION_STAGES;
     return PRODUCTION_STAGES.filter((item) => can(item.read));
   }, [can]);
-  const [stage, setStage] = useState('');
-  const [jobs, setJobs] = useState([]);
-  const [error, setError] = useState('');
+  // The stage comes from the URL (?stage=), falling back to the first one.
+  const requestedStage = searchParams.get('stage');
+  const stage = stages.some((item) => item.id === requestedStage) ? requestedStage : stages[0]?.id || '';
+  // Queue results are tagged with their stage: switching shows "Loading"
+  // until that stage's answer arrives, and late answers for others are ignored.
+  const [queue, setQueue] = useState({ stage: '', jobs: [], error: '' });
+  const current = queue.stage === stage;
+  const jobs = current ? queue.jobs : [];
+  const error = current ? queue.error : '';
+  const loading = !current;
   const taskSummary = useTaskSummary();
   const { user } = useAuth();
   const [jobTasks, setJobTasks] = useState({});
@@ -70,25 +79,12 @@ function FloorDashboard() {
   }, [can]);
 
   useEffect(() => {
-    if (!stages.length) return;
-    const requested = searchParams.get('stage');
-    const next = stages.some((item) => item.id === requested) ? requested : stages[0].id;
-    setStage(next);
-  }, [searchParams, stages]);
-
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
     if (!stage) return undefined;
     let alive = true;
-    setError('');
-    setJobs([]);
-    setLoading(true);
     productionApi
       .queue(stage)
-      .then((data) => alive && setJobs(data.jobs || []))
-      .catch((err) => alive && setError(err.message))
-      .finally(() => alive && setLoading(false));
+      .then((data) => alive && setQueue({ stage, jobs: data.jobs || [], error: '' }))
+      .catch((err) => alive && setQueue({ stage, jobs: [], error: err.message }));
     return () => {
       alive = false;
     };
@@ -113,7 +109,6 @@ function FloorDashboard() {
               stages={stages}
               value={stage}
               onChange={(id) => {
-                setStage(id);
                 navigate(`/?stage=${id}`, { replace: true });
               }}
             />
@@ -478,6 +473,8 @@ function AdminDashboard() {
       {showAnalytics ? <OperationsOverview showMoney={showMoney} canOpenOrder={showSales} /> : null}
 
       {can('tasks:read') ? <MyTasksPanel /> : null}
+
+      {can('intake:read') ? <DraftOrdersCard /> : null}
 
       {!hasLinks ? <p className="text-sm font-normal text-slate">No extra pages for this role yet.</p> : null}
 

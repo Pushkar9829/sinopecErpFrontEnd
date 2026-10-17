@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { useFloorWorker, usePermission } from '../hooks/usePermission';
+import { useIntakeSummary } from '../hooks/useIntakeSummary';
 import { useTaskSummary } from '../hooks/useTaskSummary';
 import { ANALYTICS_VIEW_KEYS, PRODUCTION_VIEW_KEYS, SALES_ORDER_VIEW_KEYS } from '../lib/sales';
 
@@ -10,7 +11,7 @@ const pageLinks = [
   { to: '/analytics', label: 'Analytics', anyOf: ANALYTICS_VIEW_KEYS },
   { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },
   { to: '/customers', label: 'Customers', permission: 'sales:read' },
-  { to: '/draft-orders', label: 'Draft orders', permission: 'sales:create' },
+  { to: '/draft-orders', label: 'Draft orders', permission: 'intake:read', badge: 'drafts' },
   { to: '/inventory', label: 'Inventory', permission: 'inventory:read' },
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
@@ -29,7 +30,8 @@ export function Sidebar({ open = false, onClose }) {
   const floorWorker = useFloorWorker();
   const links = floorWorker ? pageLinks : [homeLink, ...pageLinks];
   const taskSummary = useTaskSummary();
-  const badges = { tasks: taskSummary?.total || 0 };
+  const intakeSummary = useIntakeSummary();
+  const badges = { tasks: taskSummary?.total || 0, drafts: intakeSummary?.needsReview || 0 };
 
   return (
     <aside

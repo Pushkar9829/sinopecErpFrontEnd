@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { rolesApi } from '../api/roles.api';
@@ -7,7 +7,7 @@ import { PermissionGate } from '../components/PermissionGate';
 import { BackButton } from '../components/ui/BackButton';
 import { RoleMenu } from '../components/ui/RoleMenu';
 import { StatusToggle } from '../components/ui/StatusToggle';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { usePermission } from '../hooks/usePermission';
 
 const inputClass = 'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 outline-none focus:border-accent disabled:bg-paper';
@@ -37,10 +37,14 @@ export function UserEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user: currentUser, refreshUser } = useAuth();
-  const { can } = usePermission();
-  const canEdit = can('users:update');
+  const { can, canManageRole } = usePermission();
   const [roles, setRoles] = useState([]);
   const [form, setForm] = useState(null);
+  const [targetRole, setTargetRole] = useState(null);
+  // A user with more access than you (or a Super Admin) is read-only here;
+  // the API refuses those changes anyway.
+  const canEdit = can('users:update') && (!targetRole || canManageRole(targetRole));
+  const assignableRoles = roles.filter((role) => canManageRole(role) || role._id === form?.roleId);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -55,6 +59,7 @@ export function UserEdit() {
           return;
         }
         setRoles(nextRoles);
+        setTargetRole(nextRoles.find((role) => role._id === user.role?.id) || user.role || null);
         setForm({
           fullName: user.fullName,
           username: user.username,
@@ -77,7 +82,7 @@ export function UserEdit() {
     setSaving(true);
     try {
       const payload = { ...form };
-      if (password.trim()) payload.password = password.trim();
+      if (password.trim()) payload.password = password;
       await usersApi.update(id, payload);
       setPassword('');
       setNotice('Saved.');
@@ -137,6 +142,11 @@ export function UserEdit() {
             className={inputClass}
           />
         </label>
+        {!canEdit && can('users:update') ? (
+          <p className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-slate">
+            This user has access you don't have, so only someone with that access can change their account.
+          </p>
+        ) : null}
         {canEdit ? (
           <label className="block text-base font-semibold text-ink">
             New password
@@ -152,7 +162,7 @@ export function UserEdit() {
         ) : null}
         <label className="block text-base font-semibold text-ink">
           Role
-          <RoleMenu roles={roles} value={form.roleId} disabled={!canEdit || id === currentUser?.id} onChange={(roleId) => update('roleId', roleId)} />
+          <RoleMenu roles={assignableRoles} value={form.roleId} disabled={!canEdit || id === currentUser?.id} onChange={(roleId) => update('roleId', roleId)} />
         </label>
         <div className="flex items-center justify-between rounded-lg border border-line px-3 py-2">
           <span className="text-base font-semibold text-ink">Account status</span>

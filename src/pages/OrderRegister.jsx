@@ -4,8 +4,8 @@ import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
 import { ArtworkButton } from '../components/register/ArtworkButton';
 import { LongText } from '../components/register/LongText';
-import { badgeTones, stepTone, tabActiveTones } from '../components/ui/Badge';
-import { useAuth } from '../context/AuthContext';
+import { badgeTones, stepTone, tabActiveTones } from '../components/ui/badgeTones';
+import { useAuth } from '../context/auth';
 import { OPERATOR_LABEL, bookColumns, frozenColumns, isSuperAdmin, savedValue } from '../lib/registerBooks';
 import { formatDate, formatQty, statusLabel } from '../lib/sales';
 
@@ -220,16 +220,25 @@ export function OrderRegister() {
   const showCustomerName = isSuperAdmin(user);
   const [searchParams, setSearchParams] = useSearchParams();
   const fromFloor = searchParams.get('from') === 'floor';
-  const [book, setBook] = useState(null);
-  const [error, setError] = useState('');
+  // The loaded book is tagged with its order: switching orders shows nothing
+  // stale while the new one loads, and a late answer for the old one is ignored.
+  const [loadedBook, setLoadedBook] = useState({ orderId: '', book: null, error: '' });
+  const book = loadedBook.orderId === orderId ? loadedBook.book : null;
+  const error = loadedBook.orderId === orderId ? loadedBook.error : '';
   const stages = book?.stages || [];
   const requested = searchParams.get('stage') || '';
   const activeId = stages.some((stage) => stage.id === requested) ? requested : stages[0]?.id || '';
   const active = stages.find((stage) => stage.id === activeId);
 
   useEffect(() => {
-    setError('');
-    registersApi.order(orderId).then(setBook).catch((err) => setError(err.message));
+    let alive = true;
+    registersApi
+      .order(orderId)
+      .then((next) => alive && setLoadedBook({ orderId, book: next, error: '' }))
+      .catch((err) => alive && setLoadedBook({ orderId, book: null, error: err.message }));
+    return () => {
+      alive = false;
+    };
   }, [orderId]);
 
   function selectStage(id) {

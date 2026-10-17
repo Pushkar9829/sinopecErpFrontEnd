@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/inventory.api';
@@ -129,16 +129,25 @@ export function Inventory() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const fetchPage = () => inventoryApi.listItems();
+  const apply = (data) => setItems(data);
+
   async function load() {
-    setItems(await inventoryApi.listItems());
+    apply(await fetchPage());
   }
 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
+    let alive = true;
+    fetchPage()
+      .then((data) => alive && apply(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const counts = useMemo(

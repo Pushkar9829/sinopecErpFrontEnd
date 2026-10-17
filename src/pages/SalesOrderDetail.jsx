@@ -1,15 +1,18 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
-import { useEffect, useState } from 'react';
+import { confirmAction } from '../components/ui/confirm';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { downloadSalesOrderFile, salesOrdersApi } from '../api/salesOrders.api';
 import { BackButton } from '../components/ui/BackButton';
 import { StepProgress } from '../components/ui/StepProgress';
 import { Grid, Section, inputClass } from '../components/ui/FormField';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/auth';
 import { usePermission } from '../hooks/usePermission';
-import { Badge, PriorityBadge, StatusBadge, badgeTones, stepTone, attachmentTone } from '../components/ui/Badge';
-import { ImageGallery, ImageLightbox, imageSrc } from '../components/ui/ImageGallery';
-import { OrderNextStep, OrderTasksTab, useOrderTasks } from '../components/tasks/OrderTasksTab';
+import { Badge, PriorityBadge, StatusBadge } from '../components/ui/Badge';
+import { badgeTones, stepTone, attachmentTone } from '../components/ui/badgeTones';
+import { ImageGallery, ImageLightbox } from '../components/ui/ImageGallery';
+import { imageSrc } from '../lib/images';
+import { OrderNextStep, OrderTasksTab } from '../components/tasks/OrderTasksTab';
+import { useOrderTasks } from '../hooks/useOrderTasks';
 import { OrderPayments } from '../components/sales/OrderPayments';
 import {
   ATTACHMENT_KINDS,
@@ -98,12 +101,23 @@ export function SalesOrderDetail() {
   const showTasks = can('tasks:read');
   const orderTasks = useOrderTasks(showTasks ? id : null);
 
+  // The page is reused when navigating between orders (e.g. after Duplicate):
+  // drop responses for an order we are no longer showing.
+  const currentId = useRef(id);
+  currentId.current = id;
+
   async function load() {
-    setOrder(await salesOrdersApi.get(id));
+    const requested = id;
+    const next = await salesOrdersApi.get(requested);
+    if (currentId.current === requested) setOrder(next);
   }
 
   useEffect(() => {
-    load().catch((err) => setError(err.message));
+    setOrder(null);
+    setError('');
+    load().catch((err) => {
+      if (currentId.current === id) setError(err.message);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -164,7 +178,7 @@ export function SalesOrderDetail() {
       setNotice(files.length > 1 ? `${files.length} files added.` : 'Attachment added.');
     } catch (err) {
       setError(err.message);
-      await load();
+      await load().catch(() => {});
     } finally {
       setBusy(false);
     }
@@ -423,6 +437,17 @@ export function SalesOrderDetail() {
             <StatusBadge status={order.status} label={statusLabel(order.status)} />
           </Value>
           <Value label="Remarks">{order.remarks}</Value>
+          {order.sourceIntake ? (
+            <Value label="From draft order">
+              {can('intake:read') ? (
+                <Link to={`/draft-orders/${order.sourceIntake}`} className="font-semibold text-accent hover:underline">
+                  {order.sourceIntakeNumber}
+                </Link>
+              ) : (
+                order.sourceIntakeNumber
+              )}
+            </Value>
+          ) : null}
         </Grid>
       </Fold>
 

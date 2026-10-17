@@ -1,4 +1,4 @@
-import { confirmAction } from '../components/ui/ConfirmHost';
+import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { salesSettingsApi } from '../api/salesSettings.api';
@@ -8,6 +8,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
+import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
 import { OPTION_GROUPS, OPTION_LIST_SECTIONS, routeLabel } from '../lib/sales';
 
@@ -274,22 +275,29 @@ export function SalesSettings() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  async function load() {
-    const [nextTemplates, optionData] = await Promise.all([
-      salesSettingsApi.listTemplates(),
-      salesSettingsApi.options(),
-    ]);
+  const fetchPage = () => Promise.all([salesSettingsApi.listTemplates(), salesSettingsApi.options()]);
+  const apply = ([nextTemplates, optionData]) => {
     setTemplates(nextTemplates);
     setOptionRows(optionData.options || []);
     if (optionData.groups?.length) setGroups(optionData.groups);
+  };
+
+  async function load() {
+    apply(await fetchPage());
   }
 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    load()
-      .catch((err) => setError(err.message))
-      .finally(() => setLoaded(true));
+    let alive = true;
+    fetchPage()
+      .then((data) => alive && apply(data))
+      .catch((err) => alive && setError(err.message))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const viewCounts = useMemo(
@@ -361,6 +369,11 @@ export function SalesSettings() {
   }, [scopedWords, status]);
 
   const wordList = usePagedList(filteredWords, { pageSize: PAGE_SIZE, resetKey: `${group}|${query}|${status}` });
+
+  // Enter pressed twice / double clicks must not add or copy twice.
+  const { guard: once } = useSingleFlight();
+  const addOptionOnce = once(addOption);
+  const duplicateTemplateOnce = once(duplicateTemplate);
 
   async function addOption(event) {
     event.preventDefault();
@@ -490,7 +503,13 @@ export function SalesSettings() {
               </Link>
             </PermissionGate>
           ) : canEdit ? (
-            <form onSubmit={addOption} className="flex items-center gap-2">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                addOptionOnce(event);
+              }}
+              className="flex items-center gap-2"
+            >
               <input
                 required
                 value={newValue}
@@ -569,7 +588,7 @@ export function SalesSettings() {
                         <IconButton
                           label="Duplicate product"
                           className="text-ink hover:bg-paper"
-                          onClick={() => duplicateTemplate(template)}
+                          onClick={() => duplicateTemplateOnce(template)}
                         >
                           <CopyIcon />
                         </IconButton>
