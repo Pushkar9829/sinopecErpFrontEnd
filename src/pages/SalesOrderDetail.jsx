@@ -149,6 +149,25 @@ export function SalesOrderDetail() {
     await run(() => salesOrdersApi.cancel(id, reason), 'Order cancelled.');
   }
 
+  // On credit hold the owner may still approve, with a reason that is kept on the order.
+  async function handleApprove() {
+    const hold = order.creditCheck?.status === 'hold';
+    if (!hold) {
+      await run(() => salesOrdersApi.approve(id), 'Order approved.');
+      return;
+    }
+    const reason = await confirmAction({
+      title: 'Approve on credit hold?',
+      message: `${order.creditCheck.reasons.join('. ')}. Give the reason for approving anyway; it is kept on the order.`,
+      withReason: true,
+      reasonRequired: true,
+      confirmLabel: 'Approve anyway',
+      danger: true,
+    });
+    if (reason === null) return;
+    await run(() => salesOrdersApi.approve(id, reason), 'Order approved on credit hold.');
+  }
+
   async function handleReturn() {
     const reason = await confirmAction({
       title: 'Send back to draft',
@@ -299,7 +318,7 @@ export function SalesOrderDetail() {
               </button>
             ) : null}
             {canApprove ? (
-              <button type="button" disabled={busy} onClick={() => run(() => salesOrdersApi.approve(id), 'Order approved.')} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60">
+              <button type="button" disabled={busy} onClick={handleApprove} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark disabled:opacity-60">
                 Approve
               </button>
             ) : null}
@@ -355,6 +374,27 @@ export function SalesOrderDetail() {
 
       {error ? <p className="whitespace-pre-line text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
+      {showMoney && order.creditCheck?.status === 'hold' && ['submitted', 'draft'].includes(order.status) ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <p className="font-semibold">Credit hold</p>
+          <ul className="list-disc pl-5">
+            {order.creditCheck.reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+          <p className="mt-1">
+            Only the owner can approve, with a reason.{' '}
+            <Link to={`/customers/${order.customer.id}/account`} className="font-semibold underline">
+              See the customer's account
+            </Link>
+          </p>
+        </div>
+      ) : null}
+      {showMoney && order.creditOverride ? (
+        <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm">
+          Approved on credit hold by {order.creditOverride.byName}: {order.creditOverride.reason}
+        </p>
+      ) : null}
 
       {showTasks && activeTab !== 'tasks' ? <OrderNextStep state={orderTasks} onShowAll={() => setTab('tasks')} /> : null}
 

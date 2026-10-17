@@ -20,6 +20,7 @@ export const TASK_CATEGORY_LABELS = {
   order_complete: 'Complete order',
   payment_collect: 'Collect payment',
   intake_review: 'Review draft order',
+  payment_overdue: 'Collect overdue payment',
   custom: 'Manual',
 };
 
@@ -130,6 +131,8 @@ export function taskAction(task) {
       return order && { label: 'Mark completed', to: order };
     case 'payment_collect':
       return order && { label: 'Record payment', to: `${order}?tab=amounts` };
+    case 'payment_overdue':
+      return task.customer && { label: 'Open account', to: `/customers/${task.customer}/account` };
     case 'intake_review':
       return task.intake && { label: 'Review draft', to: `/draft-orders/${task.intake}` };
     default:
@@ -161,6 +164,8 @@ export function taskGuide(task) {
       return 'Everything is delivered. Check the order and mark it completed.';
     case 'payment_collect':
       return 'Record each payment on the order. The task closes by itself when the balance is fully paid.';
+    case 'payment_overdue':
+      return 'Follow up the overdue bills listed above and record the payments on the customer account. The task closes by itself when nothing is overdue.';
     default:
       return '';
   }

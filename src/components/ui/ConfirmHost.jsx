@@ -44,8 +44,8 @@ export function ConfirmHost() {
         {request?.message ? <p className="whitespace-pre-wrap text-sm text-ink">{request.message}</p> : null}
         {request?.withReason ? (
           <label className="block text-sm font-semibold text-ink">
-            {request.reasonLabel || 'Reason (optional)'}
-            <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className={inputClass} autoFocus />
+            {request.reasonLabel || (request.reasonRequired ? 'Reason' : 'Reason (optional)')}
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className={inputClass} required={Boolean(request.reasonRequired)} autoFocus />
           </label>
         ) : null}
         <div className="flex justify-end gap-2">

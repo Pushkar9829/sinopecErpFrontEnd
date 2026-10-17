@@ -25,6 +25,8 @@ const SupplierForm = lazy(() => import('./pages/SupplierForm').then((m) => ({ de
 const CustomerAccount = lazy(() => import('./pages/CustomerAccount').then((m) => ({ default: m.CustomerAccount })));
 const OpeningImport = lazy(() => import('./pages/OpeningImport').then((m) => ({ default: m.OpeningImport })));
 const InvoicePrint = lazy(() => import('./pages/InvoicePrint').then((m) => ({ default: m.InvoicePrint })));
+const Receivables = lazy(() => import('./pages/Receivables').then((m) => ({ default: m.Receivables })));
+const CustomerStatement = lazy(() => import('./pages/CustomerStatement').then((m) => ({ default: m.CustomerStatement })));
 const CompanySettings = lazy(() => import('./pages/CompanySettings').then((m) => ({ default: m.CompanySettings })));
 const StageDetail = lazy(() => import('./pages/StageDetail').then((m) => ({ default: m.StageDetail })));
 const Stages = lazy(() => import('./pages/Stages').then((m) => ({ default: m.Stages })));
@@ -60,6 +62,7 @@ function AppRoutes() {
           <Route element={<ProtectedRoute />}>
             <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
               <Route path="invoices/:id/print" element={<InvoicePrint />} />
+              <Route path="customers/:id/statement" element={<CustomerStatement />} />
             </Route>
             <Route element={<AppShell />}>
               <Route index element={<Dashboard />} />
@@ -135,6 +138,7 @@ function AppRoutes() {
               <Route path="company" element={<CompanySettings />} />
               <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
                 <Route path="customers/:id/account" element={<CustomerAccount />} />
+                <Route path="receivables" element={<Receivables />} />
               </Route>
               <Route element={<ProtectedRoute permission="accounts:create" />}>
                 <Route path="billing/openings-import" element={<OpeningImport />} />

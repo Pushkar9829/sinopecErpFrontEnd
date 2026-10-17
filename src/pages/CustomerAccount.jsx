@@ -195,6 +195,9 @@ export function CustomerAccount() {
                 Record payment
               </button>
             ) : null}
+            <Link to={`/customers/${customer.id}/statement`} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
+              Statement
+            </Link>
             {canOpening ? (
               <button type="button" onClick={() => setDialog('opening')} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
                 Add opening bill

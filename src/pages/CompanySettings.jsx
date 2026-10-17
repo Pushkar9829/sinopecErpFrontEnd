@@ -40,6 +40,7 @@ const SECTIONS = [
     title: 'Defaults',
     fields: [
       ['defaultCreditDays', 'Credit days for new customers', { type: 'number' }],
+      ['overdueHoldDays', 'Credit hold when a bill is overdue more than (days)', { type: 'number' }],
       ['defaultGstPercent', 'GST % on new order lines', { type: 'number' }],
       ['defaultHsnCode', 'HSN code when a product has none'],
       ['invoicePrefix', 'Invoice number prefix', { placeholder: 'SP' }],
