@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { reportsApi } from '../api/reports.api';
 import { AccountsReport } from '../components/reports/AccountsReport';
+import { DispatchReport } from '../components/reports/DispatchReport';
 import { OverviewReport } from '../components/reports/OverviewReport';
+import { ProductionReport } from '../components/reports/ProductionReport';
 import { SalesReport } from '../components/reports/SalesReport';
 import { PeriodPicker } from '../components/reports/ReportKit';
 import { presetPeriod } from '../lib/reports';
@@ -16,15 +18,17 @@ import { formatDate } from '../lib/sales';
 // it is; the API checks the same permission again.
 const REPORTS = [
   // No role holds company:update, so only the owner (Super Admin) sees the overview.
-  { id: 'overview', label: 'Owner overview', permission: 'company:update', load: reportsApi.overview, View: OverviewReport },
-  { id: 'sales', label: 'Sales', permission: 'sales:read', load: reportsApi.sales, View: SalesReport },
-  { id: 'accounts', label: 'Accounts', permission: 'accounts:read', load: reportsApi.accounts, View: AccountsReport },
+  { id: 'overview', label: 'Owner overview', anyOf: ['company:update'], load: reportsApi.overview, View: OverviewReport },
+  { id: 'sales', label: 'Sales', anyOf: ['sales:read'], load: reportsApi.sales, View: SalesReport },
+  { id: 'production', label: 'Production', anyOf: ['production:read'], load: reportsApi.production, View: ProductionReport },
+  { id: 'dispatch', label: 'Dispatch', anyOf: ['dispatch:read', 'production:read', 'sales:read'], load: reportsApi.dispatch, View: DispatchReport },
+  { id: 'accounts', label: 'Accounts', anyOf: ['accounts:read'], load: reportsApi.accounts, View: AccountsReport },
 ];
 
 export function Reports() {
   const { can } = usePermission();
   const { user } = useAuth();
-  const tabs = useMemo(() => REPORTS.filter((r) => can(r.permission)), [can]);
+  const tabs = useMemo(() => REPORTS.filter((r) => r.anyOf.some(can)), [can]);
   const [params, setParams] = useSearchParams();
   const tab = tabs.find((t) => t.id === params.get('tab')) || tabs[0];
   const preset = params.get('period') || 'fy';

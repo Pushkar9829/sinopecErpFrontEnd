@@ -5,5 +5,7 @@ const query = (period) => new URLSearchParams(Object.entries(period || {}).filte
 export const reportsApi = {
   overview: (period) => api.get(`/api/reports/overview?${query(period)}`),
   sales: (period) => api.get(`/api/reports/sales?${query(period)}`),
+  production: (period) => api.get(`/api/reports/production?${query(period)}`),
+  dispatch: (period) => api.get(`/api/reports/dispatch?${query(period)}`),
   accounts: (period) => api.get(`/api/reports/accounts?${query(period)}`),
 };
