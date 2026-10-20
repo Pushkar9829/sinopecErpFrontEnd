@@ -22,11 +22,11 @@ export function AppShell() {
   }, [menuOpen]);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-paper text-ink lg:h-screen">
+    <div className="flex h-dvh overflow-hidden bg-paper text-ink lg:h-screen print:block print:h-auto print:overflow-visible print:bg-white">
       {menuOpen ? <div className="fixed inset-0 z-40 bg-ink/50 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden="true" /> : null}
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-ink px-3 text-paper lg:hidden">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-ink px-3 text-paper lg:hidden print:hidden">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}

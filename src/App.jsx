@@ -45,6 +45,7 @@ const RateCalculator = lazy(() => import('./pages/RateCalculator').then((m) => (
 const OrderRegister = lazy(() => import('./pages/OrderRegister').then((m) => ({ default: m.OrderRegister })));
 const Registers = lazy(() => import('./pages/Registers').then((m) => ({ default: m.Registers })));
 const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default: m.AuditLogs })));
+const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
 const Tasks = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.Tasks })));
 
@@ -125,6 +126,9 @@ function AppRoutes() {
               </Route>
               <Route element={<ProtectedRoute anyOf={ANALYTICS_VIEW_KEYS} />}>
                 <Route path="analytics" element={<Analytics />} />
+              </Route>
+              <Route element={<ProtectedRoute anyOf={['accounts:read']} />}>
+                <Route path="reports" element={<Reports />} />
               </Route>
               <Route element={<ProtectedRoute anyOf={['production:read', 'inventory:read']} />}>
                 <Route path="stages" element={<Stages />} />

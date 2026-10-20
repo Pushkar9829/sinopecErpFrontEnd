@@ -20,6 +20,7 @@ const pageLinks = [
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
   { to: '/rate-calculator', label: 'Rate calculator', permission: 'sales:read' },
   { to: '/receivables', label: 'Receivables', anyOf: ['accounts:read', 'sales:read'] },
+  { to: '/reports', label: 'Reports', anyOf: ['accounts:read'] },
   { to: '/registers', label: 'Register', anyOf: [...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS] },
   { to: '/roles', label: 'Roles', permission: 'roles:read' },
   { to: '/sales-orders', label: 'Orders', anyOf: SALES_ORDER_VIEW_KEYS },
@@ -39,7 +40,7 @@ export function Sidebar({ open = false, onClose }) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex h-full w-64 max-w-[80vw] shrink-0 flex-col border-r border-white/10 bg-ink text-paper transition-transform duration-200 lg:static lg:z-auto lg:w-48 lg:max-w-none lg:translate-x-0 lg:transition-none ${
+      className={`fixed inset-y-0 left-0 z-50 flex h-full print:hidden w-64 max-w-[80vw] shrink-0 flex-col border-r border-white/10 bg-ink text-paper transition-transform duration-200 lg:static lg:z-auto lg:w-48 lg:max-w-none lg:translate-x-0 lg:transition-none ${
         open ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
