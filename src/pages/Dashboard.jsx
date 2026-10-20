@@ -126,6 +126,11 @@ function FloorDashboard() {
               {taskSummary.overdue ? ` · ${taskSummary.overdue} overdue` : ''}
             </Link>
           ) : null}
+          {stage ? (
+            <Link to={`/job-sheets/stage/${stage}`} className="rounded-full border border-line bg-white px-2.5 py-0.5 text-xs font-semibold text-ink hover:bg-paper" title="Printable list of everything waiting at this stage">
+              Print work list
+            </Link>
+          ) : null}
           <p className="text-sm font-semibold text-ink">{jobs.length}</p>
         </div>
       </div>

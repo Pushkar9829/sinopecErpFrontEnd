@@ -568,3 +568,8 @@ export function setPath(target, path, value) {
   const [head, ...rest] = parts;
   return { ...target, [head]: setPath(target[head] || {}, rest.join('.'), value) };
 }
+
+// Quantity with its unit, e.g. "12,500 pcs".
+export function formatQtyUnit(n, unit) {
+  return `${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}${unit ? ` ${unit}` : ''}`;
+}

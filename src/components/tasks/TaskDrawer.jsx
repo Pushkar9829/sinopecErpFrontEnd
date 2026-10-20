@@ -177,6 +177,9 @@ function TaskDrawerBody({ task: initial, onClose, onChanged }) {
           <PriorityBadge priority={task.priority} />
           {task.overdue ? <Badge tone="danger">Overdue</Badge> : null}
           <div className="ml-auto flex flex-wrap gap-2">
+            <Link to={`/tasks/${task.id}/print`} className={outline} onClick={onClose}>
+              Print
+            </Link>
             {orderLink && action?.to !== orderLink ? (
               <Link to={orderLink} className={outline} onClick={onClose}>
                 View order

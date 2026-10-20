@@ -33,6 +33,7 @@ import {
   stageLabel,
   statusLabel,
   toDateInput,
+  PRODUCTION_VIEW_KEYS,
 } from '../lib/sales';
 
 const VIEW_BLOCKS = {
@@ -306,6 +307,11 @@ export function SalesOrderDetail() {
               >
                 Duplicate
               </button>
+            ) : null}
+            {PRODUCTION_VIEW_KEYS.some(can) && !['draft', 'submitted', 'cancelled'].includes(order.status) ? (
+              <Link to={`/job-sheets/${order.id}`} className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper" title="Printable sheet for each stage, to give to the operators">
+                Job sheet
+              </Link>
             ) : null}
             {canEditDraft ? (
               <Link to={`/sales-orders/${order.id}/edit`} className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">

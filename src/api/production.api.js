@@ -1,6 +1,8 @@
 import { api } from './client';
 
 export const productionApi = {
+  jobSheet: (orderId, stage) => api.get(`/api/production/job-sheet/${orderId}${stage ? `?stage=${stage}` : ''}`),
+  stageSheet: (stage) => api.get(`/api/production/stage-sheet/${stage}`),
   queue: (stage) => api.get(`/api/production/queue${stage ? `?stage=${stage}` : ''}`),
   machines: (stage) => api.get(`/api/production/machines/${stage}`),
   pickup: (payload) => api.post('/api/production/pickup', payload),

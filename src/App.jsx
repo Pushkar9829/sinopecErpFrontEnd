@@ -45,6 +45,9 @@ const RateCalculator = lazy(() => import('./pages/RateCalculator').then((m) => (
 const OrderRegister = lazy(() => import('./pages/OrderRegister').then((m) => ({ default: m.OrderRegister })));
 const Registers = lazy(() => import('./pages/Registers').then((m) => ({ default: m.Registers })));
 const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default: m.AuditLogs })));
+const JobSheet = lazy(() => import('./pages/JobSheet').then((m) => ({ default: m.JobSheet })));
+const StageSheet = lazy(() => import('./pages/StageSheet').then((m) => ({ default: m.StageSheet })));
+const TaskPrint = lazy(() => import('./pages/TaskPrint').then((m) => ({ default: m.TaskPrint })));
 const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
 const Tasks = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.Tasks })));
@@ -64,6 +67,14 @@ function AppRoutes() {
             <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
               <Route path="invoices/:id/print" element={<InvoicePrint />} />
               <Route path="customers/:id/statement" element={<CustomerStatement />} />
+            </Route>
+            {/* Printable floor sheets (no sidebar). */}
+            <Route element={<ProtectedRoute anyOf={PRODUCTION_VIEW_KEYS} />}>
+              <Route path="job-sheets/stage/:stage" element={<StageSheet />} />
+              <Route path="job-sheets/:orderId" element={<JobSheet />} />
+            </Route>
+            <Route element={<ProtectedRoute permission="tasks:read" />}>
+              <Route path="tasks/:id/print" element={<TaskPrint />} />
             </Route>
             <Route element={<AppShell />}>
               <Route index element={<Dashboard />} />

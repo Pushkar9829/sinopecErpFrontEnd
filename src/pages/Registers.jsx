@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { StageRegister } from '../components/register/StageRegister';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
@@ -205,17 +205,24 @@ export function Registers() {
             </div>
           </>
         ) : (
+          <>
+            <div className="flex justify-end print:hidden">
+              <Link to={`/job-sheets/stage/${stage}`} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper">
+                Print work list
+              </Link>
+            </div>
           <StageRegister
-            key={stage}
-            stage={stage}
-            isAdmin={isAdmin}
-            presetJob={presetJob}
-            fromTask={presetJob ? fromTask : ''}
-            operatorName={user?.fullName || user?.username || ''}
-            onConsumePreset={clearJob}
-            onEntryState={onEntryState}
-            onSaved={afterSave}
-          />
+              key={stage}
+              stage={stage}
+              isAdmin={isAdmin}
+              presetJob={presetJob}
+              fromTask={presetJob ? fromTask : ''}
+              operatorName={user?.fullName || user?.username || ''}
+              onConsumePreset={clearJob}
+              onEntryState={onEntryState}
+              onSaved={afterSave}
+            />
+          </>
         )}
       </div>
     </div>
