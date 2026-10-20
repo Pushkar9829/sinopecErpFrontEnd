@@ -11,7 +11,7 @@ import { Tabs } from '../components/ui/Tabs';
 import { CHANNEL_LABEL, INTAKE_GROUPS, intakeStatus, senderOf, timeAgo } from '../lib/intake';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { DateRangeFilter } from '../components/ui/Filters';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 import { fetchAllPages } from '../lib/fetchAll';
 
 const PAGE_SIZE = 20;
@@ -84,7 +84,7 @@ export function DraftOrders() {
   async function download(format) {
     const rows = await fetchAllPages(intakeApi.list, { status: status === 'all' ? '' : status, channel, q, from, to });
     await exportTable(format, {
-      fileName: `draft-orders_${new Date().toISOString().slice(0, 10)}`,
+      fileName: `draft-orders_${localToday()}`,
       title: 'Draft orders',
       subtitle: [`${rows.length} draft(s)`, channel ? CHANNEL_LABEL[channel] || channel : '', from || to ? `received ${from || '...'} to ${to || '...'}` : '', q ? `search: ${q}` : ''].filter(Boolean).join(' · '),
       rows,

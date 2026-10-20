@@ -11,7 +11,7 @@ import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAGE_SIZE = 10;
 
@@ -209,7 +209,7 @@ export function Machines() {
         <StatusMenu value={status} counts={counts} onChange={setStatus} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name or code" />
-          <ExportMenu onExport={(format) => exportTable(format, { fileName: `machines_${new Date().toISOString().slice(0, 10)}`, title: 'Machines', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `machines_${localToday()}`, title: 'Machines', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           {canCreate ? (
             <Link
               to="/machines/new"

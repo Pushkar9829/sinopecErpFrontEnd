@@ -15,7 +15,7 @@ import { SearchField } from '../components/ui/SearchField';
 import { useFloorWorker, usePermission } from '../hooks/usePermission';
 import { useTaskSummary } from '../hooks/useTaskSummary';
 import { ORDER_TYPES, formatDate, orderTypeLabel, toDateInput } from '../lib/sales';
-import { notifyTasksChanged, TASK_CATEGORY_LABELS, TASK_SCOPES, TASKS_CHANGED_EVENT } from '../lib/tasks';
+import { notifyTasksChanged, roleLabel, TASK_CATEGORY_LABELS, TASK_SCOPES, TASKS_CHANGED_EVENT } from '../lib/tasks';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 const PRIORITY_OPTIONS = [
@@ -180,7 +180,7 @@ export function Tasks() {
         { label: 'Kind', type: 'text', get: (t) => TASK_CATEGORY_LABELS[t.category] || t.category },
         { label: 'Order', type: 'text', get: (t) => t.orderNumber || '' },
         { label: 'Order type', type: 'text', get: (t) => (t.orderType ? orderTypeLabel(t.orderType) : '') },
-        { label: 'Assigned to', type: 'text', get: (t) => t.assigneeName || (t.assigneeRole ? `${t.assigneeRole} (team)` : '') },
+        { label: 'Assigned to', type: 'text', get: (t) => t.assigneeName || (t.assigneeRole ? `${roleLabel(t.assigneeRole)} team` : '') },
         { label: 'Priority', type: 'text', get: (t) => t.priority },
         { label: 'Status', type: 'text', get: (t) => STATUS_LABEL[t.status] || t.status },
         { label: 'Due', type: 'date', get: (t) => t.dueDate },

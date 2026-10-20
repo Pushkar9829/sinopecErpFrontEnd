@@ -6,7 +6,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useListParams } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 import { fetchAllPages } from '../lib/fetchAll';
 
 const PAGE_SIZE = 25;
@@ -138,7 +138,7 @@ export function AuditLogs() {
     const rows = await fetchAllPages((p) => auditApi.list({ ...filters, page: p.page, limit: p.pageSize }), {});
     const parts = [filters.module, filters.actor ? meta.actors?.find((a) => (a.id || a) === filters.actor)?.name || 'one user' : '', filters.outcome, filters.from || filters.to ? `${filters.from || '...'} to ${filters.to || '...'}` : '', filters.q ? `search: ${filters.q}` : ''].filter(Boolean);
     await exportTable(format, {
-      fileName: `audit-log_${new Date().toISOString().slice(0, 10)}`,
+      fileName: `audit-log_${localToday()}`,
       title: 'Audit log',
       subtitle: [`${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`, ...parts].join(' · '),
       rows,

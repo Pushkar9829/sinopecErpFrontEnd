@@ -8,6 +8,12 @@ import { saveBlob } from '../api/client';
 // downloads, so they cost nothing on normal page loads.
 
 const NUMERIC = new Set(['number', 'money']);
+
+// Today as YYYY-MM-DD on the viewer's calendar (for file names).
+export function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 const stamp = () => new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 const safeName = (name) => String(name || 'export').replace(/[\\/:*?"<>|]+/g, '-');
 

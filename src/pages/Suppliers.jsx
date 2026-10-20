@@ -10,7 +10,7 @@ import { SearchField } from '../components/ui/SearchField';
 import { usePagedList } from '../hooks/usePagedList';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAGE_SIZE = 20;
 
@@ -56,7 +56,7 @@ export function Suppliers() {
         search={<SearchField value={search} onChange={setSearch} placeholder="Search name, GST, mobile" className="w-full sm:w-64" />}
         actions={
           <>
-            <ExportMenu onExport={(format) => exportTable(format, { fileName: `suppliers_${new Date().toISOString().slice(0, 10)}`, title: 'Suppliers', subtitle: `${visible.length} row(s)`, columns: EXPORT_COLUMNS, rows: visible })} disabled={!visible.length} />
+            <ExportMenu onExport={(format) => exportTable(format, { fileName: `suppliers_${localToday()}`, title: 'Suppliers', subtitle: `${visible.length} row(s)`, columns: EXPORT_COLUMNS, rows: visible })} disabled={!visible.length} />
             <PermissionGate permission="inventory:create">
             <Link to="/suppliers/new" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dark">
               New supplier

@@ -8,7 +8,7 @@ import { SearchField } from '../components/ui/SearchField';
 import { formatDate, formatMoney } from '../lib/sales';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const BUCKETS = [
   ['current', 'Not due'],
@@ -40,7 +40,7 @@ export function Receivables() {
 
   function download(format) {
     return exportTable(format, {
-      fileName: `receivables_${new Date().toISOString().slice(0, 10)}`,
+      fileName: `receivables_${localToday()}`,
       title: 'Receivables',
       subtitle: `${rows.length} customer(s)${onlyOverdue ? ' with overdue bills' : ''}${search ? ` · search: ${search}` : ''}`,
       rows,

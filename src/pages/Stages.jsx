@@ -13,7 +13,7 @@ import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAGE_SIZE = 10;
 
@@ -269,7 +269,7 @@ export function Stages() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search stages" />
-          <ExportMenu onExport={(format) => exportTable(format, { fileName: `stages_${new Date().toISOString().slice(0, 10)}`, title: 'Stages', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `stages_${localToday()}`, title: 'Stages', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           {canCreate ? (
             <form onSubmit={handleCreate} className="flex items-center gap-2">
               <input

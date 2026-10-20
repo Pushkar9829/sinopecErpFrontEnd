@@ -11,7 +11,7 @@ import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAGE_SIZE = 10;
 
@@ -207,7 +207,7 @@ export function Inventory() {
         <CategoryMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name, type, unit, or stage" />
-          <ExportMenu onExport={(format) => exportTable(format, { fileName: `inventory_${new Date().toISOString().slice(0, 10)}`, title: 'Inventory', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `inventory_${localToday()}`, title: 'Inventory', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           <Link to="/stages" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
             Stages
           </Link>

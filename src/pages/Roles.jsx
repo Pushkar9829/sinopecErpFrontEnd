@@ -9,7 +9,7 @@ import { roleGroupTone } from '../components/ui/badgeTones';
 import { usePagedList } from '../hooks/usePagedList';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAGE_SIZE = 10;
 const MANAGER_SLUGS = ['sales_manager', 'production_manager', 'inventory_manager', 'dispatch_manager', 'accounts'];
@@ -151,7 +151,7 @@ export function Roles() {
         <GroupMenu value={group} counts={counts} onChange={setGroup} />
         <div className="ml-auto">
           <SearchField value={query} onChange={setQuery} placeholder="Search roles" />
-          <ExportMenu onExport={(format) => exportTable(format, { fileName: `roles_${new Date().toISOString().slice(0, 10)}`, title: 'Roles', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `roles_${localToday()}`, title: 'Roles', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
         </div>
       </div>
 

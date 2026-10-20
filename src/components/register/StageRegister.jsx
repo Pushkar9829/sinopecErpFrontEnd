@@ -8,6 +8,8 @@ import { LongText } from './LongText';
 import { useAuth } from '../../context/auth';
 import { OPERATOR_LABEL, STAGE_COLUMNS, bookColumns, frozenColumns, isSuperAdmin, orderValue, paperQuantities, savedValue, typedDetails } from '../../lib/registerBooks';
 import { DELIVERY_PARTNERS, formatDate, formatQty, toDateInput } from '../../lib/sales';
+import { exportTable, localToday } from '../../lib/exporters';
+import { ExportMenu } from '../ui/ExportMenu';
 
 const cell = 'whitespace-nowrap border-b border-r border-stone-300 px-2 py-1.5 align-middle text-sm';
 const head = 'whitespace-nowrap border-b border-r border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
@@ -939,8 +941,46 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     return () => onEntryState(null);
   }, [canEnter, openLines.length, onEntryState]);
 
+  // Download the whole book as it stands (newest first).
+  const downloadBook = (format) =>
+    exportTable(format, {
+      fileName: `${stage}-register_${localToday()}`,
+      title: `${stage[0].toUpperCase()}${stage.slice(1)} register`,
+      subtitle: `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`,
+      rows: entries,
+      columns: [
+        { label: 'Date', type: 'date', get: (e) => e.workDate || e.markedAt },
+        ...(columns
+          ? columns.map((c) => ({ label: c.label, type: 'text', get: (e) => savedValue(e, c.key) }))
+          : [
+              { label: 'Order', type: 'text', get: (e) => e.orderNumber },
+              { label: 'Customer code', type: 'text', get: (e) => e.customerCode },
+              ...(showCustomerName ? [{ label: 'Customer name', type: 'text', get: (e) => e.customerName }] : []),
+              { label: 'Product', type: 'text', get: (e) => e.product },
+              { label: isDelivery ? 'Sent' : 'Production', type: 'number', get: (e) => e.outputQty },
+              { label: 'Unit', type: 'text', get: (e) => e.unit },
+              ...(isDelivery
+                ? [
+                    { label: 'Delivery partner', type: 'text', get: (e) => e.deliveryPartner },
+                    { label: 'Handed to', type: 'text', get: (e) => e.handoverPerson },
+                    { label: 'Vehicle', type: 'text', get: (e) => e.vehicleNumber },
+                  ]
+                : [
+                    { label: 'Used', type: 'number', get: (e) => e.inputQty },
+                    { label: 'Waste', type: 'number', get: (e) => e.wasteQty },
+                  ]),
+            ]),
+        { label: 'Entered by', type: 'text', get: (e) => e.markedByName },
+      ],
+    });
+
   return (
     <>
+      {book && entries.length ? (
+        <div className="flex justify-end border-b border-stone-200 bg-white px-3 py-1.5 print:hidden">
+          <ExportMenu onExport={downloadBook} label="Download register" />
+        </div>
+      ) : null}
       {error && !entryOpen ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p> : null}
       {notice ? <p className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{notice}</p> : null}
       {!book && !error ? <p className="border-b border-stone-200 px-4 py-2 text-sm text-stone-500">Loading…</p> : null}

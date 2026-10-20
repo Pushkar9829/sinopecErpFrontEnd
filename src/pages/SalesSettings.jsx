@@ -11,8 +11,10 @@ import { usePagedList } from '../hooks/usePagedList';
 import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
 import { OPTION_GROUPS, OPTION_LIST_SECTIONS, routeLabel } from '../lib/sales';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { exportTable, localToday } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const VIEW_OPTIONS = [
   { id: 'templates', label: 'Saved products', chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
@@ -492,6 +494,38 @@ export function SalesSettings() {
             onChange={setQuery}
             placeholder={tab === 'templates' ? 'Search products' : 'Search words'}
           />
+          <ExportMenu
+            disabled={tab === 'templates' ? !filteredTemplates.length : !filteredWords.length}
+            onExport={(format) =>
+              tab === 'templates'
+                ? exportTable(format, {
+                    fileName: `saved-products_${localToday()}`,
+                    title: 'Saved products',
+                    subtitle: `${filteredTemplates.length} product(s)`,
+                    rows: filteredTemplates,
+                    columns: [
+                      { label: 'Code', type: 'text', get: (t) => t.code },
+                      { label: 'Name', type: 'text', get: (t) => t.name || t.product },
+                      { label: 'Size', type: 'text', get: (t) => t.size },
+                      { label: 'Material', type: 'text', get: (t) => t.material },
+                      { label: 'Colour', type: 'text', get: (t) => t.color },
+                      { label: 'Route', type: 'text', get: (t) => t.productionRoute },
+                      { label: 'Status', type: 'text', get: (t) => (t.isActive === false ? 'Inactive' : 'Active') },
+                    ],
+                  })
+                : exportTable(format, {
+                    fileName: `quick-pick-words_${localToday()}`,
+                    title: 'Quick-pick words',
+                    subtitle: `${filteredWords.length} word(s)${selectedGroup?.label ? ` · ${selectedGroup.label}` : ''}`,
+                    rows: filteredWords,
+                    columns: [
+                      { label: 'Group', type: 'text', get: (o) => groupMeta(o.group, groups)?.label || o.group },
+                      { label: 'Word', type: 'text', get: (o) => o.value },
+                      { label: 'Status', type: 'text', get: (o) => (o.isActive === false ? 'Inactive' : 'Active') },
+                    ],
+                  })
+            }
+          />
           {tab === 'templates' ? (
             <PermissionGate permission="sales:create">
               <Link
@@ -619,6 +653,7 @@ export function SalesSettings() {
               total={templateList.total}
               pageSize={templateList.pageSize}
               onPage={templateList.setPage}
+              onPageSize={templateList.setPageSize}
             />
           )}
         </div>
@@ -667,6 +702,7 @@ export function SalesSettings() {
               total={wordList.total}
               pageSize={wordList.pageSize}
               onPage={wordList.setPage}
+              onPageSize={wordList.setPageSize}
             />
           )}
         </div>

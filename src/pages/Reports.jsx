@@ -3,9 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { reportsApi } from '../api/reports.api';
 import { AccountsReport } from '../components/reports/AccountsReport';
 import { DispatchReport } from '../components/reports/DispatchReport';
+import { OperationsReport } from '../components/reports/OperationsReport';
 import { OverviewReport } from '../components/reports/OverviewReport';
 import { ProductionReport } from '../components/reports/ProductionReport';
 import { SalesReport } from '../components/reports/SalesReport';
+import { StockReport } from '../components/reports/StockReport';
 import { PeriodPicker } from '../components/reports/ReportKit';
 import { ReportPeriodContext, presetPeriod } from '../lib/reports';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -22,7 +24,9 @@ const REPORTS = [
   { id: 'sales', label: 'Sales', anyOf: ['sales:read'], load: reportsApi.sales, View: SalesReport },
   { id: 'production', label: 'Production', anyOf: ['production:read'], load: reportsApi.production, View: ProductionReport },
   { id: 'dispatch', label: 'Dispatch', anyOf: ['dispatch:read', 'production:read', 'sales:read'], load: reportsApi.dispatch, View: DispatchReport },
+  { id: 'stock', label: 'Stock', anyOf: ['inventory:read', 'production:read'], load: reportsApi.stock, View: StockReport },
   { id: 'accounts', label: 'Accounts', anyOf: ['accounts:read'], load: reportsApi.accounts, View: AccountsReport },
+  { id: 'operations', label: 'Operations', anyOf: ['company:update'], load: reportsApi.operations, View: OperationsReport },
 ];
 
 export function Reports() {

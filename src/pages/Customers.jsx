@@ -11,7 +11,7 @@ import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { useUrlState } from '../hooks/useListParams';
-import { exportTable } from '../lib/exporters';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAGE_SIZE = 10;
 
@@ -211,7 +211,7 @@ export function Customers() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name, code, contact, GST" />
-          <ExportMenu onExport={(format) => exportTable(format, { fileName: `customers_${new Date().toISOString().slice(0, 10)}`, title: 'Customers', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `customers_${localToday()}`, title: 'Customers', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           <PermissionGate permission="accounts:create">
             <Link to="/billing/openings-import" className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
               Import opening balances

@@ -3,6 +3,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { StageRegister } from '../components/register/StageRegister';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { Pagination } from '../components/ui/Pagination';
+import { SearchField } from '../components/ui/SearchField';
+import { useUrlState } from '../hooks/useListParams';
+import { usePagedList } from '../hooks/usePagedList';
+import { exportTable, localToday } from '../lib/exporters';
 import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/auth';
 import { usePermission } from '../hooks/usePermission';
@@ -41,7 +47,32 @@ export function Registers() {
   // Order-wise list: loaded the first time that view opens; a later visit
   // shows the last list while the fresh one loads.
   const [orderList, setOrderList] = useState({ loaded: false, rows: [], error: '' });
-  const rows = orderList.rows;
+  const allRows = orderList.rows;
+  // Orders view: search and paging, kept in the address bar.
+  const [q, setQ] = useUrlState('q', '');
+  const rows = useMemo(() => {
+    const text = q.trim().toLowerCase();
+    if (!text) return allRows;
+    return allRows.filter((row) => [row.orderNumber, row.customerCode, row.customerName, orderTypeLabel(row.orderType), statusLabel(row.status)].some((v) => String(v || '').toLowerCase().includes(text)));
+  }, [allRows, q]);
+  const list = usePagedList(rows, { pageSize: 25, resetKey: q, url: view === 'orders' });
+  const offset = (list.page - 1) * list.pageSize;
+  const downloadOrders = (format) =>
+    exportTable(format, {
+      fileName: `register-orders_${localToday()}`,
+      title: 'Register: orders',
+      subtitle: `${rows.length} order(s)${q ? ` · search: ${q}` : ''}`,
+      rows,
+      columns: [
+        { label: 'Order', type: 'text', get: (r) => r.orderNumber },
+        { label: 'Type', type: 'text', get: (r) => orderTypeLabel(r.orderType) },
+        { label: 'Customer code', type: 'text', get: (r) => r.customerCode },
+        ...(showCustomerName ? [{ label: 'Customer name', type: 'text', get: (r) => r.customerName }] : []),
+        { label: 'Status', type: 'text', get: (r) => statusLabel(r.status) },
+        { label: 'Due', type: 'date', get: (r) => r.deliveryDate },
+        { label: 'Stages', type: 'text', get: (r) => (r.stages || []).map((item) => item.label).join(' · ') },
+      ],
+    });
   const loading = view === 'orders' && !orderList.loaded;
   const error = view === 'orders' ? orderList.error : '';
   const [entryAction, setEntryAction] = useState(null);
@@ -154,6 +185,10 @@ export function Registers() {
         {view === 'orders' ? (
           <>
             {error ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p> : null}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-300 bg-white px-3 py-2 print:hidden">
+              <SearchField value={q} onChange={setQ} placeholder="Search order, customer, status" />
+              <ExportMenu onExport={downloadOrders} disabled={!rows.length} />
+            </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full border-collapse text-sm">
                 <thead className="sticky top-0 z-10">
@@ -172,11 +207,13 @@ export function Registers() {
                   {rows.length === 0 ? (
                     <tr>
                       <td className={`${cell} text-stone-500`} colSpan={showCustomerName ? 8 : 7}>
-                        {loading ? 'Loading…' : 'No order is on the register yet.'}
+                        {loading ? 'Loading…' : q ? 'No order matches the search.' : 'No order is on the register yet.'}
                       </td>
                     </tr>
                   ) : (
-                    rows.map((row, index) => (
+                    list.paged.map((row, i) => {
+                      const index = offset + i;
+                      return (
                       <tr
                         key={row.orderId}
                         tabIndex={0}
@@ -198,11 +235,13 @@ export function Registers() {
                         <td className={cell}>{formatDate(row.deliveryDate)}</td>
                         <td className={cell}>{(row.stages || []).map((item) => item.label).join(' · ') || '—'}</td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
             </div>
+            <Pagination page={list.page} totalPages={list.totalPages} total={list.total} pageSize={list.pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
           </>
         ) : (
           <>

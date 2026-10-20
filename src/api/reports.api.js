@@ -7,5 +7,7 @@ export const reportsApi = {
   sales: (period) => api.get(`/api/reports/sales?${query(period)}`),
   production: (period) => api.get(`/api/reports/production?${query(period)}`),
   dispatch: (period) => api.get(`/api/reports/dispatch?${query(period)}`),
+  stock: (period) => api.get(`/api/reports/stock?${query(period)}`),
+  operations: (period) => api.get(`/api/reports/operations?${query(period)}`),
   accounts: (period) => api.get(`/api/reports/accounts?${query(period)}`),
 };

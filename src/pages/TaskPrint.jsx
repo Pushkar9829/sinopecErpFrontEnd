@@ -5,7 +5,7 @@ import { tasksApi } from '../api/tasks.api';
 import { BlankEntryTable, Facts, PrintShell, Sheet, SheetFooter, SheetHeader } from '../components/print/PrintKit';
 import { useAuth } from '../context/auth';
 import { formatDate, formatQtyUnit, orderTypeLabel, stageLabel } from '../lib/sales';
-import { TASK_CATEGORY_LABELS } from '../lib/tasks';
+import { roleLabel, TASK_CATEGORY_LABELS } from '../lib/tasks';
 
 const STATUS_LABEL = { open: 'Not started', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', cancelled: 'Cancelled' };
 
@@ -53,7 +53,7 @@ export function TaskPrint() {
           <h1 className="text-lg font-bold">{task.title}</h1>
           <Facts
             items={[
-              { label: 'Assigned to', value: task.assigneeName || (task.assigneeRole ? `${task.assigneeRole} team` : 'Not assigned'), strong: true },
+              { label: 'Assigned to', value: task.assigneeName || (task.assigneeRole ? `${roleLabel(task.assigneeRole)} team` : 'Not assigned'), strong: true },
               { label: 'Due', value: task.dueDate ? formatDate(task.dueDate) : 'No date', strong: true },
               { label: 'Priority', value: task.priority ? task.priority.toUpperCase() : '' },
               { label: 'Status', value: STATUS_LABEL[task.status] || task.status },

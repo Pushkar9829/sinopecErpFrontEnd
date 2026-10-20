@@ -9,6 +9,8 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { usePermission } from '../hooks/usePermission';
 import { formatDate, formatMoney, toDateInput } from '../lib/sales';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { exportTable, localToday } from '../lib/exporters';
 
 const PAY_STATE = { paid: ['Paid', 'success'], partly_paid: ['Part paid', 'warning'], unpaid: ['Unpaid', 'muted'] };
 const METHODS = [
@@ -179,6 +181,60 @@ export function CustomerAccount() {
 
   if (!data) return <p className="text-sm text-slate">{error || 'Loading account…'}</p>;
   const { customer, summary } = data;
+  const who = customer.companyName || customer.name;
+  const day = localToday();
+  // Download the open tab for this customer.
+  function downloadTab(format) {
+    if (tab === 'bills') {
+      return exportTable(format, {
+        fileName: `${customer.code}-bills_${day}`,
+        title: `Bills: ${who}`,
+        subtitle: `${customer.code} · outstanding ${formatMoney(summary.outstanding)}`,
+        rows: data.invoices,
+        columns: [
+          { label: 'Bill', type: 'text', get: (i) => i.number },
+          { label: 'Kind', type: 'text', get: (i) => (i.kind === 'opening' ? 'Opening bill' : 'Invoice') },
+          { label: 'Order', type: 'text', get: (i) => i.orderNumber },
+          { label: 'Date', type: 'date', get: (i) => i.invoiceDate },
+          { label: 'Due', type: 'date', get: (i) => i.dueDate },
+          { label: 'Total', type: 'money', get: (i) => i.total },
+          { label: 'Paid', type: 'money', get: (i) => i.paid },
+          { label: 'Balance', type: 'money', get: (i) => i.balance },
+          { label: 'Days overdue', type: 'number', get: (i) => i.overdueDays || null },
+        ],
+      });
+    }
+    if (tab === 'ledger') {
+      return exportTable(format, {
+        fileName: `${customer.code}-ledger_${day}`,
+        title: `Ledger: ${who}`,
+        subtitle: customer.code,
+        rows: data.entries,
+        columns: [
+          { label: 'Date', type: 'date', get: (e) => e.date },
+          { label: 'Entry', type: 'text', get: (e) => `${ENTRY_LABEL[e.type] || e.type} ${e.ref || ''}`.trim() },
+          { label: 'Detail', type: 'text', get: (e) => e.detail },
+          { label: 'Debit', type: 'money', get: (e) => e.debit || null },
+          { label: 'Credit', type: 'money', get: (e) => e.credit || null },
+          { label: 'Balance', type: 'money', get: (e) => e.balance },
+        ],
+      });
+    }
+    return exportTable(format, {
+      fileName: `${customer.code}-payments_${day}`,
+      title: `Payments: ${who}`,
+      subtitle: customer.code,
+      rows: data.receipts,
+      columns: [
+        { label: 'Receipt', type: 'text', get: (r) => r.number },
+        { label: 'Date', type: 'date', get: (r) => r.receivedAt },
+        { label: 'Amount', type: 'money', get: (r) => r.amount },
+        { label: 'Mode', type: 'text', get: (r) => r.method },
+        { label: 'Reference', type: 'text', get: (r) => r.reference },
+        { label: 'Status', type: 'text', get: (r) => (r.voidedAt ? `Voided: ${r.voidReason || ''}` : 'Valid') },
+      ],
+    });
+  }
   const limit = customer.creditLimit || 0;
 
   return (
@@ -220,15 +276,18 @@ export function CustomerAccount() {
         Overdue by age: 1–30 days {formatMoney(summary.ageing.d1_30)} · 31–60 {formatMoney(summary.ageing.d31_60)} · 61–90 {formatMoney(summary.ageing.d61_90)} · over 90 {formatMoney(summary.ageing.d90plus)}
       </p>
 
-      <Tabs
-        tabs={[
-          { id: 'bills', label: 'Bills', count: data.invoices.length },
-          { id: 'ledger', label: 'Ledger', count: data.entries.length },
-          { id: 'payments', label: 'Payments', count: data.receipts.length },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Tabs
+          tabs={[
+            { id: 'bills', label: 'Bills', count: data.invoices.length },
+            { id: 'ledger', label: 'Ledger', count: data.entries.length },
+            { id: 'payments', label: 'Payments', count: data.receipts.length },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+        <ExportMenu onExport={(format) => downloadTab(format)} disabled={!(tab === 'bills' ? data.invoices : tab === 'ledger' ? data.entries : data.receipts).length} />
+      </div>
 
       {tab === 'bills' ? (
         <div className="overflow-x-auto rounded-xl border border-line bg-white">
