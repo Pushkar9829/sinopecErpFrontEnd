@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { PERIOD_PRESETS, downloadTable, fmt, presetPeriod, shortMoney } from '../../lib/reports';
+import { useContext, useState } from 'react';
+import { PERIOD_PRESETS, ReportPeriodContext, downloadTable, fmt, presetPeriod, shortMoney } from '../../lib/reports';
+import { ExportMenu } from '../ui/ExportMenu';
 import { formatDate, formatMoney } from '../../lib/sales';
 import { EmptyState } from '../ui/EmptyState';
 
@@ -90,19 +91,12 @@ export function Panel({ title, hint, actions, children }) {
 const shown = (col, row) => (col.render ? col.render(row) : col.format ? fmt[col.format](row[col.key]) : row[col.key] ?? '—');
 const NUMERIC = new Set(['money', 'int', 'qty', 'pct', 'days']);
 
-export function ExportButton({ onClick, disabled, label = 'Download Excel' }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper disabled:opacity-50">
-      {label}
-    </button>
-  );
-}
-
-// A table with an Excel (CSV) download of exactly what it shows, and a total
+// A table with an Excel / CSV / PDF download of exactly what it shows, and a total
 // row when `totals` is given. Long tables show the first `limit` rows on
 // screen (the download always has everything).
 export function ReportTable({ title, hint, columns, rows, totals, fileName, empty = 'Nothing in this period', limit = 50, extraActions }) {
   const [all, setAll] = useState(false);
+  const period = useContext(ReportPeriodContext);
   const visible = all ? rows : rows.slice(0, limit);
   return (
     <Panel
@@ -111,7 +105,7 @@ export function ReportTable({ title, hint, columns, rows, totals, fileName, empt
       actions={
         <>
           {extraActions}
-          {fileName ? <ExportButton onClick={() => downloadTable(fileName, columns, rows, totals)} disabled={!rows.length} /> : null}
+          {fileName ? <ExportMenu onExport={(format) => downloadTable(format, { fileName, title, subtitle: period, columns, rows, totals })} disabled={!rows.length} /> : null}
         </>
       }
     >

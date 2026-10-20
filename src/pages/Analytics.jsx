@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { exportTable } from '../lib/exporters';
+import { ReportPeriodContext } from '../lib/reports';
 import { Link } from 'react-router-dom';
 import { analyticsApi } from '../api/analytics.api';
 import { BarChart, StackedBarChart } from '../components/charts/BarChart';
@@ -230,13 +233,48 @@ function Kpi({ label, value, hint, tone = 'muted', onClick }) {
   return <section className={className}>{body}</section>;
 }
 
-function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
-  const list = usePagedList(rows, { pageSize: 8, resetKey });
+// Plain text of what a cell shows, for downloads (links, badges and nested
+// tags are read through to their text).
+function textOf(node) {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).filter(Boolean).join(' ');
+  if (node.props) return textOf(node.props.children);
+  return '';
+}
+
+function exportCell(column, row) {
+  if (column.exportValue) return column.exportValue(row);
+  const shown = column.render ? textOf(column.render(row)) : '';
+  if (shown) return shown;
+  const raw = row[column.key];
+  if (Array.isArray(raw)) return raw.map((item) => (typeof item === 'string' ? stageLabel(item) : textOf(item))).join(', ');
+  return raw ?? '';
+}
+
+function DataTable({ columns, rows, empty, resetKey, onRowClick, exportName }) {
+  const [pageSize, setPageSize] = useState(10);
+  const list = usePagedList(rows, { pageSize, resetKey });
+  const period = useContext(ReportPeriodContext);
   if (!rows.length) {
     return empty || <EmptyState title="Nothing to show" />;
   }
+  const download = (format) =>
+    exportTable(format, {
+      fileName: `analytics-${exportName}`,
+      title: `Analytics: ${exportName.replace(/-/g, ' ')}`,
+      subtitle: period,
+      rows,
+      columns: columns.map((column) => ({ label: column.label, type: 'text', get: (row) => exportCell(column, row) })),
+    });
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-card">
+      {exportName ? (
+        <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-sm text-slate print:hidden">
+          <span>{rows.length.toLocaleString('en-IN')} row(s)</span>
+          <ExportMenu onExport={download} />
+        </div>
+      ) : null}
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead className="bg-ink text-paper">
@@ -276,13 +314,7 @@ function DataTable({ columns, rows, empty, resetKey, onRowClick }) {
           </tbody>
         </table>
       </div>
-      <Pagination
-        page={list.page}
-        totalPages={list.totalPages}
-        total={list.total}
-        pageSize={list.pageSize}
-        onPage={list.setPage}
-      />
+      <Pagination page={list.page} totalPages={list.totalPages} total={list.total} pageSize={list.pageSize} onPage={list.setPage} onPageSize={setPageSize} />
     </div>
   );
 }
@@ -341,6 +373,7 @@ function WorkTable({ rows, canOpenOrder, onClose }) {
   ];
   return (
     <DataTable
+      exportName="register-entries"
       columns={columns}
       rows={rows}
       resetKey={rows.map((row) => `${row.orderId}-${row.date}-${row.stage}`).join('|')}
@@ -462,7 +495,8 @@ export function Analytics() {
   }
 
   return (
-    <div className="space-y-4">
+    <ReportPeriodContext.Provider value={`${formatDate(bounds.from)} to ${formatDate(bounds.to)}`}>
+      <div className="space-y-4">
       <div className="space-y-2 rounded-xl border border-line bg-card px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="px-1 text-lg font-semibold">Analytics</h1>
@@ -646,6 +680,7 @@ export function Analytics() {
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
             <DataTable
+              exportName="operators"
               resetKey={`${search}|${operators.map((row) => row.name).join('|')}`}
               empty={<EmptyState title="No operator work in this range" />}
               onRowClick={(row) => setDrill({ type: 'operator', key: row.name, title: row.name })}
@@ -690,6 +725,7 @@ export function Analytics() {
           </Section>
           <Section title="Machines">
             <DataTable
+              exportName="machines"
               resetKey={machines.map((row) => row.name).join('|')}
               empty={<EmptyState title="No machine recorded on entries in this range" />}
               onRowClick={(row) => setDrill({ type: 'machine', key: row.name, title: row.name })}
@@ -711,6 +747,7 @@ export function Analytics() {
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
             <DataTable
+              exportName="products"
               resetKey={`${search}|${products.map((row) => row.code).join('|')}`}
               empty={<EmptyState title="No product work in this range" />}
               onRowClick={(row) => setDrill({ type: 'product', key: row.code, title: row.name || row.code })}
@@ -749,6 +786,7 @@ export function Analytics() {
         >
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
             <DataTable
+              exportName="customers"
               resetKey={`${search}|${customers.map((row) => row.id).join('|')}`}
               empty={<EmptyState title="No customer work in this range" />}
               onRowClick={(row) => setDrill({ type: 'customer', key: row.id, title: row.name })}
@@ -807,6 +845,7 @@ export function Analytics() {
             }
           >
             <DataTable
+              exportName="orders"
               resetKey={`${orderTab}|${search}`}
               empty={<EmptyState title="No matching orders" hint="Open orders and orders delivered in this range appear here." />}
               onRowClick={(row) => setDrill({ type: 'order', key: row.id, title: row.number })}
@@ -889,6 +928,7 @@ export function Analytics() {
               actions={<SearchField value={search} onChange={setSearch} placeholder="Search lot or stage" className="w-48" />}
             >
               <DataTable
+                exportName="waste-lots"
                 resetKey={search}
                 empty={<EmptyState title="No waste lots in inventory" />}
                 rows={wasteLots}
@@ -924,6 +964,7 @@ export function Analytics() {
       >
         <WorkTable rows={drillRows} canOpenOrder={canOpenOrder} onClose={() => setDrill(null)} />
       </Modal>
-    </div>
+      </div>
+    </ReportPeriodContext.Provider>
   );
 }

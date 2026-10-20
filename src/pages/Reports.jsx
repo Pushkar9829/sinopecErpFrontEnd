@@ -7,7 +7,7 @@ import { OverviewReport } from '../components/reports/OverviewReport';
 import { ProductionReport } from '../components/reports/ProductionReport';
 import { SalesReport } from '../components/reports/SalesReport';
 import { PeriodPicker } from '../components/reports/ReportKit';
-import { presetPeriod } from '../lib/reports';
+import { ReportPeriodContext, presetPeriod } from '../lib/reports';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { useAuth } from '../context/auth';
@@ -89,7 +89,11 @@ export function Reports() {
       </div>
       {!loading && result.error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{result.error}</p> : null}
       {loading ? <p className="text-sm text-slate">Working out the figures…</p> : null}
-      {!loading && result.data ? <View data={result.data} /> : null}
+      {!loading && result.data ? (
+        <ReportPeriodContext.Provider value={`${tab.label} report · ${formatDate(period.from)} to ${formatDate(period.to)}`}>
+          <View data={result.data} />
+        </ReportPeriodContext.Provider>
+      ) : null}
     </div>
   );
 }

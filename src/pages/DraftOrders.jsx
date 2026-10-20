@@ -9,6 +9,10 @@ import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { Tabs } from '../components/ui/Tabs';
 import { CHANNEL_LABEL, INTAKE_GROUPS, intakeStatus, senderOf, timeAgo } from '../lib/intake';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { DateRangeFilter } from '../components/ui/Filters';
+import { exportTable } from '../lib/exporters';
+import { fetchAllPages } from '../lib/fetchAll';
 
 const PAGE_SIZE = 20;
 const REFRESH_MS = 30000;
@@ -28,6 +32,9 @@ export function DraftOrders() {
   const status = params.get('status') || 'review';
   const channel = params.get('channel') || '';
   const page = Number(params.get('page')) || 1;
+  const pageSize = [10, 20, 50, 100].includes(Number(params.get('rows'))) ? Number(params.get('rows')) : PAGE_SIZE;
+  const from = params.get('from') || '';
+  const to = params.get('to') || '';
   const [search, setSearch] = useState(params.get('q') || '');
   const [q, setQ] = useState(search);
   const [data, setData] = useState(null);
@@ -61,7 +68,7 @@ export function DraftOrders() {
   useEffect(() => {
     let alive = true;
     intakeApi
-      .list({ status: status === 'all' ? '' : status, channel, q, page, pageSize: PAGE_SIZE })
+      .list({ status: status === 'all' ? '' : status, channel, q, from, to, page, pageSize })
       .then((result) => {
         if (!alive) return;
         setData(result);
@@ -71,7 +78,29 @@ export function DraftOrders() {
     return () => {
       alive = false;
     };
-  }, [status, channel, q, page, tick]);
+  }, [status, channel, q, from, to, page, pageSize, tick]);
+
+  // Download every draft matching the filters (all pages).
+  async function download(format) {
+    const rows = await fetchAllPages(intakeApi.list, { status: status === 'all' ? '' : status, channel, q, from, to });
+    await exportTable(format, {
+      fileName: `draft-orders_${new Date().toISOString().slice(0, 10)}`,
+      title: 'Draft orders',
+      subtitle: [`${rows.length} draft(s)`, channel ? CHANNEL_LABEL[channel] || channel : '', from || to ? `received ${from || '...'} to ${to || '...'}` : '', q ? `search: ${q}` : ''].filter(Boolean).join(' · '),
+      rows,
+      columns: [
+        { label: 'Number', type: 'text', get: (d) => d.number },
+        { label: 'Channel', type: 'text', get: (d) => CHANNEL_LABEL[d.channel] || d.channel },
+        { label: 'From', type: 'text', get: (d) => senderOf(d) },
+        { label: 'Subject / message', type: 'text', get: (d) => preview(d) },
+        { label: 'Lines', type: 'number', get: (d) => d.lineCount || 0 },
+        { label: 'Status', type: 'text', get: (d) => intakeStatus(d.status).label },
+        { label: 'Sales order', type: 'text', get: (d) => d.salesOrderNumber },
+        { label: 'Received', type: 'date', get: (d) => d.receivedAt },
+        { label: 'Last message', type: 'date', get: (d) => d.lastMessageAt },
+      ],
+    });
+  }
 
   const counts = data?.counts || {};
   const items = data?.items || [];
@@ -124,6 +153,28 @@ export function DraftOrders() {
           placeholder="Search number, sender, customer, order"
           className="w-full sm:w-72"
         />
+        <DateRangeFilter
+          label="Received"
+          from={from}
+          to={to}
+          onChange={(range) =>
+            setParams(
+              (current) => {
+                const next = new URLSearchParams(current);
+                for (const key of ['from', 'to']) {
+                  if (range[key]) next.set(key, range[key]);
+                  else next.delete(key);
+                }
+                next.delete('page');
+                return next;
+              },
+              { replace: true }
+            )
+          }
+        />
+        <div className="ml-auto self-end">
+          <ExportMenu onExport={download} disabled={!data?.total} />
+        </div>
       </div>
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
@@ -191,7 +242,15 @@ export function DraftOrders() {
               </tbody>
             </table>
           </div>
-          <Pagination page={data.page} totalPages={data.pages} total={data.total} pageSize={PAGE_SIZE} onPage={(next) => setParam('page', String(next))} />
+          <Pagination
+            page={data.page}
+            totalPages={data.pages}
+            total={data.total}
+            pageSize={pageSize}
+            pageSizes={[10, 20, 50, 100]}
+            onPage={(next) => setParam('page', String(next))}
+            onPageSize={(size) => setParam('rows', size === PAGE_SIZE ? '' : String(size))}
+          />
         </div>
       ) : null}
     </div>

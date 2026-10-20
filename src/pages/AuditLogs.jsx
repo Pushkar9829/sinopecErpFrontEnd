@@ -4,6 +4,10 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useListParams } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
+import { fetchAllPages } from '../lib/fetchAll';
 
 const PAGE_SIZE = 25;
 const selectClass = 'rounded-lg border border-line bg-white px-3 py-1.5 text-sm outline-none focus:border-accent';
@@ -88,9 +92,9 @@ function LogDetail({ log, onClose }) {
 }
 
 export function AuditLogs() {
-  const [filters, setFilters] = useState({ q: '', module: '', actor: '', outcome: '', from: '', to: '' });
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
+  const list = useListParams({ q: '', module: '', actor: '', outcome: '', from: '', to: '' }, { pageSize: PAGE_SIZE });
+  const { values: filters, page, pageSize } = list;
+  const [query, setQuery] = useState(filters.q);
   const [data, setData] = useState({ items: [], total: 0, pages: 1 });
   const [meta, setMeta] = useState({ modules: [], actors: [] });
   const [loading, setLoading] = useState(true);
@@ -105,32 +109,50 @@ export function AuditLogs() {
   // one request (it used to fetch the old page first, then page 1).
   useEffect(() => {
     const timer = setTimeout(() => {
-      setFilters((current) => (current.q === query ? current : { ...current, q: query }));
-      setPage((current) => (filters.q === query ? current : 1));
+      if (query !== filters.q) list.set('q', query);
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
+  const filterKey = JSON.stringify(filters);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError('');
     auditApi
-      .list({ ...filters, page, limit: PAGE_SIZE })
+      .list({ ...filters, page, limit: pageSize })
       .then((next) => alive && setData(next))
       .catch((err) => alive && setError(err.message))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [filters, page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey, page, pageSize]);
 
-  const setFilter = (key) => (event) => {
-    const { value } = event.target;
-    setFilters((current) => ({ ...current, [key]: value }));
-    setPage(1);
-  };
+  const setFilter = (key) => (event) => list.set(key, event.target.value);
+
+  // Download every entry matching the filters (all pages).
+  async function download(format) {
+    const rows = await fetchAllPages((p) => auditApi.list({ ...filters, page: p.page, limit: p.pageSize }), {});
+    const parts = [filters.module, filters.actor ? meta.actors?.find((a) => (a.id || a) === filters.actor)?.name || 'one user' : '', filters.outcome, filters.from || filters.to ? `${filters.from || '...'} to ${filters.to || '...'}` : '', filters.q ? `search: ${filters.q}` : ''].filter(Boolean);
+    await exportTable(format, {
+      fileName: `audit-log_${new Date().toISOString().slice(0, 10)}`,
+      title: 'Audit log',
+      subtitle: [`${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`, ...parts].join(' · '),
+      rows,
+      columns: [
+        { label: 'When', type: 'text', get: (log) => formatWhen(log.at) },
+        { label: 'Who', type: 'text', get: (log) => log.actorName || 'Unknown' },
+        { label: 'Role', type: 'text', get: (log) => log.actorRole },
+        { label: 'Module', type: 'text', get: (log) => log.module },
+        { label: 'What happened', type: 'text', get: (log) => log.summary },
+        { label: 'Fields changed', type: 'number', get: (log) => log.changes?.length || 0 },
+        { label: 'Result', type: 'text', get: (log) => (log.success ? 'Done' : 'Failed') },
+      ],
+    });
+  }
 
   return (
     <div className="space-y-5">
@@ -161,6 +183,19 @@ export function AuditLogs() {
           </select>
           <input type="date" value={filters.from} onChange={setFilter('from')} className={selectClass} aria-label="From date" />
           <input type="date" value={filters.to} onChange={setFilter('to')} className={selectClass} aria-label="To date" />
+          {list.active ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                list.reset();
+              }}
+              className="px-1 text-sm font-semibold text-accent hover:underline"
+            >
+              Clear filters
+            </button>
+          ) : null}
+          <ExportMenu onExport={download} disabled={!data.total} />
         </div>
       </div>
 
@@ -215,7 +250,7 @@ export function AuditLogs() {
         {!loading && !data.items.length ? (
           <EmptyState title="No changes recorded" hint="Every create, edit, delete and login will appear here." />
         ) : data.items.length ? (
-          <Pagination page={page} totalPages={data.pages} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />
+          <Pagination page={page} totalPages={data.pages} total={data.total} pageSize={pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
         ) : null}
       </div>
 

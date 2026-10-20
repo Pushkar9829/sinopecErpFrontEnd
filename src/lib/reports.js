@@ -1,4 +1,5 @@
-import { downloadCsv } from './csv';
+import { createContext } from 'react';
+import { exportColumns, exportTable } from './exporters';
 import { formatDate, formatMoney } from './sales';
 
 // ------------------------------------------------------------------ period
@@ -67,18 +68,12 @@ export function shortMoney(value) {
   return `${sign}₹${Math.round(n)}`;
 }
 
-const csvValue = (col, row) => {
-  if (col.csv) return col.csv(row);
-  const v = row[col.key];
-  if (col.format === 'date') return v ? formatDate(v) : '';
-  if (col.format === 'month') return fmt.month(v);
-  return v ?? '';
-};
-export function downloadTable(fileName, columns, rows, totals) {
-  const cols = columns.filter((c) => c.csv !== false);
-  const body = rows.map((row) => cols.map((c) => csvValue(c, row)));
-  if (totals) body.push(cols.map((c, i) => (i === 0 ? 'Total' : totals[c.key] ?? '')));
-  downloadCsv(fileName, cols.map((c) => c.csvLabel || c.label), body);
+// Download a report table as Excel, CSV or PDF. `subtitle` is usually the period.
+export function downloadTable(format, { fileName, title, subtitle, columns, rows, totals }) {
+  return exportTable(format, { fileName, title, subtitle, columns: exportColumns(columns, fmt.month), rows, totals });
 }
+
+// The period a report covers, for the downloads' subtitles.
+export const ReportPeriodContext = createContext('');
 
 export const totalOf = (rows, keys) => Object.fromEntries(keys.map((k) => [k, Math.round(rows.reduce((s, r) => s + (Number(r[k]) || 0), 0) * 100) / 100]));

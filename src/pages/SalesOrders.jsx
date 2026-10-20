@@ -1,11 +1,16 @@
 import { confirmAction } from '../components/ui/confirm';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { salesOrdersApi } from '../api/salesOrders.api';
 import { PermissionGate } from '../components/PermissionGate';
 import { ProductionProgressModal } from '../components/sales/ProductionProgressModal';
 import { EmptyState } from '../components/ui/EmptyState';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { ClearFilters, DateRangeFilter, FilterBar, FilterSelect } from '../components/ui/Filters';
 import { Pagination } from '../components/ui/Pagination';
+import { useDebounced, useListParams } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
+import { fetchAllPages } from '../lib/fetchAll';
 import { SearchField } from '../components/ui/SearchField';
 import { usePermission } from '../hooks/usePermission';
 import { Badge, PriorityBadge, StatusBadge } from '../components/ui/Badge';
@@ -24,7 +29,23 @@ import {
   toDateInput,
 } from '../lib/sales';
 
-const PAGE_SIZE = 8;
+const LIST_DEFAULTS = { status: 'all', type: 'all', q: '', from: '', to: '', dateField: 'order', priority: 'all', sort: 'newest' };
+const PRIORITY_OPTIONS = [
+  { id: 'all', label: 'Any priority' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'high', label: 'High' },
+  { id: 'urgent', label: 'Urgent' },
+];
+const SORT_OPTIONS = [
+  { id: 'newest', label: 'Newest first' },
+  { id: 'oldest', label: 'Oldest first' },
+  { id: 'delivery', label: 'Delivery date, soonest' },
+  { id: 'delivery_desc', label: 'Delivery date, latest' },
+];
+const DATE_FIELDS = [
+  { id: 'order', label: 'Order date' },
+  { id: 'delivery', label: 'Delivery date' },
+];
 // No route has a packing stage any more; these only show for older orders still in them.
 const LEGACY_STATUSES = new Set(['ready_for_packing', 'packed']);
 const STATUS_ORDER = Object.keys(STATUS_LABELS);
@@ -162,30 +183,18 @@ export function SalesOrders() {
   const { can } = usePermission();
   const showMoney = canSeeCommercial(can);
   const canCreate = can('sales:create');
-  const [searchParams, setSearchParams] = useSearchParams();
+  const list = useListParams(LIST_DEFAULTS, { pageSize: 25 });
+  const { values: filters, page, pageSize } = list;
   const EMPTY = { items: [], total: 0, pages: 1, counts: { all: 0 } };
   const [data, setData] = useState(EMPTY);
-  const [page, setPage] = useState(1);
-  const requested = searchParams.get('status') || 'all';
-  const tab = requested === 'all' || STATUS_ORDER.includes(requested) ? requested : 'all';
-  function setTab(next) {
-    const params = new URLSearchParams(searchParams);
-    if (next === 'all') params.delete('status');
-    else params.set('status', next);
-    setPage(1);
-    setSearchParams(params, { replace: true });
-  }
-  const requestedType = searchParams.get('type') || 'all';
-  const typeFilter = ORDER_TYPES.some((type) => type.id === requestedType) ? requestedType : 'all';
-  function setTypeFilter(next) {
-    const params = new URLSearchParams(searchParams);
-    if (next === 'all') params.delete('type');
-    else params.set('type', next);
-    setPage(1);
-    setSearchParams(params, { replace: true });
-  }
-  const [query, setQuery] = useState('');
-  const [search, setSearch] = useState('');
+  const tab = filters.status === 'all' || STATUS_ORDER.includes(filters.status) ? filters.status : 'all';
+  const setTab = (next) => list.set('status', next);
+  const typeFilter = ORDER_TYPES.some((type) => type.id === filters.type) ? filters.type : 'all';
+  const setTypeFilter = (next) => list.set('type', next);
+  const [query, setQuery] = useState(filters.q);
+  const search = useDebounced(query.trim(), 300);
+  const listQuery = { status: tab, type: typeFilter, q: filters.q, from: filters.from, to: filters.to, dateField: filters.dateField, priority: filters.priority, sort: filters.sort };
+  const listKey = JSON.stringify(listQuery);
   const [error, setError] = useState('');
   const [duplicating, setDuplicating] = useState('');
   const [notice, setNotice] = useState('');
@@ -198,27 +207,47 @@ export function SalesOrders() {
 
   async function load(targetPage = page) {
     const request = ++latest.current;
-    const next = await salesOrdersApi.page({ page: targetPage, pageSize: PAGE_SIZE, status: tab, type: typeFilter, q: search });
+    const next = await salesOrdersApi.page({ ...listQuery, page: targetPage, pageSize });
     if (request === latest.current) setData(next);
   }
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const next = query.trim();
-      if (next === search) return;
-      setSearch(next);
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(timer);
+    if (search !== filters.q) list.set('q', search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [search]);
 
   useEffect(() => {
     load(page)
       .catch((err) => setError(err.message))
       .finally(() => setLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, tab, typeFilter, search]);
+  }, [page, pageSize, listKey]);
+
+  // Download every order matching the filters, not just this page.
+  async function exportOrders(format) {
+    const rows = await fetchAllPages(salesOrdersApi.page, listQuery);
+    const title = typeFilter === 'job_work' ? 'Job work' : typeFilter === 'sales_order' ? 'Sales orders' : 'Orders';
+    const range = filters.from || filters.to ? `${filters.dateField === 'delivery' ? 'Delivery' : 'Ordered'} ${filters.from ? formatDate(filters.from) : '...'} to ${filters.to ? formatDate(filters.to) : '...'}` : null;
+    const parts = [tab !== 'all' ? statusLabel(tab) : null, range, filters.priority !== 'all' ? `${filters.priority} priority` : null, filters.q ? `search: ${filters.q}` : null].filter(Boolean);
+    await exportTable(format, {
+      fileName: `${title.toLowerCase().replace(/ /g, '-')}_${toDateInput(new Date())}`,
+      title,
+      subtitle: [`${rows.length} order(s)`, ...parts].join(' · '),
+      rows,
+      columns: [
+        { label: 'Order', type: 'text', get: (o) => o.number },
+        { label: 'Type', type: 'text', get: (o) => orderTypeLabel(o.orderType) },
+        { label: 'Order date', type: 'date', get: (o) => o.orderDate },
+        { label: 'Customer', type: 'text', get: (o) => o.customer?.companyName || o.customer?.name || '' },
+        { label: 'Customer code', type: 'text', get: (o) => o.customer?.code || '' },
+        { label: 'Delivery date', type: 'date', get: (o) => o.deliveryDate },
+        { label: 'Priority', type: 'text', get: (o) => o.priority },
+        { label: 'Status', type: 'text', get: (o) => statusLabel(o.status) },
+        { label: 'Stage now', type: 'text', get: (o) => (isFloorStatus(o.status) ? (o.activeStages || []).map(stageLabel).join(', ') : '') },
+        ...(showMoney ? [{ label: 'Total', type: 'money', get: (o) => o.grandTotal }] : []),
+      ],
+    });
+  }
 
   const counts = data.counts || { all: 0 };
 
@@ -314,6 +343,30 @@ export function SalesOrders() {
           </PermissionGate>
         </div>
       </div>
+
+      <FilterBar>
+        <DateRangeFilter
+          label="Dates"
+          field={filters.dateField}
+          fieldOptions={DATE_FIELDS}
+          onField={(value) => list.set('dateField', value)}
+          from={filters.from}
+          to={filters.to}
+          onChange={(range) => list.setMany(range)}
+        />
+        <FilterSelect label="Priority" value={filters.priority} onChange={(value) => list.set('priority', value)} options={PRIORITY_OPTIONS} />
+        <FilterSelect label="Sort" value={filters.sort} onChange={(value) => list.set('sort', value)} options={SORT_OPTIONS} />
+        <ClearFilters
+          count={list.active}
+          onClear={() => {
+            setQuery('');
+            list.reset();
+          }}
+        />
+        <div className="ml-auto self-end">
+          <ExportMenu onExport={exportOrders} disabled={!data.total} label={data.total ? `Download ${data.total.toLocaleString('en-IN')}` : 'Download'} />
+        </div>
+      </FilterBar>
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
@@ -415,7 +468,7 @@ export function SalesOrders() {
         ) : data.total === 0 ? (
           <EmptyState title="No orders found" hint="Create a sales order or job work draft, then submit it for approval." />
         ) : (
-          <Pagination page={data.page || page} totalPages={data.pages} total={data.total} pageSize={PAGE_SIZE} onPage={setPage} />
+          <Pagination page={data.page || page} totalPages={data.pages} total={data.total} pageSize={data.pageSize || pageSize} onPage={list.setPage} onPageSize={list.setPageSize} />
         )}
       </div>
       <ProductionProgressModal order={progressOrder} onClose={() => setProgressOrder(null)} />

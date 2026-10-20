@@ -12,8 +12,11 @@ import { useAuth } from '../context/auth';
 import { usePagedList } from '../hooks/usePagedList';
 import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
   { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -116,6 +119,14 @@ function PlusIcon() {
   );
 }
 
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Name', type: 'text', get: (r) => r.fullName },
+  { label: 'Username', type: 'text', get: (r) => r.username },
+  { label: 'Role', type: 'text', get: (r) => r.role?.name },
+  { label: 'Status', type: 'text', get: (r) => (r.isActive === false ? 'Inactive' : 'Active') },
+];
+
 export function Users() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
@@ -129,8 +140,8 @@ export function Users() {
       .catch(() => {});
   }, []);
   const canManage = (target) => canManageRole(rolesById.get(target.role?.id) || target.role);
-  const [tab, setTab] = useState('all');
-  const [query, setQuery] = useState('');
+  const [tab, setTab] = useUrlState('tab', 'all');
+  const [query, setQuery] = useUrlState('q', '');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -176,7 +187,7 @@ export function Users() {
     });
   }, [users, tab, query]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}`, url: true });
 
   const { guard: once, pending: updating } = useSingleFlight();
   const handleUpdateOnce = once(handleUpdate);
@@ -212,6 +223,7 @@ export function Users() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name, username, or role" />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `users_${new Date().toISOString().slice(0, 10)}`, title: 'Users', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           <PermissionGate permission="users:create">
             <Link
               to="/users/new"
@@ -294,6 +306,7 @@ export function Users() {
             total={list.total}
             pageSize={list.pageSize}
             onPage={list.setPage}
+            onPageSize={list.setPageSize}
           />
         )}
       </div>

@@ -9,8 +9,11 @@ import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
 import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
   { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -113,6 +116,13 @@ function PlusIcon() {
   );
 }
 
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Machine', type: 'text', get: (r) => r.name },
+  { label: 'Code', type: 'text', get: (r) => r.code },
+  { label: 'Status', type: 'text', get: (r) => (r.isActive === false ? 'Inactive' : 'Active') },
+];
+
 export function Machines() {
   const navigate = useNavigate();
   const { can } = usePermission();
@@ -120,8 +130,8 @@ export function Machines() {
   const canUpdate = can('production:update') || can('inventory:update');
   const canDelete = can('production:delete') || can('inventory:delete');
   const [machines, setMachines] = useState([]);
-  const [status, setStatus] = useState('all');
-  const [query, setQuery] = useState('');
+  const [status, setStatus] = useUrlState('status', 'all');
+  const [query, setQuery] = useUrlState('q', '');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -165,7 +175,7 @@ export function Machines() {
     });
   }, [machines, status, query]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${status}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${status}|${query}`, url: true });
 
   const { guard: once, pending: updating } = useSingleFlight();
   const handleStatusOnce = once(handleStatus);
@@ -199,6 +209,7 @@ export function Machines() {
         <StatusMenu value={status} counts={counts} onChange={setStatus} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name or code" />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `machines_${new Date().toISOString().slice(0, 10)}`, title: 'Machines', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           {canCreate ? (
             <Link
               to="/machines/new"
@@ -273,6 +284,7 @@ export function Machines() {
             total={list.total}
             pageSize={list.pageSize}
             onPage={list.setPage}
+            onPageSize={list.setPageSize}
           />
         )}
       </div>

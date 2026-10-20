@@ -8,13 +8,27 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { SearchField } from '../components/ui/SearchField';
 import { usePagedList } from '../hooks/usePagedList';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
 const PAGE_SIZE = 20;
+
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Code', type: 'text', get: (r) => r.code },
+  { label: 'Supplier', type: 'text', get: (r) => r.name },
+  { label: 'GST number', type: 'text', get: (r) => r.gstNumber },
+  { label: 'Mobile', type: 'text', get: (r) => r.mobile },
+  { label: 'Contact person', type: 'text', get: (r) => r.contactPerson },
+  { label: 'Supplies', type: 'text', get: (r) => (r.materials || []).join(', ') },
+  { label: 'Status', type: 'text', get: (r) => (r.isActive === false ? 'Inactive' : 'Active') },
+];
 
 export function Suppliers() {
   const [suppliers, setSuppliers] = useState(null);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useUrlState('q', '');
 
   useEffect(() => {
     let alive = true;
@@ -32,7 +46,7 @@ export function Suppliers() {
     if (!q) return suppliers || [];
     return (suppliers || []).filter((s) => [s.code, s.name, s.gstNumber, s.mobile, s.contactPerson, s.materials].some((v) => String(v || '').toLowerCase().includes(q)));
   }, [suppliers, search]);
-  const paged = usePagedList(visible, { pageSize: PAGE_SIZE, resetKey: search });
+  const paged = usePagedList(visible, { pageSize: PAGE_SIZE, resetKey: search, url: true });
 
   return (
     <div className="space-y-4">
@@ -41,11 +55,14 @@ export function Suppliers() {
         subtitle="Who the plant buys material from. Pick one when you receive raw material into the store."
         search={<SearchField value={search} onChange={setSearch} placeholder="Search name, GST, mobile" className="w-full sm:w-64" />}
         actions={
-          <PermissionGate permission="inventory:create">
+          <>
+            <ExportMenu onExport={(format) => exportTable(format, { fileName: `suppliers_${new Date().toISOString().slice(0, 10)}`, title: 'Suppliers', subtitle: `${visible.length} row(s)`, columns: EXPORT_COLUMNS, rows: visible })} disabled={!visible.length} />
+            <PermissionGate permission="inventory:create">
             <Link to="/suppliers/new" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-dark">
               New supplier
             </Link>
-          </PermissionGate>
+            </PermissionGate>
+          </>
         }
       />
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
@@ -86,7 +103,7 @@ export function Suppliers() {
               </tbody>
             </table>
           </div>
-          <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} pageSize={PAGE_SIZE} onPage={paged.setPage} />
+          <Pagination page={paged.page} totalPages={paged.totalPages} total={paged.total} pageSize={paged.pageSize} onPage={paged.setPage} onPageSize={paged.setPageSize} />
         </div>
       ) : null}
     </div>

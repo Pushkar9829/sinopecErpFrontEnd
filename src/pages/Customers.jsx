@@ -9,8 +9,11 @@ import { SearchField } from '../components/ui/SearchField';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
   { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -113,12 +116,24 @@ function PlusIcon() {
   );
 }
 
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Code', type: 'text', get: (r) => r.code },
+  { label: 'Customer', type: 'text', get: (r) => r.companyName || r.name },
+  { label: 'Contact person', type: 'text', get: (r) => r.contactPerson },
+  { label: 'Mobile', type: 'text', get: (r) => r.mobile },
+  { label: 'GST', type: 'text', get: (r) => r.gstNumber },
+  { label: 'Price category', type: 'text', get: (r) => r.priceCategory },
+  { label: 'Products', type: 'number', get: (r) => r.productCount },
+  { label: 'Status', type: 'text', get: (r) => (r.isActive === false ? 'Inactive' : 'Active') },
+];
+
 export function Customers() {
   const navigate = useNavigate();
   const { can } = usePermission();
   const [customers, setCustomers] = useState([]);
-  const [tab, setTab] = useState('all');
-  const [query, setQuery] = useState('');
+  const [tab, setTab] = useUrlState('tab', 'all');
+  const [query, setQuery] = useUrlState('q', '');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -164,7 +179,7 @@ export function Customers() {
     });
   }, [customers, tab, query]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}`, url: true });
 
   async function handleToggle(customer, isActive) {
     setError('');
@@ -196,6 +211,7 @@ export function Customers() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name, code, contact, GST" />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `customers_${new Date().toISOString().slice(0, 10)}`, title: 'Customers', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           <PermissionGate permission="accounts:create">
             <Link to="/billing/openings-import" className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
               Import opening balances
@@ -291,6 +307,7 @@ export function Customers() {
             total={list.total}
             pageSize={list.pageSize}
             onPage={list.setPage}
+            onPageSize={list.setPageSize}
           />
         )}
       </div>

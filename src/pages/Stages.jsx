@@ -11,8 +11,11 @@ import { SearchMultiSelect } from '../components/ui/SearchMultiSelect';
 import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
   { id: 'all', label: 'All', chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
@@ -124,6 +127,14 @@ function TrashIcon() {
   );
 }
 
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Stage', type: 'text', get: (r) => r.name },
+  { label: 'Machines', type: 'text', get: (r) => (r.machines || []).map((m) => m.name || m).join(', ') },
+  { label: 'People', type: 'text', get: (r) => (r.users || []).map((u) => u.fullName || u.username || u).join(', ') },
+  { label: 'Status', type: 'text', get: (r) => (r.isActive === false ? 'Inactive' : 'Active') },
+];
+
 export function Stages() {
   const navigate = useNavigate();
   const { can } = usePermission();
@@ -134,8 +145,8 @@ export function Stages() {
   const [machines, setMachines] = useState([]);
   const [users, setUsers] = useState([]);
   const [name, setName] = useState('');
-  const [query, setQuery] = useState('');
-  const [tab, setTab] = useState('all');
+  const [query, setQuery] = useUrlState('q', '');
+  const [tab, setTab] = useUrlState('tab', 'all');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -196,7 +207,7 @@ export function Stages() {
     });
   }, [stages, query, tab]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}`, url: true });
 
   async function handleCreate(event) {
     event.preventDefault();
@@ -258,6 +269,7 @@ export function Stages() {
         <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search stages" />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `stages_${new Date().toISOString().slice(0, 10)}`, title: 'Stages', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           {canCreate ? (
             <form onSubmit={handleCreate} className="flex items-center gap-2">
               <input
@@ -379,6 +391,7 @@ export function Stages() {
             total={list.total}
             pageSize={list.pageSize}
             onPage={list.setPage}
+            onPageSize={list.setPageSize}
           />
         )}
       </div>

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Tabs } from '../ui/Tabs';
-import { downloadTable, fmt, totalOf } from '../../lib/reports';
-import { ExportButton, GroupedBars, Kpi, KpiGrid, Panel, ReportTable, ShareBars } from './ReportKit';
+import { exportColumns, exportWorkbook } from '../../lib/exporters';
+import { fmt, totalOf } from '../../lib/reports';
+import { GroupedBars, Kpi, KpiGrid, Panel, ReportTable, ShareBars } from './ReportKit';
 
 const BILLED = '#2a78d6';
 const COLLECTED = '#1baf7a';
@@ -90,7 +91,11 @@ export function AccountsReport({ data }) {
   const gstRows = gst[gstTab];
 
   function downloadAllGst() {
-    for (const t of GST_TABS) downloadTable(`gstr1-${t.file}_${stamp}`, GST_COLUMNS[t.id], gst[t.id]);
+    // One Excel file with a sheet per GSTR-1 table, ready for the CA.
+    return exportWorkbook(
+      `GSTR-1_${stamp}`,
+      GST_TABS.map((t) => ({ name: t.file, title: `GSTR-1 ${t.label}`, subtitle: `${fmt.date(data.from)} to ${fmt.date(data.to)}`, columns: exportColumns(GST_COLUMNS[t.id]), rows: gst[t.id] }))
+    );
   }
 
   return (
@@ -147,7 +152,11 @@ export function AccountsReport({ data }) {
       <Panel
         title="GST summary for your CA (GSTR-1)"
         hint="Issued sale invoices in the period. Column names follow the GST portal's Excel template. Opening bills and cancelled invoices are left out."
-        actions={<ExportButton onClick={downloadAllGst} disabled={!gst.hsn.length} label="Download all 4 sheets" />}
+        actions={
+          <button type="button" onClick={downloadAllGst} disabled={!gst.hsn.length} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper disabled:opacity-50">
+            Download GSTR-1 Excel (4 sheets)
+          </button>
+        }
       >
         {gst.missingHsn ? (
           <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">

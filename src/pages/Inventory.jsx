@@ -9,8 +9,11 @@ import { SearchField } from '../components/ui/SearchField';
 import { CategoryBadge } from '../components/ui/Badge';
 import { usePagedList } from '../hooks/usePagedList';
 import { usePermission } from '../hooks/usePermission';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const CATEGORY_LABELS = {
   raw: 'Raw',
@@ -120,12 +123,24 @@ function PlusIcon() {
   );
 }
 
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Material', type: 'text', get: (r) => r.name },
+  { label: 'Category', type: 'text', get: (r) => r.category },
+  { label: 'Material type', type: 'text', get: (r) => r.materialType },
+  { label: 'Stage', type: 'text', get: (r) => r.stage?.name },
+  { label: 'Stock', type: 'number', get: (r) => r.quantity },
+  { label: 'Unit', type: 'text', get: (r) => r.unit },
+  { label: 'Unit price', type: 'money', get: (r) => (r.category === 'waste' ? null : r.unitPrice) },
+  { label: 'Supplier', type: 'text', get: (r) => r.supplierName },
+];
+
 export function Inventory() {
   const navigate = useNavigate();
   const { can } = usePermission();
   const [items, setItems] = useState([]);
-  const [tab, setTab] = useState('all');
-  const [query, setQuery] = useState('');
+  const [tab, setTab] = useUrlState('tab', 'all');
+  const [query, setQuery] = useUrlState('q', '');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -171,7 +186,7 @@ export function Inventory() {
     });
   }, [items, tab, query]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${tab}|${query}`, url: true });
 
   async function handleDelete(id) {
     if (!(await confirmAction({ message: 'Delete this material?', confirmLabel: 'Delete', danger: true }))) return;
@@ -192,6 +207,7 @@ export function Inventory() {
         <CategoryMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search name, type, unit, or stage" />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `inventory_${new Date().toISOString().slice(0, 10)}`, title: 'Inventory', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
           <Link to="/stages" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper">
             Stages
           </Link>
@@ -280,6 +296,7 @@ export function Inventory() {
             total={list.total}
             pageSize={list.pageSize}
             onPage={list.setPage}
+            onPageSize={list.setPageSize}
           />
         )}
       </div>

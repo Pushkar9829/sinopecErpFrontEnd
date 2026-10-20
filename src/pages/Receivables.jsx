@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { billingApi } from '../api/billing.api';
-import { saveBlob } from '../api/client';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { SearchField } from '../components/ui/SearchField';
 import { formatDate, formatMoney } from '../lib/sales';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
 const BUCKETS = [
   ['current', 'Not due'],
@@ -16,16 +18,13 @@ const BUCKETS = [
   ['d90plus', 'Over 90'],
 ];
 
-function csvCell(value) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
 export function Receivables() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const [search, setSearch] = useUrlState('q', '');
+  const [overdueParam, setOverdueParam] = useUrlState('overdue', '');
+  const onlyOverdue = overdueParam === '1';
+  const setOnlyOverdue = (on) => setOverdueParam(on ? '1' : '');
 
   useEffect(() => {
     billingApi
@@ -39,12 +38,26 @@ export function Receivables() {
     return (data?.rows || []).filter((r) => (!onlyOverdue || r.overdue > 0) && (!q || `${r.code} ${r.name} ${r.mobile}`.toLowerCase().includes(q)));
   }, [data, search, onlyOverdue]);
 
-  function exportCsv() {
-    const header = ['Code', 'Customer', 'Mobile', 'Outstanding', 'Overdue', ...BUCKETS.map(([, label]) => label), 'Advance', 'Credit limit', 'Oldest overdue (days)', 'Last payment'];
-    const lines = rows.map((r) =>
-      [r.code, r.name, r.mobile, r.outstanding, r.overdue, ...BUCKETS.map(([key]) => r.ageing[key]), r.advance, r.creditLimit || '', r.oldestOverdueDays, r.lastPaymentAt ? formatDate(r.lastPaymentAt) : ''].map(csvCell).join(',')
-    );
-    saveBlob(new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv' }), `receivables-${new Date().toISOString().slice(0, 10)}.csv`);
+  function download(format) {
+    return exportTable(format, {
+      fileName: `receivables_${new Date().toISOString().slice(0, 10)}`,
+      title: 'Receivables',
+      subtitle: `${rows.length} customer(s)${onlyOverdue ? ' with overdue bills' : ''}${search ? ` · search: ${search}` : ''}`,
+      rows,
+      totals: { outstanding: rows.reduce((t, r) => t + r.outstanding, 0), overdue: rows.reduce((t, r) => t + r.overdue, 0), advance: rows.reduce((t, r) => t + r.advance, 0) },
+      columns: [
+        { key: 'code', label: 'Code', type: 'text', get: (r) => r.code },
+        { key: 'name', label: 'Customer', type: 'text', get: (r) => r.name },
+        { key: 'mobile', label: 'Mobile', type: 'text', get: (r) => r.mobile },
+        { key: 'outstanding', label: 'Outstanding', type: 'money', get: (r) => r.outstanding },
+        { key: 'overdue', label: 'Overdue', type: 'money', get: (r) => r.overdue },
+        ...BUCKETS.map(([key, label]) => ({ key, label, type: 'money', get: (r) => r.ageing[key] })),
+        { key: 'advance', label: 'Advance', type: 'money', get: (r) => r.advance },
+        { key: 'creditLimit', label: 'Credit limit', type: 'money', get: (r) => r.creditLimit || null },
+        { key: 'oldest', label: 'Oldest overdue (days)', type: 'number', get: (r) => r.oldestOverdueDays },
+        { key: 'last', label: 'Last payment', type: 'date', get: (r) => r.lastPaymentAt },
+      ],
+    });
   }
 
   return (
@@ -54,9 +67,7 @@ export function Receivables() {
         subtitle="What every customer owes, how late it is, and what is paid in advance."
         search={<SearchField value={search} onChange={setSearch} placeholder="Search customer" className="w-full sm:w-56" />}
         actions={
-          <button type="button" onClick={exportCsv} disabled={!rows.length} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold disabled:opacity-50">
-            Download Excel (CSV)
-          </button>
+          <ExportMenu onExport={download} disabled={!rows.length} />
         }
       />
       {error ? <p className="text-sm text-red-700">{error}</p> : null}

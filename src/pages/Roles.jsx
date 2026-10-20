@@ -7,8 +7,11 @@ import { SearchField } from '../components/ui/SearchField';
 import { Badge } from '../components/ui/Badge';
 import { roleGroupTone } from '../components/ui/badgeTones';
 import { usePagedList } from '../hooks/usePagedList';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { useUrlState } from '../hooks/useListParams';
+import { exportTable } from '../lib/exporters';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 const MANAGER_SLUGS = ['sales_manager', 'production_manager', 'inventory_manager', 'dispatch_manager', 'accounts'];
 const OPERATOR_SLUGS = ['rolling_operator', 'printing_operator', 'cutting_operator', 'packing_operator'];
 
@@ -96,11 +99,18 @@ function groupLabel(slug) {
   return 'Role';
 }
 
+// Columns for the Download menu (every row that matches the filters).
+const EXPORT_COLUMNS = [
+  { label: 'Role', type: 'text', get: (r) => r.name },
+  { label: 'Description', type: 'text', get: (r) => r.description },
+  { label: 'Permissions', type: 'number', get: (r) => (r.permissions || []).length },
+];
+
 export function Roles() {
   const navigate = useNavigate();
   const [roles, setRoles] = useState([]);
-  const [group, setGroup] = useState('all');
-  const [query, setQuery] = useState('');
+  const [group, setGroup] = useUrlState('group', 'all');
+  const [query, setQuery] = useUrlState('q', '');
   const [error, setError] = useState('');
 
   const [loaded, setLoaded] = useState(false);
@@ -132,7 +142,7 @@ export function Roles() {
     });
   }, [roles, group, query]);
 
-  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${group}|${query}` });
+  const list = usePagedList(filtered, { pageSize: PAGE_SIZE, resetKey: `${group}|${query}`, url: true });
 
   return (
     <div className="space-y-5">
@@ -141,6 +151,7 @@ export function Roles() {
         <GroupMenu value={group} counts={counts} onChange={setGroup} />
         <div className="ml-auto">
           <SearchField value={query} onChange={setQuery} placeholder="Search roles" />
+          <ExportMenu onExport={(format) => exportTable(format, { fileName: `roles_${new Date().toISOString().slice(0, 10)}`, title: 'Roles', subtitle: `${filtered.length} row(s)`, columns: EXPORT_COLUMNS, rows: filtered })} disabled={!filtered.length} />
         </div>
       </div>
 
@@ -204,6 +215,7 @@ export function Roles() {
             total={list.total}
             pageSize={list.pageSize}
             onPage={list.setPage}
+            onPageSize={list.setPageSize}
           />
         )}
       </div>
