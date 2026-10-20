@@ -20,7 +20,7 @@ const pageLinks = [
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
   { to: '/rate-calculator', label: 'Rate calculator', permission: 'sales:read' },
   { to: '/receivables', label: 'Receivables', anyOf: ['accounts:read', 'sales:read'] },
-  { to: '/reports', label: 'Reports', anyOf: ['accounts:read'] },
+  { to: '/reports', label: 'Reports', anyOf: ['accounts:read', 'sales:read'] },
   { to: '/registers', label: 'Register', anyOf: [...SALES_ORDER_VIEW_KEYS, ...PRODUCTION_VIEW_KEYS] },
   { to: '/roles', label: 'Roles', permission: 'roles:read' },
   { to: '/sales-orders', label: 'Orders', anyOf: SALES_ORDER_VIEW_KEYS },

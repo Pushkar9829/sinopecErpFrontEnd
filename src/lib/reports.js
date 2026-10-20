@@ -60,7 +60,7 @@ export const fmt = {
 export function shortMoney(value) {
   const n = Math.abs(Number(value) || 0);
   const sign = value < 0 ? '-' : '';
-  const trim = (x) => x.toFixed(x >= 10 ? 0 : 1).replace(/\.0$/, '');
+  const trim = (x) => String(Number(x.toFixed(x >= 10 ? 1 : 2)));
   if (n >= 1e7) return `${sign}₹${trim(n / 1e7)}Cr`;
   if (n >= 1e5) return `${sign}₹${trim(n / 1e5)}L`;
   if (n >= 1e3) return `${sign}₹${trim(n / 1e3)}K`;

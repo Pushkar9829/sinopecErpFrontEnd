@@ -127,7 +127,7 @@ function AppRoutes() {
               <Route element={<ProtectedRoute anyOf={ANALYTICS_VIEW_KEYS} />}>
                 <Route path="analytics" element={<Analytics />} />
               </Route>
-              <Route element={<ProtectedRoute anyOf={['accounts:read']} />}>
+              <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
                 <Route path="reports" element={<Reports />} />
               </Route>
               <Route element={<ProtectedRoute anyOf={['production:read', 'inventory:read']} />}>

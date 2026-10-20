@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { reportsApi } from '../api/reports.api';
 import { AccountsReport } from '../components/reports/AccountsReport';
+import { OverviewReport } from '../components/reports/OverviewReport';
+import { SalesReport } from '../components/reports/SalesReport';
 import { PeriodPicker } from '../components/reports/ReportKit';
 import { presetPeriod } from '../lib/reports';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -12,7 +14,12 @@ import { formatDate } from '../lib/sales';
 
 // One place for every report. Each tab is shown only to the people whose work
 // it is; the API checks the same permission again.
-const REPORTS = [{ id: 'accounts', label: 'Accounts', permission: 'accounts:read', load: reportsApi.accounts, View: AccountsReport }];
+const REPORTS = [
+  // No role holds company:update, so only the owner (Super Admin) sees the overview.
+  { id: 'overview', label: 'Owner overview', permission: 'company:update', load: reportsApi.overview, View: OverviewReport },
+  { id: 'sales', label: 'Sales', permission: 'sales:read', load: reportsApi.sales, View: SalesReport },
+  { id: 'accounts', label: 'Accounts', permission: 'accounts:read', load: reportsApi.accounts, View: AccountsReport },
+];
 
 export function Reports() {
   const { can } = usePermission();
