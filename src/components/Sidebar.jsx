@@ -22,6 +22,7 @@ const pageLinks = [
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
   { to: '/purchases', label: 'Purchases', permission: 'accounts:read' },
   { to: '/cash-bank', label: 'Cash & bank', permission: 'accounts:read' },
+  { to: '/statements', label: 'Statements', permission: 'accounts:read' },
   { to: '/rate-calculator', label: 'Rate calculator', permission: 'sales:read' },
   { to: '/receivables', label: 'Receivables', anyOf: ['accounts:read', 'sales:read'] },
   { to: '/reports', label: 'Reports', anyOf: ['accounts:read', 'sales:read', 'production:read', 'dispatch:read', 'inventory:read'] },
