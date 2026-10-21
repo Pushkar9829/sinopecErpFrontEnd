@@ -96,6 +96,12 @@ export function InvoicePrint() {
             <p>Date {formatDate(invoice.invoiceDate)}</p>
             <p>Due {formatDate(invoice.dueDate)}</p>
             {invoice.orderNumber ? <p>Order {invoice.orderNumber}</p> : null}
+            {invoice.poNumber ? (
+              <p>
+                Buyer&apos;s order no. {invoice.poNumber}
+                {invoice.poDate ? ` dated ${formatDate(invoice.poDate)}` : ''}
+              </p>
+            ) : null}
             {isSale ? <p>Place of supply: {stateName(invoice.placeOfSupply)}</p> : null}
           </div>
         </header>

@@ -56,6 +56,14 @@ export function DraftOrderProposalEditor({ value, onChange, disabled = false }) 
           Delivery
           <input className={inputClass} value={value.deliveryDate || ''} disabled={disabled} onChange={(event) => onChange({ ...value, deliveryDate: event.target.value })} placeholder="10 Oct 2026 or Friday" />
         </label>
+        <label className="block text-sm font-semibold text-ink">
+          Customer PO no.
+          <input className={inputClass} value={value.poNumber || ''} disabled={disabled} onChange={(event) => onChange({ ...value, poNumber: event.target.value })} />
+        </label>
+        <label className="block text-sm font-semibold text-ink">
+          PO date
+          <input type="date" className={inputClass} value={/^\d{4}-\d{2}-\d{2}$/.test(value.poDate || '') ? value.poDate : ''} disabled={disabled} onChange={(event) => onChange({ ...value, poDate: event.target.value })} />
+        </label>
         <label className="block text-sm font-semibold text-ink sm:col-span-2">
           Billing address
           <input className={inputClass} value={value.customer.billingAddress || ''} disabled={disabled} onChange={(event) => setCustomer('billingAddress', event.target.value)} />

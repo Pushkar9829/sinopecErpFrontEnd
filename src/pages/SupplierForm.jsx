@@ -1,3 +1,4 @@
+import { useFieldRules } from '../hooks/useFieldRules';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { suppliersApi } from '../api/suppliers.api';
@@ -10,6 +11,7 @@ import { usePermission } from '../hooks/usePermission';
 const EMPTY = { name: '', gstNumber: '', contactPerson: '', mobile: '', email: '', address: '', materials: '', notes: '', isActive: true };
 
 export function SupplierForm() {
+  const rules = useFieldRules();
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
@@ -79,24 +81,24 @@ export function SupplierForm() {
           <Field label="Name" mark>
             <input required value={form.name} disabled={!canSave} onChange={set('name')} className={inputClass} />
           </Field>
-          <Field label="GST number">
+          <Field label="GST number" mark={rules('supplier', 'gstNumber')}>
             <input value={form.gstNumber} disabled={!canSave} onChange={set('gstNumber')} className={inputClass} placeholder="07ABCDE1234F1Z5" />
           </Field>
-          <Field label="Contact person">
+          <Field label="Contact person" mark={rules('supplier', 'contactPerson')}>
             <input value={form.contactPerson} disabled={!canSave} onChange={set('contactPerson')} className={inputClass} />
           </Field>
-          <Field label="Mobile">
+          <Field label="Mobile" mark={rules('supplier', 'mobile')}>
             <input value={form.mobile} disabled={!canSave} onChange={set('mobile')} className={inputClass} inputMode="tel" />
           </Field>
-          <Field label="Email">
+          <Field label="Email" mark={rules('supplier', 'email')}>
             <input type="email" value={form.email} disabled={!canSave} onChange={set('email')} className={inputClass} />
           </Field>
-          <Field label="What they supply">
+          <Field label="What they supply" mark={rules('supplier', 'materials')}>
             <input value={form.materials} disabled={!canSave} onChange={set('materials')} className={inputClass} placeholder="LDPE granules, ink, cartons" />
           </Field>
         </Grid>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Address">
+          <Field label="Address" mark={rules('supplier', 'address')}>
             <textarea rows={3} value={form.address} disabled={!canSave} onChange={set('address')} className={inputClass} />
           </Field>
           <Field label="Notes">

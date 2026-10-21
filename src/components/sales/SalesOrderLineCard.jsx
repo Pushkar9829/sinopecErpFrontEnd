@@ -1,3 +1,4 @@
+import { useFieldRules } from '../../hooks/useFieldRules';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ComboField } from '../ui/ComboField';
 import { Field, Grid, inputClass } from '../ui/FormField';
@@ -295,15 +296,15 @@ export function SalesOrderLineCard({
     });
   }
 
-  const { width: rollWidth, length: rollLength, thickness: rollGauge } = item;
+  const { width: rollWidth, length: rollLength, thickness: rollGauge, flap: rollFlap } = item;
   const { materialRate } = item.manufacturing;
   const rolls = routeHasRoll(item.productionRoute);
   const rollingInput = useMemo(
     () =>
       rolls && rollWidth && rollLength && rollGauge
-        ? { width: rollWidth, length: rollLength, gauge: rollGauge, materialRate, quantity: item.quantity, unit: item.unit }
+        ? { width: rollWidth, length: rollLength, flap: rollFlap, gauge: rollGauge, materialRate, quantity: item.quantity, unit: item.unit }
         : null,
-    [rolls, rollWidth, rollLength, rollGauge, materialRate, item.quantity, item.unit]
+    [rolls, rollWidth, rollLength, rollFlap, rollGauge, materialRate, item.quantity, item.unit]
   );
   const rollingCalc = useCalculation(rateCalculatorApi.rolling, rollingInput);
   const autoWeight = rollingInput && rollingCalc.result?.totalWeight > 0 ? String(rollingCalc.result.totalWeight) : '';
@@ -332,6 +333,9 @@ export function SalesOrderLineCard({
   const showCut = routeHasCut(item.productionRoute);
   const tone = PRODUCT_TONES[index % PRODUCT_TONES.length];
   const canRemove = canEdit && !hideTemplate && (removable ?? index > 0);
+  // ✱ on the inputs the owner made mandatory (Settings → Form fields).
+  const rules = useFieldRules();
+  const need = (key) => rules(hideTemplate ? 'template' : 'orderLine', key);
   const summary = [item.productCode, item.quantity ? `${item.quantity} ${item.unit || ''}`.trim() : '', routeLabel(item.productionRoute)]
     .filter(Boolean)
     .join(' · ');
@@ -369,16 +373,19 @@ export function SalesOrderLineCard({
       </Grid>
       <Grid>
         <ComboField label="Product" mark value={item.product} options={templates.map((template) => template.product)} disabled={!canEdit} onChange={(value) => update('product', value)} />
-        <Field label="Product code" mark>
+        <Field label="Product code" mark={need('productCode')}>
           <input value={item.productCode} disabled={!canEdit} onChange={(e) => update('productCode', e.target.value)} className={inputClass} />
         </Field>
-        <ComboField label="Product type" mark value={item.productType} options={opts(options, 'productType')} disabled={!canEdit} onChange={(value) => update('productType', value)} />
-        <ComboField label="Width" mark value={item.width} options={opts(options, 'width')} disabled={!canEdit} onChange={updateWidth} />
-        <ComboField label="Length" mark value={item.length} options={opts(options, 'length')} disabled={!canEdit} onChange={updateLength} />
-        <ComboField label="Material" mark value={item.material} options={opts(options, 'material')} disabled={!canEdit} onChange={(value) => update('material', value)} />
-        <ComboField label="Gauge" value={item.thickness} options={opts(options, 'thickness')} disabled={!canEdit} onChange={(value) => update('thickness', value)} />
-        <ComboField label="Colour" value={item.color} options={opts(options, 'color')} disabled={!canEdit} onChange={(value) => update('color', value)} />
-        <Field label="HSN code">
+        <ComboField label="Product type" mark={need('productType')} value={item.productType} options={opts(options, 'productType')} disabled={!canEdit} onChange={(value) => update('productType', value)} />
+        <ComboField label="Width" mark={need('width')} value={item.width} options={opts(options, 'width')} disabled={!canEdit} onChange={updateWidth} />
+        <ComboField label="Length" mark={need('length')} value={item.length} options={opts(options, 'length')} disabled={!canEdit} onChange={updateLength} />
+        <Field label="Flap" mark={need('flap')}>
+          <input value={item.flap || ''} disabled={!canEdit} onChange={(e) => update('flap', e.target.value)} placeholder="e.g. 4 (half is added to length)" className={inputClass} />
+        </Field>
+        <ComboField label="Material" mark={need('material')} value={item.material} options={opts(options, 'material')} disabled={!canEdit} onChange={(value) => update('material', value)} />
+        <ComboField label="Gauge" mark={need('thickness')} value={item.thickness} options={opts(options, 'thickness')} disabled={!canEdit} onChange={(value) => update('thickness', value)} />
+        <ComboField label="Colour" mark={need('color')} value={item.color} options={opts(options, 'color')} disabled={!canEdit} onChange={(value) => update('color', value)} />
+        <Field label="HSN code" mark={need('hsnCode')}>
           <input value={item.hsnCode || ''} disabled={!canEdit} onChange={(e) => update('hsnCode', e.target.value)} placeholder="3923" inputMode="numeric" className={inputClass} />
         </Field>
         {hideTemplate ? null : (
@@ -389,7 +396,7 @@ export function SalesOrderLineCard({
         <ComboField label="Unit" mark value={item.unit} options={opts(options, 'unit')} disabled={!canEdit} onChange={(value) => update('unit', value)} />
         {showCommercial ? (
           <>
-            <Field label="Rate">
+            <Field label="Rate" mark={need('rate')}>
               <input type="number" min="0" step="any" value={item.rate} disabled={!canEdit} onChange={(e) => update('rate', e.target.value)} className={inputClass} />
             </Field>
             {hideTemplate ? null : (
@@ -431,11 +438,11 @@ export function SalesOrderLineCard({
       <>
       <SpecSection title={sectionTitle('Rolling requirement')} dot="bg-orange-600" titleClass={titleClass}>
       <Grid>
-        <ComboField label="Material type" value={item.manufacturing.materialType} options={opts(options, 'materialType')} disabled={!canEdit} onChange={(value) => update('manufacturing.materialType', value)} />
-        <ComboField label="Material grade" value={item.manufacturing.materialGrade} options={opts(options, 'materialGrade')} disabled={!canEdit} onChange={(value) => update('manufacturing.materialGrade', value)} />
+        <ComboField label="Material type" mark={need('materialType')} value={item.manufacturing.materialType} options={opts(options, 'materialType')} disabled={!canEdit} onChange={(value) => update('manufacturing.materialType', value)} />
+        <ComboField label="Material grade" mark={need('materialGrade')} value={item.manufacturing.materialGrade} options={opts(options, 'materialGrade')} disabled={!canEdit} onChange={(value) => update('manufacturing.materialGrade', value)} />
         <Field
           label={autoWeight ? 'Required weight (kg, auto)' : 'Required weight (kg)'}
-          mark={!autoWeight && String(item.unit || '').toLowerCase() !== 'kg'}
+          mark={need('requiredWeight') && !autoWeight && String(item.unit || '').toLowerCase() !== 'kg'}
         >
           <input
             value={item.manufacturing.requiredWeight}
@@ -446,20 +453,20 @@ export function SalesOrderLineCard({
           />
         </Field>
         {showCommercial ? (
-          <Field label="Material rate (₹ / kg)">
+          <Field label="Material rate (₹ / kg)" mark={need('materialRate')}>
             <input type="number" min="0" step="any" value={item.manufacturing.materialRate} disabled={!canEdit} onChange={(e) => update('manufacturing.materialRate', e.target.value)} className={inputClass} />
           </Field>
         ) : null}
-        <ComboField label="Additives" value={item.manufacturing.additives} options={opts(options, 'additive')} disabled={!canEdit} onChange={(value) => update('manufacturing.additives', value)} />
+        <ComboField label="Additives" mark={need('additives')} value={item.manufacturing.additives} options={opts(options, 'additive')} disabled={!canEdit} onChange={(value) => update('manufacturing.additives', value)} />
         <RollingResult calc={rollingCalc} showCommercial={showCommercial} />
       </Grid>
       </SpecSection>
 
       <SpecSection title={sectionTitle('Roll output')} dot="bg-sky-600" titleClass={titleClass}>
       <Grid>
-        <ComboField label="Roll width" value={item.roll.width} options={opts(options, 'width')} disabled={!canEdit} onChange={(value) => update('roll.width', value)} />
-        <ComboField label="Roll length" value={item.roll.length} options={opts(options, 'length')} disabled={!canEdit} onChange={(value) => update('roll.length', value)} />
-        <Field label="Roll weight">
+        <ComboField label="Roll width" mark={need('rollWidth')} value={item.roll.width} options={opts(options, 'width')} disabled={!canEdit} onChange={(value) => update('roll.width', value)} />
+        <ComboField label="Roll length" mark={need('rollLength')} value={item.roll.length} options={opts(options, 'length')} disabled={!canEdit} onChange={(value) => update('roll.length', value)} />
+        <Field label="Roll weight" mark={need('rollWeight')}>
           <input value={item.roll.weight} disabled={!canEdit} onChange={(e) => update('roll.weight', e.target.value)} className={inputClass} />
         </Field>
       </Grid>
@@ -475,11 +482,11 @@ export function SalesOrderLineCard({
           value={item.printing.impressions}
           options={opts(options, 'printImpression')}
           disabled={!canEdit}
-          mark={!item.printing.colors}
+          mark={need('printColours') && !item.printing.colors}
           onChange={(value) => update('printing.impressions', value)}
         />
-        <ComboField label="Printing colours" mark={!impressionColours(item.printing.impressions)} value={item.printing.colors} options={opts(options, 'printColor')} disabled={!canEdit} onChange={(value) => update('printing.colors', value)} />
-        <ComboField label="Printing design" value={item.printing.design} options={opts(options, 'printDesign')} disabled={!canEdit} onChange={(value) => update('printing.design', value)} />
+        <ComboField label="Printing colours" mark={need('printColours') && !impressionColours(item.printing.impressions)} value={item.printing.colors} options={opts(options, 'printColor')} disabled={!canEdit} onChange={(value) => update('printing.colors', value)} />
+        <ComboField label="Printing design" mark={need('printDesign')} value={item.printing.design} options={opts(options, 'printDesign')} disabled={!canEdit} onChange={(value) => update('printing.design', value)} />
         <Field label="Note" className="sm:col-span-2 lg:col-span-3">
           <input value={item.printing.artwork} disabled={!canEdit} onChange={(e) => update('printing.artwork', e.target.value)} className={inputClass} />
         </Field>
@@ -491,7 +498,7 @@ export function SalesOrderLineCard({
       <>
       <SpecSection title={sectionTitle('Cutting / bag requirement')} dot="bg-violet-600" titleClass={titleClass}>
       <Grid>
-        <Field label="Gusset">
+        <Field label="Gusset" mark={need('gusset')}>
           <input value={item.bag.gusset} disabled={!canEdit} onChange={(e) => update('bag.gusset', e.target.value)} className={inputClass} />
         </Field>
       </Grid>
@@ -512,10 +519,10 @@ export function SalesOrderLineCard({
         </Field>
         {item.holes.required ? (
           <>
-            <ComboField label="No. of holes" value={item.holes.count} options={opts(options, 'holeCount')} disabled={!canEdit} onChange={(value) => update('holes.count', value)} />
-            <ComboField label="Hole type" value={item.holes.type} options={opts(options, 'holeType')} disabled={!canEdit} onChange={(value) => update('holes.type', value)} />
-            <ComboField label="Hole size" value={item.holes.size} options={opts(options, 'holeSize')} disabled={!canEdit} onChange={(value) => update('holes.size', value)} />
-            <ComboField label="Hole position" value={item.holes.position} options={opts(options, 'holePosition')} disabled={!canEdit} onChange={(value) => update('holes.position', value)} />
+            <ComboField label="No. of holes" mark={need('holeCount')} value={item.holes.count} options={opts(options, 'holeCount')} disabled={!canEdit} onChange={(value) => update('holes.count', value)} />
+            <ComboField label="Hole type" mark={need('holeType')} value={item.holes.type} options={opts(options, 'holeType')} disabled={!canEdit} onChange={(value) => update('holes.type', value)} />
+            <ComboField label="Hole size" mark={need('holeSize')} value={item.holes.size} options={opts(options, 'holeSize')} disabled={!canEdit} onChange={(value) => update('holes.size', value)} />
+            <ComboField label="Hole position" mark={need('holePosition')} value={item.holes.position} options={opts(options, 'holePosition')} disabled={!canEdit} onChange={(value) => update('holes.position', value)} />
           </>
         ) : null}
       </Grid>
@@ -535,7 +542,7 @@ export function SalesOrderLineCard({
           </select>
         </Field>
         {item.tape.required ? (
-          <ComboField label="Tape type" value={item.tape.type} options={opts(options, 'tapeType')} disabled={!canEdit} onChange={(value) => update('tape.type', value)} />
+          <ComboField label="Tape type" mark={need('tapeType')} value={item.tape.type} options={opts(options, 'tapeType')} disabled={!canEdit} onChange={(value) => update('tape.type', value)} />
         ) : null}
       </Grid>
       </SpecSection>

@@ -48,6 +48,7 @@ const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default:
 const JobSheet = lazy(() => import('./pages/JobSheet').then((m) => ({ default: m.JobSheet })));
 const StageSheet = lazy(() => import('./pages/StageSheet').then((m) => ({ default: m.StageSheet })));
 const TaskPrint = lazy(() => import('./pages/TaskPrint').then((m) => ({ default: m.TaskPrint })));
+const FormFields = lazy(() => import('./pages/FormFields').then((m) => ({ default: m.FormFields })));
 const Books = lazy(() => import('./pages/Books').then((m) => ({ default: m.Books })));
 const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
@@ -144,6 +145,10 @@ function AppRoutes() {
               </Route>
               <Route element={<ProtectedRoute permission="accounts:read" />}>
                 <Route path="books" element={<Books />} />
+              </Route>
+              {/* No role holds company:update, so only the owner gets here. */}
+              <Route element={<ProtectedRoute permission="company:update" />}>
+                <Route path="settings/form-fields" element={<FormFields />} />
               </Route>
               <Route element={<ProtectedRoute anyOf={['production:read', 'inventory:read']} />}>
                 <Route path="stages" element={<Stages />} />

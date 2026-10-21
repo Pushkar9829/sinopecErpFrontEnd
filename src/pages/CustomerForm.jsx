@@ -1,3 +1,4 @@
+import { useFieldRules } from '../hooks/useFieldRules';
 import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -50,6 +51,7 @@ const emptyForm = {
 };
 
 export function CustomerForm() {
+  const rules = useFieldRules();
   const { id } = useParams();
   const navigate = useNavigate();
   const { can } = usePermission();
@@ -156,25 +158,25 @@ export function CustomerForm() {
                 <input readOnly value={code} className={inputClass} />
               </Field>
             ) : null}
-            <Field label="Customer name">
+            <Field label="Customer name" mark>
               <input required value={form.name} disabled={!canSave} onChange={(e) => update('name', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Company name">
+            <Field label="Company name" mark={rules('customer', 'companyName')}>
               <input value={form.companyName} disabled={!canSave} onChange={(e) => update('companyName', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Contact person">
+            <Field label="Contact person" mark={rules('customer', 'contactPerson')}>
               <input value={form.contactPerson} disabled={!canSave} onChange={(e) => update('contactPerson', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Mobile">
+            <Field label="Mobile" mark={rules('customer', 'mobile')}>
               <input value={form.mobile} disabled={!canSave} onChange={(e) => update('mobile', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Email">
+            <Field label="Email" mark={rules('customer', 'email')}>
               <input type="email" value={form.email} disabled={!canSave} onChange={(e) => update('email', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="GST number">
+            <Field label="GST number" mark={rules('customer', 'gstNumber')}>
               <input value={form.gstNumber} disabled={!canSave} onChange={(e) => update('gstNumber', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Price category">
+            <Field label="Price category" mark={rules('customer', 'priceCategory')}>
               <input value={form.priceCategory} disabled={!canSave} onChange={(e) => update('priceCategory', e.target.value)} className={inputClass} />
             </Field>
             <Field label="Credit days">
@@ -185,10 +187,10 @@ export function CustomerForm() {
             </Field>
           </Grid>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Billing address">
+            <Field label="Billing address" mark={rules('customer', 'billingAddress')}>
               <textarea rows={3} value={form.billingAddress} disabled={!canSave} onChange={(e) => update('billingAddress', e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Shipping address">
+            <Field label="Shipping address" mark={rules('customer', 'shippingAddress')}>
               <textarea rows={3} value={form.shippingAddress} disabled={!canSave} onChange={(e) => update('shippingAddress', e.target.value)} className={inputClass} />
             </Field>
           </div>

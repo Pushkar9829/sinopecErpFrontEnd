@@ -212,6 +212,7 @@ function SalesOrderCalculator({ defaults }) {
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Width" value={input.width} onChange={set('width')} unit="in" />
           <Field label="Length" value={input.length} onChange={set('length')} unit="in" />
+          <Field label="Flap" value={input.flap ?? ''} onChange={set('flap')} unit="in" />
           <Field label="Gauge" value={input.gauge} onChange={set('gauge')} />
           <Field label="Divisor" value={input.divisor} onChange={set('divisor')} />
           <Field label="Material rate" value={input.materialRate} onChange={set('materialRate')} unit="₹ / kg" />

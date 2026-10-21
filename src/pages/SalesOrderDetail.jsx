@@ -477,6 +477,7 @@ export function SalesOrderDetail() {
         <Grid>
           <Value label="Order date">{formatDate(order.orderDate)}</Value>
           <Value label="Delivery date">{formatDate(order.deliveryDate)}</Value>
+          {order.customerPoNumber ? <Value label="Customer PO">{`${order.customerPoNumber}${order.customerPoDate ? ` dated ${formatDate(order.customerPoDate)}` : ''}`}</Value> : null}
           <Value label="Priority">
             <PriorityBadge priority={order.priority} />
           </Value>

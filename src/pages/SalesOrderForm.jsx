@@ -1,3 +1,4 @@
+import { useFieldRules } from '../hooks/useFieldRules';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { companyApi } from '../api/company.api';
@@ -108,6 +109,8 @@ const emptyHeader = () => ({
   customerId: '',
   orderDate: todayInput(),
   deliveryDate: '',
+  customerPoNumber: '',
+  customerPoDate: '',
   priority: 'normal',
   paymentTerms: 'credit',
   paymentMethod: 'bank_transfer',
@@ -124,6 +127,7 @@ const emptyHeader = () => ({
 });
 
 export function SalesOrderForm() {
+  const rules = useFieldRules();
   const { id } = useParams();
   const navigate = useNavigate();
   const { can } = usePermission();
@@ -200,6 +204,8 @@ export function SalesOrderForm() {
           customerId: order.customer?.id || '',
           orderDate: toDateInput(order.orderDate) || todayInput(),
           deliveryDate: toDateInput(order.deliveryDate),
+          customerPoNumber: order.customerPoNumber || '',
+          customerPoDate: toDateInput(order.customerPoDate),
           priority: order.priority || 'normal',
           paymentTerms: order.paymentTerms || 'credit',
           paymentMethod: order.paymentMethod || 'bank_transfer',
@@ -403,8 +409,14 @@ export function SalesOrderForm() {
             <Field label="Customer code">
               <input readOnly value={selectedCustomer?.code || ''} className={inputClass} />
             </Field>
-            <Field label="Delivery date (needed to submit)" mark>
+            <Field label={rules('order', 'deliveryDate', true) ? 'Delivery date (needed to submit)' : 'Delivery date'} mark={rules('order', 'deliveryDate', true)}>
               <input type="date" value={header.deliveryDate} disabled={!canSave} onChange={(e) => updateHeader('deliveryDate', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Customer PO no." mark={rules('order', 'customerPoNumber')}>
+              <input value={header.customerPoNumber} disabled={!canSave} onChange={(e) => updateHeader('customerPoNumber', e.target.value)} placeholder="Their purchase order number" className={inputClass} />
+            </Field>
+            <Field label="PO date" mark={rules('order', 'customerPoDate')}>
+              <input type="date" value={header.customerPoDate} disabled={!canSave} onChange={(e) => updateHeader('customerPoDate', e.target.value)} className={inputClass} />
             </Field>
             <Field label="Priority">
               <select value={header.priority} disabled={!canSave} onChange={(e) => updateHeader('priority', e.target.value)} className={inputClass}>
