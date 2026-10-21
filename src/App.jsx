@@ -51,6 +51,7 @@ const TaskPrint = lazy(() => import('./pages/TaskPrint').then((m) => ({ default:
 const FormFields = lazy(() => import('./pages/FormFields').then((m) => ({ default: m.FormFields })));
 const Purchases = lazy(() => import('./pages/Purchases').then((m) => ({ default: m.Purchases })));
 const SupplierAccount = lazy(() => import('./pages/SupplierAccount').then((m) => ({ default: m.SupplierAccount })));
+const CashBank = lazy(() => import('./pages/CashBank').then((m) => ({ default: m.CashBank })));
 const Books = lazy(() => import('./pages/Books').then((m) => ({ default: m.Books })));
 const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
@@ -148,6 +149,7 @@ function AppRoutes() {
               <Route element={<ProtectedRoute permission="accounts:read" />}>
                 <Route path="books" element={<Books />} />
                 <Route path="purchases" element={<Purchases />} />
+                <Route path="cash-bank" element={<CashBank />} />
                 <Route path="suppliers/:id/account" element={<SupplierAccount />} />
               </Route>
               {/* No role holds company:update, so only the owner gets here. */}
