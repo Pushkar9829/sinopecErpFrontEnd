@@ -48,6 +48,7 @@ const AuditLogs = lazy(() => import('./pages/AuditLogs').then((m) => ({ default:
 const JobSheet = lazy(() => import('./pages/JobSheet').then((m) => ({ default: m.JobSheet })));
 const StageSheet = lazy(() => import('./pages/StageSheet').then((m) => ({ default: m.StageSheet })));
 const TaskPrint = lazy(() => import('./pages/TaskPrint').then((m) => ({ default: m.TaskPrint })));
+const Books = lazy(() => import('./pages/Books').then((m) => ({ default: m.Books })));
 const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
 const Tasks = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.Tasks })));
@@ -140,6 +141,9 @@ function AppRoutes() {
               </Route>
               <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read', 'production:read', 'dispatch:read', 'inventory:read']} />}>
                 <Route path="reports" element={<Reports />} />
+              </Route>
+              <Route element={<ProtectedRoute permission="accounts:read" />}>
+                <Route path="books" element={<Books />} />
               </Route>
               <Route element={<ProtectedRoute anyOf={['production:read', 'inventory:read']} />}>
                 <Route path="stages" element={<Stages />} />

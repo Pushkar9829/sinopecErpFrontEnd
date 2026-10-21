@@ -10,6 +10,7 @@ const homeLink = { to: '/', label: 'Dashboard', end: true };
 const pageLinks = [
   { to: '/analytics', label: 'Analytics', anyOf: ANALYTICS_VIEW_KEYS },
   { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },
+  { to: '/books', label: 'Books', permission: 'accounts:read' },
   { to: '/customers', label: 'Customers', permission: 'sales:read' },
   // No role holds this key, so only the Super Admin (who passes every check) sees it.
   { to: '/company', label: 'Company details', permission: 'company:update' },
