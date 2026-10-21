@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { booksApi } from '../api/books.api';
+import { TdsSummary } from '../components/books/TdsSummary';
 import { VoucherForm } from '../components/books/VoucherForm';
 import { confirmAction } from '../components/ui/confirm';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'ledger', label: 'Ledger' },
   { id: 'trial', label: 'Trial balance' },
   { id: 'accounts', label: 'Accounts' },
+  { id: 'tds', label: 'TDS' },
   { id: 'setup', label: 'Setup & opening balances' },
 ];
 const TYPE_OPTIONS = [
@@ -780,6 +782,7 @@ export function Books() {
       {tab === 'daybook' ? <DayBook startDate={settings.startDate} canCancel={can('accounts:update')} refreshKey={refreshKey} onChanged={changed} /> : null}
       {tab === 'ledger' ? <Ledger accounts={accounts} startDate={settings.startDate} refreshKey={refreshKey} /> : null}
       {tab === 'trial' ? <TrialBalance refreshKey={refreshKey} onOpenLedger={openLedger} /> : null}
+      {tab === 'tds' ? <TdsSummary startDate={settings.startDate} refreshKey={refreshKey} onOpenLedger={openLedger} /> : null}
       {tab === 'accounts' ? <Accounts accounts={accounts} groups={settings.groups} canEdit={can('accounts:create')} canDelete={can('accounts:update')} onChanged={changed} onOpenLedger={openLedger} /> : null}
       {tab === 'setup' ? <Setup key={refreshKey} settings={settings} accounts={accounts} canEdit={can('accounts:update')} onChanged={changed} /> : null}
       <VoucherForm open={entryOpen} accounts={accounts} defaultBank={settings.defaultBank} onClose={() => setEntryOpen(false)} onSaved={changed} />

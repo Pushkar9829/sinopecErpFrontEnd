@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { billingApi } from '../api/billing.api';
+import { CreditNoteForm, WriteOffForm } from '../components/billing/CreditForms';
 import { Badge } from '../components/ui/Badge';
 import { confirmAction } from '../components/ui/confirm';
 import { Field, Grid, inputClass } from '../components/ui/FormField';
 import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
+import { useUrlState } from '../hooks/useListParams';
 import { usePermission } from '../hooks/usePermission';
 import { formatDate, formatMoney, toDateInput } from '../lib/sales';
 import { ExportMenu } from '../components/ui/ExportMenu';
@@ -20,7 +22,7 @@ const METHODS = [
   ['cash', 'Cash'],
   ['other', 'Other'],
 ];
-const ENTRY_LABEL = { invoice: 'Invoice', opening: 'Opening bill', receipt: 'Payment', order_payment: 'Payment on order', advance: 'Advance on order' };
+const ENTRY_LABEL = { invoice: 'Invoice', opening: 'Opening bill', receipt: 'Payment', order_payment: 'Payment on order', advance: 'Advance on order', credit_note: 'Credit note', write_off: 'Written off' };
 
 function Card({ label, value, tone = 'text-ink' }) {
   return (
@@ -32,7 +34,7 @@ function Card({ label, value, tone = 'text-ink' }) {
 }
 
 function PaymentForm({ customerId, invoices, open, onClose, onDone }) {
-  const [form, setForm] = useState({ receivedAt: toDateInput(new Date()), amount: '', method: 'bank_transfer', reference: '', note: '', invoiceId: '' });
+  const [form, setForm] = useState({ receivedAt: toDateInput(new Date()), amount: '', tds: '', tdsSection: '', method: 'bank_transfer', reference: '', note: '', invoiceId: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -41,7 +43,7 @@ function PaymentForm({ customerId, invoices, open, onClose, onDone }) {
     setBusy(true);
     setError('');
     try {
-      await billingApi.addReceipt(customerId, { ...form, amount: Number(form.amount), invoiceId: form.invoiceId || undefined });
+      await billingApi.addReceipt(customerId, { ...form, amount: Number(form.amount), tds: Number(form.tds) || 0, invoiceId: form.invoiceId || undefined });
       onDone('Payment recorded.');
     } catch (err) {
       setError(err.message);
@@ -72,7 +74,20 @@ function PaymentForm({ customerId, invoices, open, onClose, onDone }) {
           <Field label="Reference (UTR, cheque no.)">
             <input value={form.reference} onChange={set('reference')} className={inputClass} />
           </Field>
+          <Field label="TDS deducted by the customer (₹)">
+            <input type="number" min="0" step="0.01" value={form.tds} onChange={set('tds')} placeholder="0" className={inputClass} />
+          </Field>
+          {Number(form.tds) > 0 ? (
+            <Field label="TDS section">
+              <input value={form.tdsSection} onChange={set('tdsSection')} placeholder="e.g. 194Q, 194C" className={inputClass} />
+            </Field>
+          ) : null}
         </Grid>
+        {Number(form.tds) > 0 ? (
+          <p className="rounded-lg bg-paper px-3 py-2 text-sm">
+            Settles {formatMoney((Number(form.amount) || 0) + Number(form.tds))} of their bills: {formatMoney(Number(form.amount) || 0)} received + {formatMoney(Number(form.tds))} TDS (claimed against our income tax).
+          </p>
+        ) : null}
         <Field label="For bill">
           <select value={form.invoiceId} onChange={set('invoiceId')} className={inputClass}>
             <option value="">Oldest bills first (automatic)</option>
@@ -151,7 +166,8 @@ export function CustomerAccount() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [tab, setTab] = useState('bills');
+  const [tab, setTab] = useUrlState('tab', 'bills');
+  const [notes, setNotes] = useState([]);
   const [dialog, setDialog] = useState('');
 
   const load = useCallback(() => {
@@ -159,6 +175,10 @@ export function CustomerAccount() {
       .ledger(id)
       .then(setData)
       .catch((err) => setError(err.message));
+    billingApi
+      .creditNotes({ customer: id, status: 'all', pageSize: 200 })
+      .then((r) => setNotes(r.items))
+      .catch(() => {});
   }, [id]);
   useEffect(load, [load]);
 
@@ -174,6 +194,17 @@ export function CustomerAccount() {
     try {
       await billingApi.voidReceipt(receipt.id, reason);
       done('Payment voided.');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function cancelNote(n) {
+    const reason = await confirmAction({ title: `Cancel ${n.number}`, message: 'It stays on record, struck out, and the customer owes the amount again.', withReason: true, confirmLabel: 'Cancel', danger: true });
+    if (reason === null) return;
+    try {
+      await billingApi.cancelCreditNote(n.id, reason);
+      done(`${n.number} cancelled.`);
     } catch (err) {
       setError(err.message);
     }
@@ -259,6 +290,16 @@ export function CustomerAccount() {
                 Add opening bill
               </button>
             ) : null}
+            {canOpening ? (
+              <button type="button" onClick={() => setDialog('credit')} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
+                Credit note
+              </button>
+            ) : null}
+            {canCorrect && summary.outstanding > 0 ? (
+              <button type="button" onClick={() => setDialog('writeoff')} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold">
+                Write off
+              </button>
+            ) : null}
           </div>
         }
       />
@@ -282,11 +323,12 @@ export function CustomerAccount() {
             { id: 'bills', label: 'Bills', count: data.invoices.length },
             { id: 'ledger', label: 'Ledger', count: data.entries.length },
             { id: 'payments', label: 'Payments', count: data.receipts.length },
+            { id: 'notes', label: 'Credit notes & write-offs', count: notes.length },
           ]}
           value={tab}
           onChange={setTab}
         />
-        <ExportMenu onExport={(format) => downloadTab(format)} disabled={!(tab === 'bills' ? data.invoices : tab === 'ledger' ? data.entries : data.receipts).length} />
+        {tab !== 'notes' ? <ExportMenu onExport={(format) => downloadTab(format)} disabled={!(tab === 'bills' ? data.invoices : tab === 'ledger' ? data.entries : data.receipts).length} /> : null}
       </div>
 
       {tab === 'bills' ? (
@@ -379,7 +421,10 @@ export function CustomerAccount() {
             <li key={r.id} className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm ${r.voidedAt ? 'text-slate line-through' : ''}`}>
               <span className="font-semibold">{r.number}</span>
               <span>{formatDate(r.receivedAt)}</span>
-              <span>{formatMoney(r.amount)}</span>
+              <span>
+                {formatMoney(r.amount)}
+                {r.tds ? ` + TDS ${formatMoney(r.tds)}${r.tdsSection ? ` (${r.tdsSection})` : ''}` : ''}
+              </span>
               <span>{[r.method, r.reference].filter(Boolean).join(' · ')}</span>
               {r.voidedAt ? <span className="no-underline">Voided: {r.voidReason}</span> : canCorrect ? (
                 <button type="button" onClick={() => voidReceipt(r)} className="text-sm font-semibold text-rose-700">
@@ -392,6 +437,37 @@ export function CustomerAccount() {
         </ul>
       ) : null}
 
+      {tab === 'notes' ? (
+        <ul className="divide-y divide-line rounded-xl border border-line bg-white">
+          {notes.map((n) => (
+            <li key={n.id} className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm ${n.status === 'cancelled' ? 'text-slate line-through' : ''}`}>
+              {n.kind === 'credit_note' ? (
+                <Link to={`/credit-notes/${n.id}/print`} className="font-semibold text-accent hover:underline">
+                  {n.number}
+                </Link>
+              ) : (
+                <span className="font-semibold">{n.number}</span>
+              )}
+              <span>{n.kindLabel}</span>
+              <span>{formatDate(n.date)}</span>
+              <span>{formatMoney(n.total)}</span>
+              <span className="text-slate">
+                {[n.invoiceNumber && `against ${n.invoiceNumber}`, n.reason].filter(Boolean).join(' · ')}
+                {n.status === 'cancelled' ? ` · cancelled: ${n.cancelReason}` : ''}
+              </span>
+              {canCorrect && n.status === 'issued' ? (
+                <button type="button" onClick={() => cancelNote(n)} className="text-sm font-semibold text-rose-700">
+                  Cancel
+                </button>
+              ) : null}
+            </li>
+          ))}
+          {!notes.length ? <li className="px-3 py-4 text-sm text-slate">No credit notes or write-offs.</li> : null}
+        </ul>
+      ) : null}
+
+      {dialog === 'credit' ? <CreditNoteForm customerId={id} invoices={data.invoices} onClose={() => setDialog('')} onDone={done} /> : null}
+      {dialog === 'writeoff' ? <WriteOffForm customerId={id} invoices={data.invoices} outstanding={summary.outstanding} onClose={() => setDialog('')} onDone={done} /> : null}
       <PaymentForm customerId={id} invoices={data.invoices} open={dialog === 'payment'} onClose={() => setDialog('')} onDone={done} />
       <OpeningForm customerId={id} open={dialog === 'opening'} onClose={() => setDialog('')} onDone={done} />
     </div>

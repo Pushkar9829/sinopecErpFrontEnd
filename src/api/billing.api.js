@@ -19,4 +19,9 @@ export const billingApi = {
   importOpenings: (rows, apply) => api.post('/api/billing/openings/import', { rows, apply }),
   addReceipt: (customerId, payload) => changed(api.post(`/api/billing/customers/${customerId}/receipts`, payload)),
   voidReceipt: (id, reason) => changed(api.post(`/api/billing/receipts/${id}/void`, { reason })),
+  createCreditNote: (customerId, payload) => changed(api.post(`/api/billing/customers/${customerId}/credit-notes`, payload)),
+  writeOff: (customerId, payload) => changed(api.post(`/api/billing/customers/${customerId}/write-offs`, payload)),
+  creditNotes: (params = {}) => api.get(`/api/billing/credit-notes?${new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''))}`),
+  creditNote: (id) => api.get(`/api/billing/credit-notes/${id}`),
+  cancelCreditNote: (id, reason) => changed(api.post(`/api/billing/credit-notes/${id}/cancel`, { reason })),
 };

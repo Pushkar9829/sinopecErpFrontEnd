@@ -6,7 +6,7 @@ import { formatDate, toDateInput } from '../lib/sales';
 
 const rs = (n) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const drcr = (n) => `${rs(Math.abs(n))} ${n < 0 ? 'Cr' : 'Dr'}`;
-const LABEL = { invoice: 'Invoice', opening: 'Opening bill', receipt: 'Payment received', order_payment: 'Payment received', advance: 'Advance received' };
+const LABEL = { invoice: 'Invoice', opening: 'Opening bill', receipt: 'Payment received', order_payment: 'Payment received', advance: 'Advance received', credit_note: 'Credit note', write_off: 'Written off' };
 
 // Statement of account for a period, to send to the customer (Print / Save as PDF).
 export function CustomerStatement() {

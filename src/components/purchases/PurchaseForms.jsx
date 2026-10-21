@@ -209,7 +209,7 @@ export function BillForm({ open, supplierId: fixedSupplier, onClose, onSaved }) 
 
 export function SupplierPaymentForm({ open, supplierId, bills = [], onClose, onSaved }) {
   const [options, setOptions] = useState({ moneyAccounts: [], defaultBank: '' });
-  const [form, setForm] = useState({ amount: '', paidAt: toDateInput(new Date()), method: 'bank_transfer', fromAccount: '', billId: '', reference: '', note: '' });
+  const [form, setForm] = useState({ amount: '', tds: '', tdsSection: '', paidAt: toDateInput(new Date()), method: 'bank_transfer', fromAccount: '', billId: '', reference: '', note: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -225,7 +225,7 @@ export function SupplierPaymentForm({ open, supplierId, bills = [], onClose, onS
     setBusy(true);
     setError('');
     try {
-      await purchasesApi.pay(supplierId, form);
+      await purchasesApi.pay(supplierId, { ...form, tds: Number(form.tds) || 0 });
       onSaved?.();
       onClose();
     } catch (err) {
@@ -277,7 +277,20 @@ export function SupplierPaymentForm({ open, supplierId, bills = [], onClose, onS
           <Field label="Reference (UTR / cheque no.)">
             <input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className={inputClass} />
           </Field>
+          <Field label="TDS we deducted (₹)">
+            <input type="number" min="0" step="0.01" value={form.tds} onChange={(e) => setForm({ ...form, tds: e.target.value })} placeholder="0" className={inputClass} />
+          </Field>
+          {Number(form.tds) > 0 ? (
+            <Field label="TDS section">
+              <input value={form.tdsSection} onChange={(e) => setForm({ ...form, tdsSection: e.target.value })} placeholder="e.g. 194C, 194Q, 194J" className={inputClass} />
+            </Field>
+          ) : null}
         </div>
+        {Number(form.tds) > 0 ? (
+          <p className="rounded-lg bg-paper px-3 py-2 text-sm">
+            Settles ₹{amount(num(form.amount) + num(form.tds))} of their bills: ₹{amount(num(form.amount)) || '0.00'} paid + ₹{amount(num(form.tds))} TDS, which goes to TDS payable until you deposit it.
+          </p>
+        ) : null}
         {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p> : null}
         <Footer busy={busy} onClose={onClose} label="Save payment" />
       </form>

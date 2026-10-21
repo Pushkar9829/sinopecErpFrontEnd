@@ -18,6 +18,7 @@ export const booksApi = {
   createVoucher: (payload) => api.post('/api/books/vouchers', payload),
   cancelVoucher: (id, reason) => api.post(`/api/books/vouchers/${id}/cancel`, { reason }),
   ledger: (accountId, params) => api.get(`/api/books/ledger/${accountId}${qs(params)}`),
+  tds: (params) => api.get(`/api/books/tds${qs(params)}`),
   trialBalance: (asOf) => api.get(`/api/books/trial-balance${qs({ asOf })}`),
   sync: () => api.post('/api/books/sync', {}),
 };

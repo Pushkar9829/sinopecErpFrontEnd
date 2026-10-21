@@ -60,6 +60,33 @@ const GST_COLUMNS = {
     { key: 'cgst', label: 'Central Tax', format: 'money', csv: (r) => r.cgst },
     { key: 'sgst', label: 'State/UT Tax', format: 'money', csv: (r) => r.sgst },
   ],
+  cdnr: [
+    { key: 'gstin', label: 'GSTIN/UIN of Recipient' },
+    { key: 'customer', label: 'Receiver Name' },
+    { key: 'number', label: 'Note Number' },
+    { key: 'date', label: 'Note Date', format: 'date', csv: gstDate },
+    { key: 'noteType', label: 'Note Type' },
+    { key: 'placeOfSupply', label: 'Place Of Supply' },
+    { key: 'reverseCharge', label: 'Reverse Charge' },
+    { key: 'supplyType', label: 'Note Supply Type' },
+    { key: 'value', label: 'Note Value', format: 'money', csv: (r) => r.value },
+    { key: 'rate', label: 'Rate', format: 'pct', csv: (r) => r.rate },
+    { key: 'taxable', label: 'Taxable Value', format: 'money', csv: (r) => r.taxable },
+    { key: 'igst', label: 'Integrated Tax', format: 'money', csv: (r) => r.igst },
+    { key: 'cgst', label: 'Central Tax', format: 'money', csv: (r) => r.cgst },
+    { key: 'sgst', label: 'State/UT Tax', format: 'money', csv: (r) => r.sgst },
+  ],
+  cdnur: [
+    { key: 'urType', label: 'UR Type' },
+    { key: 'number', label: 'Note Number' },
+    { key: 'date', label: 'Note Date', format: 'date', csv: gstDate },
+    { key: 'noteType', label: 'Note Type' },
+    { key: 'placeOfSupply', label: 'Place Of Supply' },
+    { key: 'value', label: 'Note Value', format: 'money', csv: (r) => r.value },
+    { key: 'rate', label: 'Rate', format: 'pct', csv: (r) => r.rate },
+    { key: 'taxable', label: 'Taxable Value', format: 'money', csv: (r) => r.taxable },
+    { key: 'igst', label: 'Integrated Tax', format: 'money', csv: (r) => r.igst },
+  ],
   hsn: [
     { key: 'hsn', label: 'HSN' },
     { key: 'description', label: 'Description' },
@@ -77,6 +104,8 @@ const GST_TABS = [
   { id: 'b2b', label: 'B2B (registered buyers)', file: 'b2b' },
   { id: 'b2cl', label: 'B2C Large', file: 'b2cl' },
   { id: 'b2cs', label: 'B2C Small', file: 'b2cs' },
+  { id: 'cdnr', label: 'Credit notes (registered)', file: 'cdnr' },
+  { id: 'cdnur', label: 'Credit notes (B2C Large)', file: 'cdnur' },
   { id: 'hsn', label: 'HSN summary', file: 'hsn' },
 ];
 const GST_TOTAL_KEYS = ['value', 'taxable', 'igst', 'cgst', 'sgst', 'quantity', 'invoices'];
@@ -101,7 +130,7 @@ export function AccountsReport({ data }) {
   return (
     <div className="space-y-4">
       <KpiGrid>
-        <Kpi label="Billed" value={fmt.money(kpis.billed)} delta={kpis.billedDelta} hint={`${kpis.invoices} invoice(s)`} />
+        <Kpi label="Billed" value={fmt.money(kpis.billed)} delta={kpis.billedDelta} hint={`${kpis.invoices} invoice(s)${kpis.creditNotes ? ` · less credit notes ${fmt.money(kpis.creditNotes)}` : ''}`} />
         <Kpi label="Collected" value={fmt.money(kpis.collected)} delta={kpis.collectedDelta} hint={kpis.collectionRatio != null ? `${fmt.pct(kpis.collectionRatio)} of billed` : null} />
         <Kpi label="Outstanding now" value={fmt.money(kpis.outstanding)} hint={kpis.advance > 0 ? `Advance held ${fmt.money(kpis.advance)}` : 'All customers, today'} />
         <Kpi label="Overdue now" value={fmt.money(kpis.overdue)} tone={kpis.overdue > 0 ? 'bad' : 'good'} hint="Past the due date" />
@@ -151,10 +180,10 @@ export function AccountsReport({ data }) {
 
       <Panel
         title="GST summary for your CA (GSTR-1)"
-        hint="Issued sale invoices in the period. Column names follow the GST portal's Excel template. Opening bills and cancelled invoices are left out."
+        hint="Issued sale invoices and credit notes in the period. Column names follow the GST portal's Excel template. Opening bills, cancelled documents and write-offs are left out."
         actions={
           <button type="button" onClick={downloadAllGst} disabled={!gst.hsn.length} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper disabled:opacity-50">
-            Download GSTR-1 Excel (4 sheets)
+            Download GSTR-1 Excel ({GST_TABS.length} sheets)
           </button>
         }
       >
@@ -169,7 +198,15 @@ export function AccountsReport({ data }) {
       </Panel>
       <ReportTable
         title={GST_TABS.find((t) => t.id === gstTab).label}
-        hint={gstTab === 'b2cl' ? 'Inter-state invoices over ₹1,00,000 to buyers without a GSTIN.' : gstTab === 'b2cs' ? 'Other invoices to buyers without a GSTIN, grouped by state and rate.' : null}
+        hint={
+          gstTab === 'b2cl'
+            ? 'Inter-state invoices over ₹1,00,000 to buyers without a GSTIN.'
+            : gstTab === 'b2cs'
+              ? 'Other invoices to buyers without a GSTIN, grouped by state and rate, less their credit notes.'
+              : gstTab === 'hsn'
+                ? 'Sales less credit notes, by HSN code and rate.'
+                : null
+        }
         fileName={`gstr1-${gstTab}_${stamp}`}
         columns={GST_COLUMNS[gstTab]}
         rows={gstRows}
@@ -233,6 +270,28 @@ export function AccountsReport({ data }) {
         ]}
         rows={data.invoiceRegister.map((r) => ({ ...r, muted: r.status === 'cancelled' }))}
         totals={totalOf(data.invoiceRegister.filter((r) => r.status === 'issued'), ['taxable', 'cgst', 'sgst', 'igst', 'total'])}
+      />
+
+      <ReportTable
+        title="Credit notes & write-offs"
+        hint="Credit notes lower sales and GST; write-offs clear debts as an expense."
+        fileName={`credit-notes_${stamp}`}
+        columns={[
+          { key: 'date', label: 'Date', format: 'date' },
+          { key: 'number', label: 'Number', render: (r) => (r.kind === 'credit_note' ? <Link to={`/credit-notes/${r.id}/print`} className="font-semibold text-accent hover:underline">{r.number}</Link> : r.number), csv: (r) => r.number },
+          { key: 'kind', label: 'Kind', render: (r) => (r.kind === 'credit_note' ? 'Credit note' : 'Write-off'), csv: (r) => (r.kind === 'credit_note' ? 'Credit note' : 'Write-off') },
+          { key: 'customer', label: 'Customer', render: (r) => <Link to={`/customers/${r.customerId}/account?tab=notes`} className="text-accent hover:underline">{r.customer}</Link>, csv: (r) => r.customer },
+          { key: 'invoiceNumber', label: 'Against' },
+          { key: 'taxable', label: 'Taxable', format: 'money', csv: moneyCsv('taxable') },
+          { key: 'cgst', label: 'CGST', format: 'money', csv: moneyCsv('cgst') },
+          { key: 'sgst', label: 'SGST', format: 'money', csv: moneyCsv('sgst') },
+          { key: 'igst', label: 'IGST', format: 'money', csv: moneyCsv('igst') },
+          { key: 'total', label: 'Total', format: 'money', csv: moneyCsv('total') },
+          { key: 'reason', label: 'Reason' },
+        ]}
+        rows={data.creditNoteRegister}
+        totals={totalOf(data.creditNoteRegister, ['taxable', 'cgst', 'sgst', 'igst', 'total'])}
+        empty="No credit notes or write-offs in the period"
       />
 
       <ReportTable

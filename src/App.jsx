@@ -24,6 +24,7 @@ const Suppliers = lazy(() => import('./pages/Suppliers').then((m) => ({ default:
 const SupplierForm = lazy(() => import('./pages/SupplierForm').then((m) => ({ default: m.SupplierForm })));
 const CustomerAccount = lazy(() => import('./pages/CustomerAccount').then((m) => ({ default: m.CustomerAccount })));
 const OpeningImport = lazy(() => import('./pages/OpeningImport').then((m) => ({ default: m.OpeningImport })));
+const CreditNotePrint = lazy(() => import('./pages/CreditNotePrint').then((m) => ({ default: m.CreditNotePrint })));
 const InvoicePrint = lazy(() => import('./pages/InvoicePrint').then((m) => ({ default: m.InvoicePrint })));
 const Receivables = lazy(() => import('./pages/Receivables').then((m) => ({ default: m.Receivables })));
 const CustomerStatement = lazy(() => import('./pages/CustomerStatement').then((m) => ({ default: m.CustomerStatement })));
@@ -71,6 +72,7 @@ function AppRoutes() {
           <Route element={<ProtectedRoute />}>
             <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
               <Route path="invoices/:id/print" element={<InvoicePrint />} />
+              <Route path="credit-notes/:id/print" element={<CreditNotePrint />} />
               <Route path="customers/:id/statement" element={<CustomerStatement />} />
             </Route>
             {/* Printable floor sheets (no sidebar). */}
