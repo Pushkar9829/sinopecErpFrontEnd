@@ -1,3 +1,4 @@
+import { usePermission } from '../hooks/usePermission';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { suppliersApi } from '../api/suppliers.api';
@@ -26,6 +27,7 @@ const EXPORT_COLUMNS = [
 ];
 
 export function Suppliers() {
+  const canSeeAccounts = usePermission().can('accounts:read');
   const [suppliers, setSuppliers] = useState(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useUrlState('q', '');
@@ -90,7 +92,17 @@ export function Suppliers() {
                       <Link to={`/suppliers/${s.id}`} className="font-semibold text-accent hover:underline">
                         {s.name}
                       </Link>
-                      <div className="text-xs text-slate">{s.code}</div>
+                      <div className="text-xs text-slate">
+                        {s.code}
+                        {canSeeAccounts ? (
+                          <>
+                            {' · '}
+                            <Link to={`/suppliers/${s.id}/account`} className="text-accent hover:underline">
+                              Bills & payments
+                            </Link>
+                          </>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-3 py-2">{s.gstNumber || '—'}</td>
                     <td className="px-3 py-2">{[s.contactPerson, s.mobile].filter(Boolean).join(' · ') || '—'}</td>

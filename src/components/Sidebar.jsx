@@ -20,6 +20,7 @@ const pageLinks = [
   { to: '/inventory', label: 'Inventory', permission: 'inventory:read' },
   { to: '/machines', label: 'Machines', anyOf: ['production:read', 'inventory:read'] },
   { to: '/sales-settings', label: 'Product setup', permission: 'sales:read' },
+  { to: '/purchases', label: 'Purchases', permission: 'accounts:read' },
   { to: '/rate-calculator', label: 'Rate calculator', permission: 'sales:read' },
   { to: '/receivables', label: 'Receivables', anyOf: ['accounts:read', 'sales:read'] },
   { to: '/reports', label: 'Reports', anyOf: ['accounts:read', 'sales:read', 'production:read', 'dispatch:read', 'inventory:read'] },

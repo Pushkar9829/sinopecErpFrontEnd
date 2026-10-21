@@ -8,7 +8,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePermission } from '../hooks/usePermission';
 
-const EMPTY = { name: '', gstNumber: '', contactPerson: '', mobile: '', email: '', address: '', materials: '', notes: '', isActive: true };
+const EMPTY = { name: '', gstNumber: '', contactPerson: '', mobile: '', email: '', address: '', materials: '', creditDays: '', notes: '', isActive: true };
 
 export function SupplierForm() {
   const rules = useFieldRules();
@@ -31,7 +31,7 @@ export function SupplierForm() {
       .get(id)
       .then((s) => {
         if (!alive) return;
-        setForm(Object.fromEntries(Object.keys(EMPTY).map((key) => [key, s[key] ?? EMPTY[key]])));
+        setForm(Object.fromEntries(Object.keys(EMPTY).map((key) => [key, key === 'creditDays' ? (s.creditDays == null ? '' : String(s.creditDays)) : s[key] ?? EMPTY[key]])));
         setCode(s.code);
         setLoaded(true);
       })
@@ -92,6 +92,9 @@ export function SupplierForm() {
           </Field>
           <Field label="Email" mark={rules('supplier', 'email')}>
             <input type="email" value={form.email} disabled={!canSave} onChange={set('email')} className={inputClass} />
+          </Field>
+          <Field label="Credit days (to pay their bills)">
+            <input type="number" min="0" value={form.creditDays} disabled={!canSave} onChange={set('creditDays')} placeholder="Company default" className={inputClass} />
           </Field>
           <Field label="What they supply" mark={rules('supplier', 'materials')}>
             <input value={form.materials} disabled={!canSave} onChange={set('materials')} className={inputClass} placeholder="LDPE granules, ink, cartons" />

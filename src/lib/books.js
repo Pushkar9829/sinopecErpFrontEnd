@@ -21,7 +21,7 @@ export const MONEY_GROUPS = ['bank', 'cash'];
 export function accountOptions(accounts, { onlyGroups, exceptGroups } = {}) {
   const groups = new Map();
   for (const a of accounts) {
-    if (a.customer || a.isActive === false) continue;
+    if (a.customer || a.supplier || a.isActive === false) continue;
     if (onlyGroups && !onlyGroups.includes(a.group)) continue;
     if (exceptGroups && exceptGroups.includes(a.group)) continue;
     if (!groups.has(a.groupLabel)) groups.set(a.groupLabel, []);

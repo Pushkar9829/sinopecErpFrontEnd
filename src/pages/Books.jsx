@@ -441,8 +441,8 @@ function Accounts({ accounts, groups, canEdit, canDelete, onChanged, onOpenLedge
   const [showCustomers, setShowCustomers] = useState(false);
   const [form, setForm] = useState({ name: '', group: 'indirect_expenses' });
   const [error, setError] = useState('');
-  const shown = accounts.filter((a) => (showCustomers || !a.customer) && (!query || `${a.name} ${a.groupLabel}`.toLowerCase().includes(query.toLowerCase())));
-  const grouped = accountOptions(shown.map((a) => ({ ...a, customer: null })));
+  const shown = accounts.filter((a) => (showCustomers || (!a.customer && !a.supplier)) && (!query || `${a.name} ${a.groupLabel}`.toLowerCase().includes(query.toLowerCase())));
+  const grouped = accountOptions(shown.map((a) => ({ ...a, customer: null, supplier: null })));
 
   async function add(event) {
     event.preventDefault();
@@ -492,7 +492,7 @@ function Accounts({ accounts, groups, canEdit, canDelete, onChanged, onOpenLedge
         <SearchField value={query} onChange={setQuery} placeholder="Search accounts" />
         <label className="flex items-center gap-2 text-sm font-semibold">
           <input type="checkbox" checked={showCustomers} onChange={(e) => setShowCustomers(e.target.checked)} />
-          Show customer accounts
+          Show customer and supplier accounts
         </label>
         <div className="ml-auto">
           <ExportMenu
@@ -587,12 +587,12 @@ function Accounts({ accounts, groups, canEdit, canDelete, onChanged, onOpenLedge
 
 function Setup({ settings, accounts, canEdit, onChanged }) {
   const [form, setForm] = useState({ startDate: settings.startDate, lockDate: settings.lockDate, defaultBank: settings.defaultBank || '' });
-  const editable = accounts.filter((a) => !a.customer);
+  const editable = accounts.filter((a) => !a.customer && !a.supplier);
   const [openings, setOpenings] = useState(() => Object.fromEntries(editable.map((a) => [a.id, { debit: a.openingDr || '', credit: a.openingCr || '' }])));
   const [trial, setTrial] = useState(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
-  const customersOpening = accounts.filter((a) => a.customer).reduce((s, a) => s + (a.opening || 0), 0);
+  const customersOpening = accounts.filter((a) => a.customer || a.supplier).reduce((s, a) => s + (a.opening || 0), 0);
   const typedDr = Object.values(openings).reduce((s, o) => s + (Number(o.debit) || 0), 0);
   const typedCr = Object.values(openings).reduce((s, o) => s + (Number(o.credit) || 0), 0);
   const difference = Math.round((typedDr + customersOpening - typedCr) * 100) / 100;
