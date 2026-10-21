@@ -427,9 +427,15 @@ function YearEnd({ settings, canCorrect, isOwner, onSettings }) {
             <Field label="Lock up to" className="text-sm">
               <input type="date" value={lock} max={today} onChange={(e) => setLock(e.target.value)} className={inputClass} />
             </Field>
-            <button type="button" onClick={() => run(() => booksApi.saveSettings({ lockDate: lock }), lock ? `Locked up to ${lock}.` : 'Unlocked.')} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">
-              {lock ? 'Lock' : 'Unlock'}
+            <button
+              type="button"
+              disabled={!lock && !settings.lockDate}
+              onClick={() => run(() => booksApi.saveSettings({ lockDate: lock }), lock ? `Locked up to ${lock}.` : 'Unlocked.')}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {lock || !settings.lockDate ? 'Lock' : 'Unlock'}
             </button>
+            {!isOwner && settings.lockDate ? <span className="text-xs text-slate">Only the owner can move the lock back.</span> : null}
           </div>
         ) : null}
       </section>

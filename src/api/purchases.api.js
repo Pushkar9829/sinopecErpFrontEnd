@@ -1,7 +1,7 @@
 import { api } from './client';
 
 const qs = (params = {}) => {
-  const text = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '' && v !== 'all')).toString();
+  const text = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
   return text ? `?${text}` : '';
 };
 

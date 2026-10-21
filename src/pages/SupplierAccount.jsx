@@ -204,7 +204,10 @@ export function SupplierAccount() {
             <li key={p.id} className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm ${p.voidedAt ? 'text-slate line-through' : ''}`}>
               <span className="font-semibold">{p.number}</span>
               <span>{formatDate(p.paidAt)}</span>
-              <span>{formatMoney(p.amount)}</span>
+              <span>
+                {formatMoney(p.amount)}
+                {p.tds ? ` + TDS ${formatMoney(p.tds)}${p.tdsSection ? ` (${p.tdsSection})` : ''}` : ''}
+              </span>
               <span>{[p.methodLabel, p.reference].filter(Boolean).join(' · ')}</span>
               {p.voidedAt ? <span className="no-underline">Voided: {p.voidReason}</span> : null}
             </li>

@@ -190,7 +190,9 @@ function Payments({ canVoid }) {
         { label: 'Supplier', type: 'text', get: (p) => p.supplierName },
         { label: 'Mode', type: 'text', get: (p) => p.methodLabel },
         { label: 'Reference', type: 'text', get: (p) => p.reference },
-        { label: 'Amount', type: 'money', get: (p) => p.amount },
+        { label: 'Amount paid', type: 'money', get: (p) => p.amount },
+        { label: 'TDS deducted', type: 'money', get: (p) => p.tds || null },
+        { label: 'TDS section', type: 'text', get: (p) => p.tdsSection || '' },
         { label: 'Status', type: 'text', get: (p) => (p.voidedAt ? `Voided: ${p.voidReason}` : 'Paid') },
       ],
     });
@@ -227,7 +229,10 @@ function Payments({ canVoid }) {
                     <span className="block text-xs text-slate">{p.number}</span>
                   </td>
                   <td className={td}>{[p.methodLabel, p.reference].filter(Boolean).join(' · ')}</td>
-                  <td className={`${right} font-semibold`}>{amount(p.amount)}</td>
+                  <td className={`${right} font-semibold`}>
+                    {amount(p.amount)}
+                    {p.tds ? <span className="block text-xs font-normal text-slate">+ TDS {amount(p.tds)}{p.tdsSection ? ` (${p.tdsSection})` : ''}</span> : null}
+                  </td>
                   <td className={`${td} text-right`}>
                     {canVoid && !p.voidedAt ? (
                       <button type="button" onClick={() => voidIt(p)} className="text-sm font-semibold text-red-700 hover:underline">

@@ -14,7 +14,7 @@ import { formatDate, formatMoney, toDateInput } from '../lib/sales';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { exportTable, localToday } from '../lib/exporters';
 
-const PAY_STATE = { paid: ['Paid', 'success'], partly_paid: ['Part paid', 'warning'], unpaid: ['Unpaid', 'muted'] };
+const PAY_STATE = { paid: ['Paid', 'success'], credited: ['Cleared by credit note / write-off', 'muted'], partly_paid: ['Part paid', 'warning'], unpaid: ['Unpaid', 'muted'] };
 const METHODS = [
   ['bank_transfer', 'Bank transfer'],
   ['upi', 'UPI'],
@@ -359,7 +359,10 @@ export function CustomerAccount() {
                     <td className="px-3 py-2">{formatDate(inv.invoiceDate)}</td>
                     <td className="px-3 py-2">{formatDate(inv.dueDate)}</td>
                     <td className="px-3 py-2 text-right">{formatMoney(inv.total)}</td>
-                    <td className="px-3 py-2 text-right">{formatMoney(inv.paid)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {formatMoney(inv.paid)}
+                      {inv.credited ? <div className="text-xs text-slate">incl. {formatMoney(inv.credited)} credit / write-off</div> : null}
+                    </td>
                     <td className="px-3 py-2 text-right font-semibold">{formatMoney(inv.balance)}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
