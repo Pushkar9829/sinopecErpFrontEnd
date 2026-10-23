@@ -27,6 +27,7 @@ const STAGE_COLORS = {
   rolling: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
   printing: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
   cutting: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
+  other: { chip: 'border-amber-300 bg-amber-100 text-amber-900', dot: 'bg-amber-600' },
   dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
   delivery: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
   packing: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
@@ -182,7 +183,7 @@ export function Stages() {
     [machines]
   );
   const userOptions = useMemo(
-    () => users.map((user) => ({ id: user.id, label: user.fullName, hint: user.role?.name || user.username })),
+    () => users.map((user) => ({ id: user.id, label: user.fullName, hint: user.role?.name || '' })),
     [users]
   );
 

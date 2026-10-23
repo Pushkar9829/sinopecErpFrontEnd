@@ -61,7 +61,9 @@ function sheetOf({ name, title, subtitle, columns, rows, totals }) {
       columns.map((c) => {
         const value = cellValue(c, row);
         if (value === null) return null;
-        if (value instanceof Date) return { value, type: Date, format: 'dd-mmm-yyyy' };
+        // write-excel-file writes dates as UTC; pass the viewer's calendar day
+        // at UTC midnight or Indian dates show a day early in Excel.
+        if (value instanceof Date) return { value: new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate())), type: Date, format: 'dd-mmm-yyyy' };
         if (typeof value === 'number') return { value, type: Number, format: c.type === 'money' ? '#,##0.00' : '#,##0.##' };
         return { value: String(value), type: String };
       })

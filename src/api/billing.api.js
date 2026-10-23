@@ -11,6 +11,7 @@ export const billingApi = {
   invoiceDraft: (orderId) => api.get(`/api/billing/orders/${orderId}/invoice-draft`),
   createInvoice: (orderId, payload) => changed(api.post(`/api/billing/orders/${orderId}/invoices`, payload)),
   receivables: () => api.get('/api/billing/receivables'),
+  depositAccounts: () => api.get('/api/billing/deposit-accounts'),
   invoices: (params = {}) => api.get(`/api/billing/invoices?${new URLSearchParams(Object.entries(params).filter(([, v]) => v))}`),
   invoice: (id) => api.get(`/api/billing/invoices/${id}`),
   cancelInvoice: (id, reason) => changed(api.post(`/api/billing/invoices/${id}/cancel`, { reason })),

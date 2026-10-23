@@ -31,12 +31,13 @@ const DONE_LABEL = {
   rolling: 'Rolled',
   printing: 'Printed',
   cutting: 'Cut',
+  other: 'Done',
   dispatch: 'Dispatched',
 };
 
 function jobFlag(job) {
   if (job.pickup?.qty) return 'working';
-  if (job.readyQty) return 'ready';
+  if (job.readyQty || job.noStock) return 'ready';
   return 'waiting';
 }
 
@@ -171,6 +172,7 @@ function FloorDashboard() {
                   <td className="px-3 py-2 font-normal">{job.customerCode || '—'}</td>
                   <td className="px-3 py-2">
                     <p className="font-semibold">{job.product}</p>
+                    {job.otherProcess && job.stage === 'other' ? <p className="text-sm font-semibold text-amber-900">{job.otherProcess}</p> : null}
                     {job.requirements?.size ? <p className="text-sm font-normal text-slate">{job.requirements.size}</p> : null}
                   </td>
                   {stage === 'printing' ? (

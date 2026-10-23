@@ -29,8 +29,8 @@ import {
   routeHasCut,
   routeHasPrint,
   routeHasRoll,
-  routeLabel,
-  stageLabel,
+  itemStageLabel,
+  lineRouteLabel,
   statusLabel,
   toDateInput,
   PRODUCTION_VIEW_KEYS,
@@ -151,15 +151,30 @@ export function SalesOrderDetail() {
   }
 
   // On credit hold the owner may still approve, with a reason that is kept on the order.
+  // The server checks credit afresh on approve, so the saved check can be stale:
+  // ask for the reason when the server says the order is on hold (409).
   async function handleApprove() {
-    const hold = order.creditCheck?.status === 'hold';
-    if (!hold) {
-      await run(() => salesOrdersApi.approve(id), 'Order approved.');
+    setError('');
+    setNotice('');
+    setBusy(true);
+    let holdMessage = '';
+    try {
+      await salesOrdersApi.approve(id);
+      await load();
+      setNotice('Order approved.');
       return;
+    } catch (err) {
+      if (err.status === 409 && /credit/i.test(err.message || '')) holdMessage = err.message;
+      else setError(err.message);
+    } finally {
+      setBusy(false);
     }
+    if (!holdMessage) return;
+    // The hold may be new to this screen: show it.
+    await load().catch(() => {});
     const reason = await confirmAction({
       title: 'Approve on credit hold?',
-      message: `${order.creditCheck.reasons.join('. ')}. Give the reason for approving anyway; it is kept on the order.`,
+      message: `${holdMessage.replace(/\s*Give a reason to approve anyway\.?\s*$/i, '')} Give the reason for approving anyway; it is kept on the order.`,
       withReason: true,
       reasonRequired: true,
       confirmLabel: 'Approve anyway',
@@ -232,7 +247,8 @@ export function SalesOrderDetail() {
     (isSuperAdmin || (earlyStatus ? can('sales:update') : can('production:update')));
   const canReturn =
     (order.status === 'submitted' && (isSuperAdmin || can('sales:update'))) || (order.status === 'approved' && isSuperAdmin);
-  const canAttach = can('sales:update') && !['cancelled', 'completed', 'dispatched'].includes(order.status);
+  // Matches the server: no new files once the order has left the factory.
+  const canAttach = can('sales:update') && !['cancelled', 'completed', 'dispatched', 'delivered'].includes(order.status);
   const canRemoveAttachment = can('sales:update') && (isSuperAdmin || ['draft', 'submitted'].includes(order.status));
   const canDelete = order.status === 'draft' && can('sales:delete');
   const canDuplicate = can('sales:create');
@@ -559,7 +575,7 @@ export function SalesOrderDetail() {
                   <td className="px-3 py-2 font-semibold text-ink">
                     {item.quantity} {item.unit}
                   </td>
-                  <td className="px-3 py-2 font-normal text-ink">{routeLabel(item.productionRoute)}</td>
+                  <td className="px-3 py-2 font-normal text-ink">{lineRouteLabel(item)}</td>
                   {showMoney ? (
                     <>
                       <td className="px-3 py-2 font-normal text-ink">{formatMoney(item.rate)}</td>
@@ -582,6 +598,8 @@ export function SalesOrderDetail() {
         return (
         <Fold key={item.id} title={`${name} · Manufacturing`} tone={tone} defaultOpen={index === 0}>
           <Grid>
+            {item.productionRoute === 'other_dispatch' ? <Value label="Process">{item.otherProcess}</Value> : null}
+            {item.productionRoute === 'direct_dispatch' ? <Value label="Flow">Sent as it is, nothing made</Value> : null}
             {routeHasRoll(item.productionRoute) ? (
               <>
                 <Value label="Type / grade">
@@ -624,7 +642,7 @@ export function SalesOrderDetail() {
             ) : null}
             {routeHasRoll(item.productionRoute) && item.manufacturing?.additives ? <Value label="Additives">{item.manufacturing.additives}</Value> : null}
             <Value label="Special requirements">{item.manufacturing?.specialRequirements}</Value>
-            <Value label="Now at">{item.currentStage === 'completed' ? 'Done' : item.currentStage ? stageLabel(item.currentStage) : 'Not started'}</Value>
+            <Value label="Now at">{item.currentStage === 'completed' ? 'Done' : item.currentStage ? itemStageLabel(item, item.currentStage) : 'Not started'}</Value>
           </Grid>
         </Fold>
         );
@@ -758,7 +776,7 @@ export function SalesOrderDetail() {
           const tone = PRODUCT_TONES[index % PRODUCT_TONES.length];
           const name = item.product || `Product ${index + 1}`;
           return (
-            <Fold key={item.id} title={`${name} · ${routeLabel(item.productionRoute)}`} tone={tone} defaultOpen={index === 0}>
+            <Fold key={item.id} title={`${name} · ${lineRouteLabel(item)}`} tone={tone} defaultOpen={index === 0}>
               <ol className="flex flex-wrap gap-2">
                 {(item.progress || []).map((step) => (
                   <li
@@ -772,7 +790,7 @@ export function SalesOrderDetail() {
                     }`}
                   >
                     {step.done ? '✓ ' : item.currentStage === step.step ? '→ ' : '○ '}
-                    {STEP_LABELS[step.step] || step.step}
+                    {step.step === 'other' ? itemStageLabel(item, 'other') : STEP_LABELS[step.step] || step.step}
                     {step.target ? ` ${step.outputQty || 0}/${step.target}` : ''}
                   </li>
                 ))}
@@ -791,7 +809,7 @@ export function SalesOrderDetail() {
                     return (
                       <li key={`${work.stage}-${workIndex}`} className="rounded-lg border border-line bg-paper/70 px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={stepTone(work.stage)}>{STEP_LABELS[work.stage] || work.stage}</Badge>
+                          <Badge tone={stepTone(work.stage)}>{work.stage === 'other' ? itemStageLabel(item, 'other') : STEP_LABELS[work.stage] || work.stage}</Badge>
                           <span className="text-sm font-semibold text-ink">In {work.inputQty}</span>
                           <span className="text-sm font-semibold text-ink">Out {work.outputQty}</span>
                           {work.wasteQty ? <span className="text-sm font-normal text-slate">Waste {work.wasteQty}</span> : null}

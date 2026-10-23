@@ -11,4 +11,5 @@ export const productionApi = {
   enter: (payload) => api.post('/api/production/enter', payload),
   updateEntry: (payload) => api.post('/api/production/entry/update', payload),
   deleteEntry: (payload) => api.post('/api/production/entry/delete', payload),
+  closeStage: (payload) => api.post('/api/production/close-stage', payload),
 };

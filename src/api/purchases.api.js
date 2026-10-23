@@ -9,7 +9,6 @@ export const purchasesApi = {
   options: () => api.get('/api/purchases/options'),
   payables: () => api.get('/api/purchases/payables'),
   bills: (params) => api.get(`/api/purchases/bills${qs(params)}`),
-  bill: (id) => api.get(`/api/purchases/bills/${id}`),
   createBill: (payload) => api.post('/api/purchases/bills', payload),
   cancelBill: (id, reason) => api.post(`/api/purchases/bills/${id}/cancel`, { reason }),
   payments: (params) => api.get(`/api/purchases/payments${qs(params)}`),

@@ -9,6 +9,7 @@ const BOOKS = [
   { id: 'rolling', title: 'Rolling', keys: ['size', 'thickness', 'colour', 'material', 'requiredWeight'] },
   { id: 'printing', title: 'Printing', keys: ['jobSize', 'colours', 'impression', 'artwork', 'available'] },
   { id: 'cutting', title: 'Cutting', keys: ['bagSize', 'gusset', 'hole', 'tape', 'available'] },
+  { id: 'other', title: 'Other process', keys: ['process', 'size', 'material'] },
   { id: 'dispatch', title: 'Dispatch', keys: ['deliveryLocation', 'deliveryInstructions'] },
 ];
 
@@ -29,12 +30,13 @@ const LABELS = {
   tape: 'Tape',
   deliveryLocation: 'Deliver to',
   deliveryInstructions: 'Instructions',
+  process: 'Process',
 };
 
 function bookOf(task) {
   if (task.category === 'stage_work' && task.job) return task.stage;
   if (['dispatch', 'delivery_confirm'].includes(task.category) && task.job) return 'dispatch';
-  return 'other';
+  return 'misc';
 }
 
 function fieldValue(task, key) {
@@ -201,7 +203,7 @@ export function TaskBook({ tasks, onOpen, onClaim, busyId }) {
       {BOOKS.filter((book) => groups.has(book.id)).map((book) => (
         <StageBook key={book.id} book={book} tasks={groups.get(book.id)} onOpen={onOpen} onClaim={onClaim} busyId={busyId} />
       ))}
-      {groups.has('other') ? <OtherBook tasks={groups.get('other')} onOpen={onOpen} onClaim={onClaim} busyId={busyId} /> : null}
+      {groups.has('misc') ? <OtherBook tasks={groups.get('misc')} onOpen={onOpen} onClaim={onClaim} busyId={busyId} /> : null}
     </div>
   );
 }
@@ -214,7 +216,7 @@ export function JobCard({ task }) {
   return (
     <section className="overflow-hidden rounded-sm border-2 border-stone-800 bg-[#fffdf6]">
       <h3 className="border-b-2 border-stone-800 bg-[#f6f1e4] px-3 py-1.5 text-sm font-semibold uppercase tracking-wide text-stone-700">
-        Job card{task.stage ? ` · ${task.stage}` : ''}
+        Job card{task.stage ? ` · ${task.stage === 'other' ? 'other process' : task.stage}` : ''}
       </h3>
       <dl className="grid grid-cols-2 border-stone-300 text-sm">
         {[

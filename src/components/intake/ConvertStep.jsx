@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { intakeApi } from '../../api/intake.api';
 import { notify } from '../ui/confirm';
 import { inputClass } from '../ui/FormField';
+import { routeFitsOrderType } from '../../lib/sales';
 
 const small = `${inputClass} mt-0 px-2 py-1.5 text-sm`;
 
@@ -64,7 +65,7 @@ export function ConvertStep({ draft, disabled, onError }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.id, draft.customer, proposalKey]);
 
-  const routes = useMemo(() => (match?.routes || []).filter((route) => route.orderType === orderType), [match, orderType]);
+  const routes = useMemo(() => (match?.routes || []).filter((route) => routeFitsOrderType(route, orderType)), [match, orderType]);
 
   function setLine(index, patch) {
     setLines((current) => current.map((line, at) => (at === index ? { ...line, ...patch } : line)));
@@ -72,7 +73,11 @@ export function ConvertStep({ draft, disabled, onError }) {
 
   function chooseSaved(index, value) {
     const suggestion = (match?.lineSuggestions?.[index] || []).find((s) => `${s.source}:${s.id}` === value);
-    setLine(index, { saved: value, ...(suggestion?.productionRoute ? { productionRoute: suggestion.productionRoute } : {}) });
+    setLine(index, {
+      saved: value,
+      ...(suggestion?.productionRoute ? { productionRoute: suggestion.productionRoute } : {}),
+      ...(suggestion?.otherProcess ? { otherProcess: suggestion.otherProcess } : {}),
+    });
   }
 
   async function convert() {
@@ -98,7 +103,12 @@ export function ConvertStep({ draft, disabled, onError }) {
   if (!match) return <p className="text-sm text-slate">Finding saved products…</p>;
   if (!lines.length) return <p className="text-sm text-slate">Add at least one line in Order details and save it first.</p>;
   const included = lines.filter((line) => line.include);
-  const missingRoute = included.some((line) => !line.productionRoute || !routes.some((route) => route.id === line.productionRoute));
+  const missingRoute = included.some(
+    (line) =>
+      !line.productionRoute ||
+      !routes.some((route) => route.id === line.productionRoute) ||
+      (line.productionRoute === 'other_dispatch' && !String(line.otherProcess || '').trim())
+  );
 
   return (
     <div className="space-y-3">
@@ -158,6 +168,19 @@ export function ConvertStep({ draft, disabled, onError }) {
                       ))}
                     </select>
                   </label>
+                  {line.productionRoute === 'other_dispatch' ? (
+                    <label className="text-xs font-semibold text-slate">
+                      Process name
+                      <input
+                        value={line.otherProcess || ''}
+                        maxLength={60}
+                        disabled={disabled}
+                        onChange={(event) => setLine(index, { otherProcess: event.target.value })}
+                        placeholder="e.g. Lamination"
+                        className={`${small} ${String(line.otherProcess || '').trim() ? '' : 'border-amber-400'}`}
+                      />
+                    </label>
+                  ) : null}
                 </div>
               ) : null}
             </li>

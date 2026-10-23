@@ -16,6 +16,9 @@ export const PRODUCTION_ROUTES = [
   { id: 'print_dispatch', label: 'Printing → Dispatch', stages: ['printing', 'dispatch'], orderType: 'job_work' },
   { id: 'print_cut_dispatch', label: 'Printing → Cutting → Dispatch', stages: ['printing', 'cutting', 'dispatch'], orderType: 'job_work' },
   { id: 'cut_dispatch', label: 'Cutting → Dispatch', stages: ['cutting', 'dispatch'], orderType: 'job_work' },
+  // Both order types: a named process (item.otherProcess), or goods sent with no making and no stock.
+  { id: 'other_dispatch', label: 'Other process → Dispatch', stages: ['other', 'dispatch'], orderType: 'any' },
+  { id: 'direct_dispatch', label: 'Direct dispatch', stages: ['dispatch'], orderType: 'any' },
 ];
 
 const ROUTE_SWAP = {
@@ -34,7 +37,11 @@ const ROUTE_SWAP = {
 
 export function routesFor(orderType) {
   const type = orderType === 'job_work' ? 'job_work' : 'sales_order';
-  return PRODUCTION_ROUTES.filter((route) => route.orderType === type);
+  return PRODUCTION_ROUTES.filter((route) => routeFitsOrderType(route, type));
+}
+
+export function routeFitsOrderType(route, orderType) {
+  return Boolean(route) && (route.orderType === 'any' || route.orderType === orderType);
 }
 
 export function fitRoute(item, orderType) {
@@ -48,6 +55,8 @@ export const PRODUCTION_STAGES = [
   { id: 'rolling', label: 'Rolling', read: 'production:rolling:read', update: 'production:rolling:update' },
   { id: 'printing', label: 'Printing', read: 'production:printing:read', update: 'production:printing:update' },
   { id: 'cutting', label: 'Cutting', read: 'production:cutting:read', update: 'production:cutting:update' },
+  // Recorded by production managers and the owner; no operator role.
+  { id: 'other', label: 'Other process', read: 'production:read', update: 'production:update' },
   { id: 'dispatch', label: 'Dispatch', read: 'dispatch:read', update: 'dispatch:update' },
 ];
 
@@ -121,6 +130,7 @@ export const STEP_LABELS = {
   rolling: 'Rolling',
   printing: 'Printing',
   cutting: 'Cutting',
+  other: 'Other process',
   packing: 'Packing',
   dispatch: 'Dispatch',
 };
@@ -194,6 +204,19 @@ export function applyRoute(item, route) {
 
 export function routeLabel(id) {
   return PRODUCTION_ROUTES.find((route) => route.id === id)?.label || id || '—';
+}
+
+// A line's flow with its own process name, e.g. "Lamination → Dispatch".
+export function lineRouteLabel(item) {
+  const name = String(item?.otherProcess || '').trim();
+  if (item?.productionRoute === 'other_dispatch' && name) return `${name} → Dispatch`;
+  return routeLabel(item?.productionRoute);
+}
+
+// The stage name on one line: the process typed on the order for "other".
+export function itemStageLabel(item, stage) {
+  if (stage === 'other') return String(item?.otherProcess || '').trim() || 'Other process';
+  return stageLabel(stage);
 }
 
 export function statusLabel(id) {
@@ -272,6 +295,8 @@ export function orderStageSummary(order) {
           productCode: item.productCode,
           unit: stats.unit || item.unit || 'pcs',
           route: item.productionRoute,
+          routeText: lineRouteLabel(item),
+          process: meta.id === 'other' ? itemStageLabel(item, 'other') : '',
           current: nowAt === meta.id,
           ...stats,
         };
@@ -359,6 +384,7 @@ export function emptyLineItem() {
     taxPercent: '18',
     hsnCode: '',
     productionRoute: 'roll_print_cut_dispatch',
+    otherProcess: '',
     manufacturing: emptyManufacturing(),
     roll: { width: '', length: '', weight: '', size: '' },
     bag: { width: '', length: '', gusset: '', size: '' },
@@ -447,6 +473,7 @@ export function itemFromApi(item) {
     taxPercent: item.taxPercent == null ? '18' : String(item.taxPercent),
     hsnCode: item.hsnCode || '',
     productionRoute: item.productionRoute || base.productionRoute,
+    otherProcess: item.otherProcess || '',
     manufacturing: { ...base.manufacturing, ...m, specialRequirements: special },
     roll: { ...base.roll, ...(item.roll || {}) },
     bag: { ...base.bag, ...(item.bag || {}) },
@@ -509,6 +536,7 @@ export function itemToPayload(item) {
     hsnCode: String(item.hsnCode || '').trim(),
     templateId: item.templateId || '',
     productionRoute: item.productionRoute,
+    otherProcess: item.productionRoute === 'other_dispatch' ? String(item.otherProcess || '').trim() : '',
     manufacturing: { ...item.manufacturing, ...shared, thickness: item.thickness, color: item.color, rawMaterial: item.material },
     roll: item.roll,
     bag: { ...item.bag, ...shared },

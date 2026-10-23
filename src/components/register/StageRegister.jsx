@@ -231,10 +231,15 @@ function entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDeliv
   const wasteNow = paperQty ? paperQty.wasteQty : Number(draft.wasteQty) || 0;
   const pickedLot = (chosen?.sourceLots || []).find((lot) => lot.id === draft.lotId) || chosen?.sourceLots?.[0];
   const sourceUnit = editing ? '' : chosen?.pickup?.unit || pickedLot?.unit || chosen?.unit || '';
-  const unitsDiffer = editing
+  // "Other process" and direct dispatch take nothing from stock: "used" is only a note.
+  const noStock = Boolean(editing ? editing.noStock : chosen?.noStock);
+  const unitsDiffer = noStock
+    ? false
+    : editing
     ? Math.abs(Number(editing.inputQty) - (Number(editing.outputQty) + (isDelivery ? 0 : Number(editing.wasteQty || 0)))) > 1e-6
     : Boolean(chosen) && sourceUnit.toLowerCase() !== String(chosen.unit || '').toLowerCase();
   const usedOver =
+    !noStock &&
     !isDelivery &&
     !unitsDiffer &&
     draft.inputQty !== '' &&
@@ -285,6 +290,7 @@ function entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDeliv
 
   return {
     madeNow,
+    noStock,
     sourceUnit,
     unitsDiffer,
     usedOver,
@@ -327,6 +333,7 @@ function OrderCell({ editing, draft, openLines, form }) {
       {openLines.map((line) => (
         <option key={line.jobId} value={line.jobId}>
           {line.orderNumber} — {line.product}
+          {line.process ? ` (${line.process})` : ''}
         </option>
       ))}
     </select>
@@ -460,7 +467,7 @@ function PlainEntryRow({ draft, form, chosen, editing, openLines, operatorName, 
       </td>
       <td className={cell}>{chosen?.customerCode || '—'}</td>
       {showCustomerName ? <td className={cell}>{chosen?.customerName || '—'}</td> : null}
-      <td className={cell}>{chosen?.product || '—'}</td>
+      <td className={cell}>{chosen ? [chosen.product, chosen.process].filter(Boolean).join(' · ') || '—' : '—'}</td>
       <td className={cell}>
         <input
           form={ENTRY_FORM}
@@ -509,7 +516,7 @@ function PlainEntryRow({ draft, form, chosen, editing, openLines, operatorName, 
               step="any"
               value={draft.inputQty}
               onChange={form.setTop('inputQty')}
-              placeholder={form.unitsDiffer ? form.sourceUnit : 'auto'}
+              placeholder={form.unitsDiffer ? form.sourceUnit : form.noStock ? 'optional' : 'auto'}
               title={form.sourceUnit ? `Used (${form.sourceUnit})` : 'Used'}
               className={`${cellBox} min-w-[6rem]`}
             />
@@ -527,7 +534,9 @@ function PlainEntryRow({ draft, form, chosen, editing, openLines, operatorName, 
               className={`${cellBox} min-w-[6rem]`}
             />
           </td>
-          <td className={cell}>{chosen?.pickup?.lotName || (chosen?.sourceLots || []).find((lot) => lot.id === draft.lotId)?.name || '—'}</td>
+          <td className={cell}>
+            {form.noStock ? 'No stock taken' : chosen?.pickup?.lotName || (chosen?.sourceLots || []).find((lot) => lot.id === draft.lotId)?.name || '—'}
+          </td>
         </>
       )}
       <td className={cell}>{editing ? editing.markedByName || '—' : operatorName || '—'}</td>
@@ -750,6 +759,8 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
         customerName: editing.customerName,
         customerCode: editing.customerCode,
         unit: editing.unit,
+        process: editing.process || '',
+        noStock: Boolean(editing.noStock),
         specs: editing.details || {},
         sourceLots: [],
         pickup: null,
@@ -815,7 +826,15 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
         itemId: chosen.itemId,
         stage,
         outputQty: made,
-        inputQty: isDelivery ? (draft.inputQty === '' ? made : Number(draft.inputQty)) : used,
+        inputQty: form.noStock
+          ? draft.inputQty === '' || isDelivery
+            ? undefined
+            : Number(draft.inputQty)
+          : isDelivery
+            ? draft.inputQty === ''
+              ? made
+              : Number(draft.inputQty)
+            : used,
         wasteQty: waste,
         lotId: draft.lotId || undefined,
         machineId: draft.machineId || undefined,
@@ -853,7 +872,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     const details = { ...(entry.details || {}) };
     if (stage === 'printing' || stage === 'cutting') details.quantity = String(entry.outputQty || '');
     if (!details.wastage && entry.wasteQty) details.wastage = String(entry.wasteQty);
-    const differ = Math.abs(Number(entry.inputQty) - (Number(entry.outputQty) + Number(entry.wasteQty || 0))) > 1e-6;
+    const differ = !(entry.noStock && stage === 'dispatch') && Math.abs(Number(entry.inputQty) - (Number(entry.outputQty) + Number(entry.wasteQty || 0))) > 1e-6;
     setError('');
     setNotice('');
     setEditing(entry);
@@ -876,7 +895,9 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
   async function removeEntry(entry) {
     const ok = await confirmAction({
       title: 'Delete entry',
-      message: `Delete this ${stage} entry for ${entry.orderNumber}? The material it used goes back to store and what it made is taken out of stock.`,
+      message: entry.noStock
+        ? `Delete this ${stage} entry for ${entry.orderNumber}?${stage === 'dispatch' ? '' : ' What it made is taken out of stock.'}`
+        : `Delete this ${stage} entry for ${entry.orderNumber}? The material it used goes back to store and what it made is taken out of stock.`,
       confirmLabel: 'Delete',
       danger: true,
     });
@@ -968,6 +989,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
                 : [
                     { label: 'Used', type: 'number', get: (e) => e.inputQty },
                     { label: 'Waste', type: 'number', get: (e) => e.wasteQty },
+                    { label: 'Waste unit', type: 'text', get: (e) => (e.wasteQty ? e.wasteUnit || e.unit : '') },
                   ]),
             ]),
         { label: 'Entered by', type: 'text', get: (e) => e.markedByName },
@@ -1081,7 +1103,7 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
                     ) : (
                       <>
                         <td className={cell}>{formatQty(entry.inputQty)}</td>
-                        <td className={cell}>{entry.wasteQty ? formatQty(entry.wasteQty) : '—'}</td>
+                        <td className={cell}>{entry.wasteQty ? qtyOf(entry.wasteQty, entry.wasteUnit || entry.unit) : '—'}</td>
                         <td className={cell}>{entry.pickedLotName || '—'}</td>
                       </>
                     )}

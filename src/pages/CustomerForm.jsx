@@ -35,6 +35,16 @@ function PlusIcon() {
   );
 }
 
+// GST state codes (first two digits of a GSTIN), as the API checks them.
+const GST_STATES = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana',
+  '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim', '12': 'Arunachal Pradesh', '13': 'Nagaland',
+  '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand',
+  '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat', '26': 'Dadra & Nagar Haveli and Daman & Diu',
+  '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry',
+  '35': 'Andaman & Nicobar Islands', '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh', '97': 'Other Territory',
+};
+
 const emptyForm = {
   name: '',
   companyName: '',
@@ -42,6 +52,7 @@ const emptyForm = {
   mobile: '',
   email: '',
   gstNumber: '',
+  stateCode: '',
   billingAddress: '',
   shippingAddress: '',
   priceCategory: '',
@@ -96,6 +107,7 @@ export function CustomerForm() {
           mobile: customer.mobile || '',
           email: customer.email || '',
           gstNumber: customer.gstNumber || '',
+          stateCode: customer.stateCode || '',
           billingAddress: customer.billingAddress || '',
           shippingAddress: customer.shippingAddress || '',
           priceCategory: customer.priceCategory || '',
@@ -175,6 +187,17 @@ export function CustomerForm() {
             </Field>
             <Field label="GST number" mark={rules('customer', 'gstNumber')}>
               <input value={form.gstNumber} disabled={!canSave} onChange={(e) => update('gstNumber', e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="State (for GST)">
+              <select value={form.stateCode} disabled={!canSave} onChange={(e) => update('stateCode', e.target.value)} className={inputClass}>
+                <option value="">{/^\d{2}/.test(form.gstNumber.trim()) ? `From GSTIN (${GST_STATES[form.gstNumber.trim().slice(0, 2)] || form.gstNumber.trim().slice(0, 2)})` : 'Not set (billed as same state)'}</option>
+                {Object.entries(GST_STATES).sort(([a], [b]) => a.localeCompare(b)).map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {code} · {name}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate">Used when the customer has no GSTIN: another state means IGST.</span>
             </Field>
             <Field label="Price category" mark={rules('customer', 'priceCategory')}>
               <input value={form.priceCategory} disabled={!canSave} onChange={(e) => update('priceCategory', e.target.value)} className={inputClass} />

@@ -131,7 +131,7 @@ export function AccountsReport({ data }) {
     <div className="space-y-4">
       <KpiGrid>
         <Kpi label="Billed" value={fmt.money(kpis.billed)} delta={kpis.billedDelta} hint={`${kpis.invoices} invoice(s)${kpis.creditNotes ? ` · less credit notes ${fmt.money(kpis.creditNotes)}` : ''}`} />
-        <Kpi label="Collected" value={fmt.money(kpis.collected)} delta={kpis.collectedDelta} hint={kpis.collectionRatio != null ? `${fmt.pct(kpis.collectionRatio)} of billed` : null} />
+        <Kpi label="Collected" value={fmt.money(kpis.collected)} delta={kpis.collectedDelta} hint={[kpis.collectionRatio != null ? `${fmt.pct(kpis.collectionRatio)} of billed` : '', kpis.tdsDeducted > 0 ? `plus ${fmt.money(kpis.tdsDeducted)} TDS deducted by customers` : ''].filter(Boolean).join(' · ') || null} />
         <Kpi label="Outstanding now" value={fmt.money(kpis.outstanding)} hint={kpis.advance > 0 ? `Advance held ${fmt.money(kpis.advance)}` : 'All customers, today'} />
         <Kpi label="Overdue now" value={fmt.money(kpis.overdue)} tone={kpis.overdue > 0 ? 'bad' : 'good'} hint="Past the due date" />
         <Kpi label="GST on sales" value={fmt.money(kpis.tax)} hint={`On taxable value ${fmt.money(kpis.taxable)}`} />
@@ -306,9 +306,10 @@ export function AccountsReport({ data }) {
           { key: 'methodLabel', label: 'Mode' },
           { key: 'reference', label: 'Reference' },
           { key: 'amount', label: 'Amount', format: 'money', csv: moneyCsv('amount') },
+          { key: 'tds', label: 'TDS deducted', format: 'money', csv: moneyCsv('tds') },
         ]}
         rows={data.receiptRegister}
-        totals={totalOf(data.receiptRegister, ['amount'])}
+        totals={totalOf(data.receiptRegister, ['amount', 'tds'])}
       />
     </div>
   );

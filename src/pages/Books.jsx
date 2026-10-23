@@ -41,7 +41,9 @@ const right = `${td} whitespace-nowrap text-right`;
 // ---------------------------------------------------------------- Day book
 
 function DayBook({ startDate, canCancel, refreshKey, onChanged }) {
-  const list = useListParams({ from: startDate, to: '', type: '', status: '', q: '' }, { pageSize: 25 });
+  // Prefixed (day.q, day.from, ...) so the Ledger and Accounts tabs' own
+  // from/to/q in the address bar don't leak into the day book.
+  const list = useListParams({ from: startDate, to: '', type: '', status: '', q: '' }, { pageSize: 25, prefix: 'day' });
   const { values: f, page, pageSize } = list;
   const [query, setQuery] = useState(f.q);
   const search = useDebounced(query.trim(), 300);
@@ -59,7 +61,11 @@ function DayBook({ startDate, canCancel, refreshKey, onChanged }) {
     let live = true;
     booksApi
       .vouchers({ ...params, page, pageSize })
-      .then((d) => live && setData(d))
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        setError('');
+      })
       .catch((err) => live && setError(err.message));
     return () => {
       live = false;

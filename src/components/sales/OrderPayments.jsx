@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { salesOrdersApi } from '../../api/salesOrders.api';
+import { usePermission } from '../../hooks/usePermission';
+import { DepositToField } from '../billing/DepositToField';
 import { PAYMENT_METHODS, formatDate, formatMoney, toDateInput } from '../../lib/sales';
 import { confirmAction } from '../ui/confirm';
 import { Field, inputClass } from '../ui/FormField';
@@ -12,13 +14,16 @@ export function OrderPayments({ order, canRecord, onChanged }) {
   const [form, setForm] = useState({
     amount: '',
     method: order.paymentMethod || 'bank_transfer',
+    depositTo: '',
     receivedAt: toDateInput(new Date()),
     reference: '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const payments = order.payments || [];
-  const canRemove = canRecord && order.status !== 'cancelled';
+  const { user } = usePermission();
+  // The API lets only the Super Admin void payments on a completed order.
+  const canRemove = canRecord && order.status !== 'cancelled' && (order.status !== 'completed' || user?.role?.slug === 'super_admin');
 
   function set(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -38,7 +43,7 @@ export function OrderPayments({ order, canRecord, onChanged }) {
     setBusy(true);
     setError('');
     try {
-      await salesOrdersApi.recordPayment(order.id, { ...form, amount });
+      await salesOrdersApi.recordPayment(order.id, { ...form, amount, depositTo: form.depositTo || undefined });
       setForm((current) => ({ ...current, amount: '', reference: '' }));
       await onChanged('Payment recorded.');
     } catch (err) {
@@ -121,7 +126,7 @@ export function OrderPayments({ order, canRecord, onChanged }) {
       )}
 
       {canRecord && open && due > 0 ? (
-        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1.5fr_auto] lg:items-end">
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.2fr_1fr_1.5fr_auto] lg:items-end">
           <Field label={`Amount (due ${formatMoney(due)})`}>
             <input type="number" min="0" step="any" inputMode="decimal" value={form.amount} onChange={(event) => set('amount', event.target.value)} className={inputClass} />
           </Field>
@@ -134,6 +139,7 @@ export function OrderPayments({ order, canRecord, onChanged }) {
               ))}
             </select>
           </Field>
+          <DepositToField method={form.method} value={form.depositTo} onChange={(depositTo) => set('depositTo', depositTo)} />
           <Field label="Received on">
             <input type="date" value={form.receivedAt} onChange={(event) => set('receivedAt', event.target.value)} className={inputClass} />
           </Field>

@@ -46,6 +46,9 @@ export function UserEdit() {
   const canEdit = can('users:update') && (!targetRole || canManageRole(targetRole));
   const assignableRoles = roles.filter((role) => canManageRole(role) || role._id === form?.roleId);
   const [password, setPassword] = useState('');
+  // Changing your own password needs the current one (the API checks it).
+  const [currentPassword, setCurrentPassword] = useState('');
+  const editingSelf = currentUser?.id === id;
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -83,8 +86,10 @@ export function UserEdit() {
     try {
       const payload = { ...form };
       if (password.trim()) payload.password = password;
+      if (password.trim() && editingSelf) payload.currentPassword = currentPassword;
       await usersApi.update(id, payload);
       setPassword('');
+      setCurrentPassword('');
       setNotice('Saved.');
       if (currentUser?.id === id) await refreshUser().catch(() => {});
     } catch (err) {
@@ -156,6 +161,19 @@ export function UserEdit() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="Leave blank to keep current password"
+              className={inputClass}
+            />
+          </label>
+        ) : null}
+        {canEdit && editingSelf && password ? (
+          <label className="block text-base font-semibold text-ink">
+            Current password
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
               className={inputClass}
             />
           </label>

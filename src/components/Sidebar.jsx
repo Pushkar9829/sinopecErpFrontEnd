@@ -59,7 +59,7 @@ const sections = [
     links: [
       // No role holds this key, so only the Super Admin (who passes every check) sees it.
       { to: '/company', label: 'Company details', permission: 'company:update' },
-      { to: '/settings/form-fields', label: 'Form fields', permission: 'company:update' },
+      { to: '/settings/form-fields', label: 'Form fields', ownerOnly: true },
       { to: '/users', label: 'Users', permission: 'users:read' },
       { to: '/roles', label: 'Roles', permission: 'roles:read' },
       { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },
@@ -107,7 +107,9 @@ export function Sidebar({ open = false, onClose }) {
   const taskSummary = useTaskSummary();
   const intakeSummary = useIntakeSummary();
   const badges = { tasks: taskSummary?.total || 0, drafts: intakeSummary?.needsReview || 0 };
-  const allowed = (link) => (link.permission ? can(link.permission) : link.anyOf ? link.anyOf.some((key) => can(key)) : true);
+  const isOwner = user?.role?.slug === 'super_admin';
+  const allowed = (link) =>
+    link.ownerOnly ? isOwner : link.permission ? can(link.permission) : link.anyOf ? link.anyOf.some((key) => can(key)) : true;
   const visible = sections.map((section) => ({ ...section, links: section.links.filter(allowed) })).filter((section) => section.links.length);
   // A handful of pages (floor operators) reads better as a plain list.
   const flat = visible.reduce((n, section) => n + section.links.length, 0) <= 6;
@@ -131,8 +133,8 @@ export function Sidebar({ open = false, onClose }) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex h-full print:hidden w-64 max-w-[80vw] shrink-0 flex-col border-r border-white/10 bg-ink text-paper transition-transform duration-200 lg:static lg:z-auto lg:w-48 lg:max-w-none lg:translate-x-0 lg:transition-none ${
-        open ? 'translate-x-0' : '-translate-x-full'
+      className={`fixed inset-y-0 left-0 z-50 flex h-full print:hidden w-64 max-w-[80vw] shrink-0 flex-col border-r border-white/10 bg-ink text-paper transition-[transform,visibility] duration-200 lg:static lg:z-auto lg:w-48 lg:max-w-none lg:translate-x-0 lg:transition-none ${
+        open ? 'translate-x-0' : 'invisible -translate-x-full lg:visible'
       }`}
     >
       <div className="flex items-start justify-between gap-2 border-b border-white/10 px-3 py-3">

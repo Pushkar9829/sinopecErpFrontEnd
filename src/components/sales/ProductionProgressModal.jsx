@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { stepTone } from '../ui/badgeTones';
 import { Modal } from '../ui/Modal';
-import { formatQty, orderActiveStages, orderStageSummary, routeLabel } from '../../lib/sales';
+import { formatQty, orderActiveStages, orderStageSummary } from '../../lib/sales';
 
 const STAGE_TAB = {
   accent: {
@@ -27,6 +27,12 @@ const STAGE_TAB = {
     idle: 'border-teal-200 bg-teal-50 text-teal-950',
     active: 'border-teal-700 bg-teal-700 text-white',
     count: 'bg-teal-200 text-teal-950',
+    countOn: 'bg-white/25 text-white',
+  },
+  warning: {
+    idle: 'border-amber-200 bg-amber-50 text-amber-950',
+    active: 'border-amber-700 bg-amber-700 text-white',
+    count: 'bg-amber-200 text-amber-950',
     countOn: 'bg-white/25 text-white',
   },
   success: {
@@ -161,7 +167,7 @@ function ProgressBody({ order, onClose }) {
                         {formatQty(line.target)} {line.unit}
                       </p>
                     </td>
-                    <td className="px-3 py-2.5 font-normal text-slate">{routeLabel(line.route)}</td>
+                    <td className="px-3 py-2.5 font-normal text-slate">{line.routeText}</td>
                     <td className="px-3 py-2.5 text-right font-normal text-ink">{formatQty(line.input)}</td>
                     <td className="px-3 py-2.5 text-right font-normal text-ink">{formatQty(line.output)}</td>
                     <td className="px-3 py-2.5 text-right font-normal text-ink">{formatQty(line.waste)}</td>

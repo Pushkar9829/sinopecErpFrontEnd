@@ -43,6 +43,8 @@ const FLOW_CHIPS = {
   print_dispatch: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
   print_cut_dispatch: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
   cut_dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
+  other_dispatch: { chip: 'border-amber-300 bg-amber-100 text-amber-900', dot: 'bg-amber-600' },
+  direct_dispatch: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
 };
 
 function PlusIcon() {

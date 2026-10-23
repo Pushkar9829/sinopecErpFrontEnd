@@ -99,6 +99,7 @@ export function stepTone(step) {
     printing: 'info',
     cutting: 'purple',
     packing: 'purple',
+    other: 'warning',
     dispatch: 'teal',
     delivery: 'success',
   };

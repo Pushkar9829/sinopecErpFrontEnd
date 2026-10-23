@@ -10,6 +10,7 @@ export const bankApi = {
   addAccount: (payload) => api.post('/api/bank/accounts', payload),
   lines: (accountId, params) => api.get(`/api/bank/accounts/${accountId}/statement${qs(params)}`),
   importStatement: (accountId, rows) => api.post(`/api/bank/accounts/${accountId}/statement`, { rows }),
+  deleteImport: (accountId, batch) => api.delete(`/api/bank/accounts/${accountId}/statement/${encodeURIComponent(batch)}`),
   autoMatch: (accountId) => api.post(`/api/bank/accounts/${accountId}/auto-match`, {}),
   reconciliation: (accountId, asOf) => api.get(`/api/bank/accounts/${accountId}/reconciliation${qs({ asOf })}`),
   candidates: (lineId) => api.get(`/api/bank/lines/${lineId}/candidates`),

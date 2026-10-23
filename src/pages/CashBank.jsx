@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { bankApi } from '../api/bank.api';
 import { booksApi } from '../api/books.api';
 import { AddBankForm, ExpenseForm, MatchLine, StatementImport } from '../components/bank/BankForms';
-import { confirmAction } from '../components/ui/confirm';
+import { confirmAction, notify } from '../components/ui/confirm';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { ClearFilters, DateRangeFilter, FilterBar, FilterSelect } from '../components/ui/Filters';
@@ -82,7 +82,8 @@ function MoneyAccounts({ accounts, canEnter, onAdd, onMatch }) {
 // ---------------------------------------------------------------- expenses
 
 function Expenses({ refreshKey, canCancel, heads }) {
-  const list = useListParams({ from: '', to: '', account: '', status: '', q: '' }, { pageSize: 25 });
+  // Prefixed (exp.page, ...) so the Matching tab's page and rows stay its own.
+  const list = useListParams({ from: '', to: '', account: '', status: '', q: '' }, { pageSize: 25, prefix: 'exp' });
   const f = list.values;
   const [query, setQuery] = useState(f.q || '');
   const search = useDebounced(query.trim(), 300);
@@ -98,7 +99,11 @@ function Expenses({ refreshKey, canCancel, heads }) {
     let live = true;
     bankApi
       .expenses({ ...f, page: list.page, pageSize: list.pageSize })
-      .then((d) => live && setData(d))
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        setError('');
+      })
       .catch((err) => live && setError(err.message));
     return () => {
       live = false;
@@ -109,8 +114,12 @@ function Expenses({ refreshKey, canCancel, heads }) {
   async function cancel(x) {
     const reason = await confirmAction({ title: `Cancel expense ${x.number}?`, withReason: true, reasonRequired: true, confirmLabel: 'Cancel expense', danger: true });
     if (reason === null) return;
-    await booksApi.cancelVoucher(x.id, reason);
-    setTick((t) => t + 1);
+    try {
+      await booksApi.cancelVoucher(x.id, reason);
+      setTick((t) => t + 1);
+    } catch (err) {
+      notify(err.message, 'Expense not cancelled');
+    }
   }
   async function download(format) {
     const rows = await fetchAllPages(bankApi.expenses, { from: f.from, to: f.to, account: f.account, status: f.status, q: f.q });
@@ -317,10 +326,14 @@ function Reconciliation({ accountId, refreshKey }) {
   );
 }
 
-function Matching({ banks, accounts, canWork, onChanged }) {
-  const [accountId, setAccountId] = useUrlState('bank', '');
+// An import's batch id is the time it was imported (ms).
+const importedOn = (batch) => (/^\d+$/.test(String(batch || '')) ? formatDate(new Date(Number(batch))) : '');
+
+function Matching({ banks, accounts, canWork, canUndoImport, onChanged }) {
+  const [accountId] = useUrlState('bank', '');
+  const [, setParams] = useSearchParams();
   const current = banks.find((b) => b.id === accountId) || banks[0];
-  const list = useListParams({ lines: 'unmatched', lfrom: '', lto: '' }, { pageSize: 50 });
+  const list = useListParams({ lines: 'unmatched', lfrom: '', lto: '' }, { pageSize: 50, prefix: 'm' });
   const f = list.values;
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -334,7 +347,11 @@ function Matching({ banks, accounts, canWork, onChanged }) {
     let live = true;
     bankApi
       .lines(current.id, { status: f.lines, from: f.lfrom, to: f.lto, page: list.page, pageSize: list.pageSize })
-      .then((d) => live && setData(d))
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        setError('');
+      })
       .catch((err) => live && setError(err.message));
     return () => {
       live = false;
@@ -356,6 +373,27 @@ function Matching({ banks, accounts, canWork, onChanged }) {
       setBusy(false);
     }
   }
+  async function undoImport(batch) {
+    const on = importedOn(batch);
+    const ok = await confirmAction({
+      title: 'Undo this import?',
+      message: `Every line of the statement imported${on ? ` on ${on}` : ''} is removed from ${current.name}, with its matches. Entries in the books stay as they are.`,
+      confirmLabel: 'Undo import',
+      danger: true,
+    });
+    if (ok) act(() => bankApi.deleteImport(current.id, batch));
+  }
+  // A new bank starts at its own first page (one address-bar change).
+  const chooseBank = (id) =>
+    setParams(
+      (now) => {
+        const next = new URLSearchParams(now);
+        next.set('bank', id);
+        next.delete('m.page');
+        return next;
+      },
+      { replace: true }
+    );
 
   if (!current) return <EmptyState title="No bank account" hint="Add one on the Cash & bank tab." />;
   const counts = data?.counts || {};
@@ -364,7 +402,7 @@ function Matching({ banks, accounts, canWork, onChanged }) {
       <FilterBar>
         <label className="text-xs font-semibold text-slate">
           Bank account
-          <select value={current.id} onChange={(e) => setAccountId(e.target.value)} className={`${inputClass} mt-1`}>
+          <select value={current.id} onChange={(e) => chooseBank(e.target.value)} className={`${inputClass} mt-1`}>
             {banks.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -417,12 +455,20 @@ function Matching({ banks, accounts, canWork, onChanged }) {
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((l) => (
+                {data.items.map((l, i) => (
                   <tr key={l.id} className="border-t border-line align-top">
                     <td className={`${td} whitespace-nowrap`}>{formatDate(l.date)}</td>
                     <td className={td}>
                       {l.description || '—'}
                       {l.reference ? <span className="block text-xs text-slate">Ref {l.reference}</span> : null}
+                      {canUndoImport && l.batch && l.batch !== data.items[i - 1]?.batch ? (
+                        <span className="block text-xs text-slate">
+                          {importedOn(l.batch) ? `Imported ${importedOn(l.batch)} · ` : ''}
+                          <button type="button" disabled={busy} onClick={() => undoImport(l.batch)} className="font-semibold text-red-700 hover:underline">
+                            Undo this import
+                          </button>
+                        </span>
+                      ) : null}
                     </td>
                     <td className={right}>{amount(l.withdrawal)}</td>
                     <td className={right}>{amount(l.deposit)}</td>
@@ -539,7 +585,7 @@ export function CashBank() {
         />
       ) : null}
       {tab === 'expenses' ? <Expenses refreshKey={refreshKey} canCancel={can('accounts:update')} heads={heads} /> : null}
-      {tab === 'matching' ? <Matching banks={banks} accounts={accounts} canWork={canEnter} onChanged={changed} /> : null}
+      {tab === 'matching' ? <Matching banks={banks} accounts={accounts} canWork={canEnter} canUndoImport={can('accounts:update')} onChanged={changed} /> : null}
       {dialog === 'expense' ? <ExpenseForm open onClose={() => setDialog('')} onSaved={changed} /> : null}
       {dialog === 'bank' ? <AddBankForm open onClose={() => setDialog('')} onSaved={changed} /> : null}
     </div>

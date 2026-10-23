@@ -13,7 +13,7 @@ import { StageMenu } from '../components/ui/StageMenu';
 import { useAuth } from '../context/auth';
 import { usePermission } from '../hooks/usePermission';
 import { isSuperAdmin } from '../lib/registerBooks';
-import { PRODUCTION_STAGES, formatDate, orderTypeLabel, statusLabel } from '../lib/sales';
+import { PRODUCTION_STAGES, PRODUCTION_VIEW_KEYS, formatDate, orderTypeLabel, statusLabel } from '../lib/sales';
 
 const cell = 'whitespace-nowrap border border-stone-300 px-2 py-1.5 align-middle text-sm';
 const head = 'whitespace-nowrap border border-stone-400 bg-stone-100 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-stone-600';
@@ -33,6 +33,8 @@ export function Registers() {
     can('accounts:read') ||
     can('inventory:read');
   const showCustomerName = isSuperAdmin(user);
+  // The printable work list needs floor access (sales/accounts/inventory cannot open it).
+  const canPrintWorkList = PRODUCTION_VIEW_KEYS.some((key) => can(key));
   const view = isAdmin && searchParams.get('view') === 'orders' ? 'orders' : 'stage';
   const stage = searchParams.get('stage') || '';
   const presetJob = searchParams.get('job') || '';
@@ -245,11 +247,13 @@ export function Registers() {
           </>
         ) : (
           <>
-            <div className="flex justify-end print:hidden">
-              <Link to={`/job-sheets/stage/${stage}`} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper">
-                Print work list
-              </Link>
-            </div>
+            {canPrintWorkList ? (
+              <div className="flex justify-end print:hidden">
+                <Link to={`/job-sheets/stage/${stage}`} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper">
+                  Print work list
+                </Link>
+              </div>
+            ) : null}
           <StageRegister
               key={stage}
               stage={stage}

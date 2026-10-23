@@ -3,7 +3,7 @@ import { fmt } from '../../lib/reports';
 import { GroupedBars, Kpi, KpiGrid, Panel, ReportTable } from './ReportKit';
 
 // The app's stage colours, so each stage looks the same as on the floor screens.
-const STAGE_COLORS = { rolling: '#ea580c', printing: '#0284c7', cutting: '#7c3aed' };
+const STAGE_COLORS = { rolling: '#ea580c', printing: '#0284c7', cutting: '#7c3aed', other: '#d97706' };
 const pctLabel = (v) => `${Math.round(v * 10) / 10}%`;
 const orderLink = (r) => <Link to={`/sales-orders/${r.orderId}`} className="font-semibold text-accent hover:underline">{r.number}</Link>;
 
@@ -87,6 +87,8 @@ export function ProductionReport({ data }) {
             { key: 'rollingWastePct', label: 'Rolling', color: STAGE_COLORS.rolling },
             { key: 'printingWastePct', label: 'Printing', color: STAGE_COLORS.printing },
             { key: 'cuttingWastePct', label: 'Cutting', color: STAGE_COLORS.cutting },
+            // Only when some line in the period went through an "Other process" step.
+            ...(data.stages.some((s) => s.stage === 'other') ? [{ key: 'otherWastePct', label: 'Other process', color: STAGE_COLORS.other }] : []),
           ]}
           format={pctLabel}
           fullFormat={fmt.pct}

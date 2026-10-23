@@ -66,7 +66,7 @@ export function StageDetail() {
   const visibleUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
     return users.filter(
-      (user) => !q || `${user.fullName} ${user.username} ${user.role?.name || ''}`.toLowerCase().includes(q)
+      (user) => !q || `${user.fullName} ${user.role?.name || ''}`.toLowerCase().includes(q)
     );
   }, [users, userQuery]);
 

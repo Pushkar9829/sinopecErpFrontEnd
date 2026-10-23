@@ -3,13 +3,14 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { companyApi } from '../api/company.api';
 import { productionApi } from '../api/production.api';
 import { BlankEntryTable, Facts, PrintShell, Sheet, SheetFooter, SheetHeader } from '../components/print/PrintKit';
-import { formatDate, formatQtyUnit, orderTypeLabel } from '../lib/sales';
+import { PRODUCTION_STAGES, formatDate, formatQtyUnit, orderTypeLabel } from '../lib/sales';
 
 // What the operator writes in by hand on each stage's sheet.
 const BLANK_COLUMNS = {
   rolling: ['Date', 'Shift', 'Machine', 'Operator', 'Material in (kg)', 'Rolls made', 'Output (kg)', 'Waste (kg)', 'Sign'],
   printing: ['Date', 'Shift', 'Machine', 'Operator', 'Input', 'Printed', 'Waste', 'Sign'],
   cutting: ['Date', 'Shift', 'Machine', 'Operator', 'Input', 'Bags cut', 'Waste', 'Sign'],
+  other: ['Date', 'Shift', 'Machine', 'Done by', 'Used (note)', 'Made', 'Waste', 'Sign'],
   dispatch: ['Date', 'Quantity sent', 'Vehicle no.', 'Delivery partner', 'Handed to', 'Sign'],
 };
 
@@ -52,9 +53,9 @@ export function JobSheet() {
           Stage{' '}
           <select value={stage} onChange={(e) => setParams(e.target.value ? { stage: e.target.value } : {}, { replace: true })} className="ml-1 rounded-lg border border-line bg-white px-2 py-1.5">
             <option value="">All stages ({sheet.stages.length} pages)</option>
-            {['rolling', 'printing', 'cutting', 'dispatch'].map((s) => (
-              <option key={s} value={s}>
-                {s[0].toUpperCase() + s.slice(1)}
+            {PRODUCTION_STAGES.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
               </option>
             ))}
           </select>
@@ -87,11 +88,15 @@ export function JobSheet() {
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-sm font-bold">
                     Line {index + 1}: {line.product}
-                    {line.finished ? <span className="ml-2 rounded bg-slate-200 px-1.5 text-[11px] font-semibold">Stage finished</span> : null}
+                    {line.process ? ` · ${line.process}` : ''}
+                    {line.finished ? (
+                      <span className="ml-2 rounded bg-slate-200 px-1.5 text-[11px] font-semibold">{line.closedShort ? 'Closed short' : 'Stage finished'}</span>
+                    ) : null}
                   </h2>
                   <p className="text-sm">
                     Make <span className="font-bold">{formatQtyUnit(line.target, line.unit)}</span> · Done {formatQtyUnit(line.done, line.unit)} · Left{' '}
                     <span className="font-bold">{formatQtyUnit(line.remaining, line.unit)}</span>
+                    {line.wasteText ? <> · Waste {line.wasteText}</> : null}
                   </p>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 print:grid-cols-3 sm:grid-cols-3">
@@ -131,7 +136,7 @@ export function JobSheet() {
                           <td className="pr-2">{e.machine}</td>
                           <td className="pr-2 text-right">{e.input || ''}</td>
                           <td className="pr-2 text-right">{e.output}</td>
-                          <td className="pr-2 text-right">{e.waste || ''}</td>
+                          <td className="pr-2 text-right">{e.waste ? formatQtyUnit(e.waste, e.wasteUnit || line.unit) : ''}</td>
                           {page.stage === 'dispatch' ? <td>{e.vehicle}</td> : null}
                         </tr>
                       ))}

@@ -43,7 +43,7 @@ const SECTIONS = [
       ['overdueHoldDays', 'Credit hold when a bill is overdue more than (days)', { type: 'number' }],
       ['defaultGstPercent', 'GST % on new order lines', { type: 'number' }],
       ['defaultHsnCode', 'HSN code when a product has none'],
-      ['invoicePrefix', 'Invoice number prefix', { placeholder: 'SP' }],
+      ['invoicePrefix', 'Invoice number prefix (up to 5 letters)', { placeholder: 'SP', maxLength: 5 }],
       ['proformaPrefix', 'Proforma number prefix', { placeholder: 'PI' }],
       ['invoiceTerms', 'Terms printed on invoices', { wide: true, textarea: true }],
     ],
@@ -110,6 +110,7 @@ export function CompanySettings() {
                     min={options.type === 'number' ? 0 : undefined}
                     value={form[key] ?? ''}
                     placeholder={options.placeholder}
+                    maxLength={options.maxLength}
                     disabled={!isSuperAdmin}
                     onChange={(e) => set(key, e.target.value)}
                     className={inputClass}

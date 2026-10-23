@@ -10,7 +10,7 @@ import { StatusToggle } from '../components/ui/StatusToggle';
 import { usePagedList } from '../hooks/usePagedList';
 import { useSingleFlight } from '../hooks/useSingleFlight';
 import { usePermission } from '../hooks/usePermission';
-import { OPTION_GROUPS, OPTION_LIST_SECTIONS, routeLabel } from '../lib/sales';
+import { OPTION_GROUPS, OPTION_LIST_SECTIONS, lineRouteLabel } from '../lib/sales';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { exportTable, localToday } from '../lib/exporters';
 
@@ -601,7 +601,7 @@ export function SalesSettings() {
                   <td className="px-4 py-3 text-slate">
                     {[template.material, template.size, template.color].filter(Boolean).join(' · ') || '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate">{template.productionRoute ? routeLabel(template.productionRoute) : '—'}</td>
+                  <td className="px-4 py-3 text-slate">{template.productionRoute ? lineRouteLabel(template) : '—'}</td>
                   <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                     <StatusToggle
                       checked={template.isActive !== false}

@@ -101,10 +101,12 @@ function TaxPreview({ maths, intraState, roundOff = 0 }) {
   );
 }
 
-function useSupplierPlace(supplierId) {
+// Loaded when the dialog opens, not whenever a page that holds it renders.
+function useSupplierPlace(supplierId, open) {
   const [company, setCompany] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   useEffect(() => {
+    if (!open) return;
     companyApi
       .get()
       .then(setCompany)
@@ -113,7 +115,7 @@ function useSupplierPlace(supplierId) {
       .list()
       .then((rows) => setSuppliers(rows.filter((s) => s.isActive !== false)))
       .catch(() => setSuppliers([]));
-  }, []);
+  }, [open]);
   const supplier = suppliers.find((s) => s.id === supplierId);
   const theirs = /^\d{2}/.test(supplier?.gstNumber || '') ? supplier.gstNumber.slice(0, 2) : '';
   const intraState = !theirs || !company?.stateCode || theirs === company.stateCode;
@@ -124,7 +126,7 @@ function useSupplierPlace(supplierId) {
 
 export function BillForm({ open, supplierId: fixedSupplier, onClose, onSaved }) {
   const [supplierId, setSupplierId] = useState(fixedSupplier || '');
-  const { suppliers, supplier, company, intraState } = useSupplierPlace(supplierId);
+  const { suppliers, supplier, company, intraState } = useSupplierPlace(supplierId, open);
   const [options, setOptions] = useState({ lineAccounts: [] });
   const [lots, setLots] = useState([]);
   const [form, setForm] = useState({ supplierBillNo: '', billDate: toDateInput(new Date()), creditDays: '', billTotal: '', notes: '' });
@@ -301,7 +303,7 @@ export function SupplierPaymentForm({ open, supplierId, bills = [], onClose, onS
 // ---------------------------------------------------------------- debit note
 
 export function DebitNoteForm({ open, supplierId, bills = [], onClose, onSaved }) {
-  const { intraState: defaultIntra } = useSupplierPlace(supplierId);
+  const { intraState: defaultIntra } = useSupplierPlace(supplierId, open);
   const [options, setOptions] = useState({ lineAccounts: [] });
   const [form, setForm] = useState({ date: toDateInput(new Date()), billId: '', reason: '' });
   const [lines, setLines] = useState([blank()]);

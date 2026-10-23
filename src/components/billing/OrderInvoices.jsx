@@ -8,20 +8,31 @@ import { Modal } from '../ui/Modal';
 
 const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-// Preview only; the API works the final figures out the same way.
+// Same working as the API (billing priceLine): the line discount plus its
+// share of the order discount, in proportion to the quantity billed now, and
+// GST rounded per line. So the preview total is the invoice total.
 function preview(lines, intraState) {
   let taxable = 0;
-  let tax = 0;
+  let cgst = 0;
+  let sgst = 0;
+  let igst = 0;
   for (const line of lines) {
     const quantity = Number(line.quantity) || 0;
     if (quantity <= 0) continue;
-    const value = money(quantity * line.rate);
+    const fraction = line.ordered > 0 ? quantity / line.ordered : 0;
+    const value = money(Math.max(0, quantity * (Number(line.rate) || 0) - money((Number(line.discount) || 0) * fraction)));
+    const tax = (value * (Number(line.gstPercent) || 0)) / 100;
     taxable += value;
-    tax += money((value * line.gstPercent) / 100);
+    if (intraState) {
+      cgst += money(tax / 2);
+      sgst += money(tax / 2);
+    } else igst += money(tax);
   }
-  const exact = taxable + tax;
-  return { taxable: money(taxable), cgst: intraState ? money(tax / 2) : 0, sgst: intraState ? money(tax / 2) : 0, igst: intraState ? 0 : money(tax), total: Math.round(exact) };
+  const exact = money(taxable) + money(cgst) + money(sgst) + money(igst);
+  return { taxable: money(taxable), cgst: money(cgst), sgst: money(sgst), igst: money(igst), total: Math.round(exact) };
 }
+
+const limitOf = (line, ahead) => (ahead ? line.aheadAvailable ?? line.available : line.available);
 
 function CreateInvoice({ orderId, open, onClose }) {
   const navigate = useNavigate();
@@ -31,6 +42,9 @@ function CreateInvoice({ orderId, open, onClose }) {
   const [creditDays, setCreditDays] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Owner only: bill goods not dispatched yet, with a reason kept on the invoice.
+  const [billAhead, setBillAhead] = useState(false);
+  const [aheadReason, setAheadReason] = useState('');
 
   useEffect(() => {
     if (!open) return undefined;
@@ -50,6 +64,9 @@ function CreateInvoice({ orderId, open, onClose }) {
   }, [open, orderId]);
 
   const totals = useMemo(() => preview(lines, draft?.intraState), [lines, draft]);
+  const tooMuch = lines.find((l) => (Number(l.quantity) || 0) > limitOf(l, billAhead) + 1e-6);
+  const ahead = lines.some((l) => (Number(l.quantity) || 0) > l.available + 1e-6);
+  const reasonMissing = billAhead && ahead && aheadReason.trim().length < 3;
 
   async function create() {
     setBusy(true);
@@ -58,6 +75,7 @@ function CreateInvoice({ orderId, open, onClose }) {
       const invoice = await billingApi.createInvoice(orderId, {
         invoiceDate,
         creditDays,
+        ...(billAhead && ahead ? { billAhead: true, billAheadReason: aheadReason.trim() } : {}),
         lines: lines.filter((l) => Number(l.quantity) > 0).map((l) => ({ itemId: l.itemId, quantity: Number(l.quantity) })),
       });
       navigate(`/invoices/${invoice.id}/print`);
@@ -118,29 +136,51 @@ function CreateInvoice({ orderId, open, onClose }) {
                       <input
                         type="number"
                         min="0"
-                        max={line.available}
+                        max={limitOf(line, billAhead)}
                         step="any"
                         value={line.quantity}
-                        disabled={line.available <= 0}
+                        disabled={limitOf(line, billAhead) <= 0}
                         onChange={(e) => setLines((all) => all.map((l, at) => (at === index ? { ...l, quantity: e.target.value } : l)))}
                         className={`${inputClass} mt-0 px-2 py-1`}
                         aria-label={`Quantity to bill for ${line.product}`}
                       />
                     </td>
-                    <td className="py-1.5 pr-2">{formatMoney(line.rate)}</td>
+                    <td className="py-1.5 pr-2">
+                      {formatMoney(line.rate)}
+                      {line.netRate !== undefined && line.netRate < line.rate - 0.004 ? <div className="text-xs text-slate">{formatMoney(line.netRate)} after discount</div> : null}
+                    </td>
                     <td className="py-1.5">{line.gstPercent}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {draft.canBillAhead ? (
+            <div className="space-y-2 rounded-lg border border-line px-3 py-2 text-sm">
+              <label className="flex items-center gap-2 font-semibold">
+                <input type="checkbox" checked={billAhead} onChange={(e) => setBillAhead(e.target.checked)} />
+                Bill ahead of dispatch (owner only)
+              </label>
+              {billAhead ? (
+                <label className="block font-semibold">
+                  Reason (kept on the invoice)
+                  <input value={aheadReason} onChange={(e) => setAheadReason(e.target.value)} placeholder="e.g. goods held at the plant for the customer" className={inputClass} />
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+          {tooMuch ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              {tooMuch.product}: at most {limitOf(tooMuch, billAhead)} {tooMuch.unit} can be billed{billAhead ? ' on this order' : ' (dispatched and not yet invoiced)'}.
+            </p>
+          ) : null}
           <p className="text-sm">
             Taxable {formatMoney(totals.taxable)} · {draft.intraState ? `CGST ${formatMoney(totals.cgst)} · SGST ${formatMoney(totals.sgst)}` : `IGST ${formatMoney(totals.igst)}`} ·{' '}
-            <span className="font-semibold">Total about {formatMoney(totals.total)}</span>
-            <span className="text-slate"> (discounts are applied on the invoice)</span>
+            <span className="font-semibold">Total {formatMoney(totals.total)}</span>
+            <span className="text-slate"> (after line and order discounts)</span>
           </p>
           <div className="flex gap-3">
-            <button type="button" disabled={busy || !draft.canInvoice || !draft.seller.gstin} onClick={create} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="button" disabled={busy || !draft.canInvoice || !draft.seller.gstin || Boolean(tooMuch) || reasonMissing} onClick={create} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
               {busy ? 'Creating…' : 'Create invoice'}
             </button>
             <button type="button" onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm font-semibold">

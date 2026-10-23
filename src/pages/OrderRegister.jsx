@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { productionApi } from '../api/production.api';
 import { registersApi } from '../api/registers.api';
 import { BackButton } from '../components/ui/BackButton';
 import { ArtworkButton } from '../components/register/ArtworkButton';
@@ -20,7 +21,73 @@ function byNewest(a, b) {
   return new Date(b.workDate || b.markedAt) - new Date(a.workDate || a.markedAt);
 }
 
-function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fromFloor, showCustomerName }) {
+// Production managers only (the server sends canCloseShort): a making stage
+// that came in under target is closed with what it made, with a reason.
+function CloseShort({ stage, orderId, onChanged }) {
+  const lines = (stage.lines || []).filter((line) => line.canCloseShort || line.closedShort);
+  const [openFor, setOpenFor] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (!lines.length) return null;
+
+  async function submit(event, line) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await productionApi.closeStage({ orderId, itemId: line.itemId, stage: stage.id, reason: reason.trim() });
+      setOpenFor('');
+      setReason('');
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5 border-b border-stone-300 bg-white px-3 py-2 text-sm">
+      {lines.map((line) => (
+        <div key={line.itemId} className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{[line.product || 'Line', line.process].filter(Boolean).join(' · ')}</span>
+          <span className="text-stone-600">
+            {qtyOf(line.output, line.unit)} made of {qtyOf(line.quantity, line.unit)}
+          </span>
+          {line.closedShort ? (
+            <span className="rounded bg-stone-200 px-1.5 text-xs font-semibold">Closed short</span>
+          ) : openFor === line.itemId ? (
+            <form onSubmit={(event) => submit(event, line)} className="flex flex-wrap items-center gap-2">
+              <input
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                required
+                minLength={3}
+                maxLength={500}
+                placeholder="Why is this stage closed short?"
+                className="w-72 max-w-full rounded border border-stone-400 px-2 py-1"
+              />
+              <button type="submit" disabled={busy || reason.trim().length < 3} className="rounded bg-ink px-2.5 py-1 font-semibold text-white disabled:opacity-50">
+                Close stage short
+              </button>
+              <button type="button" onClick={() => setOpenFor('')} className="text-stone-600 underline">
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button type="button" onClick={() => { setOpenFor(line.itemId); setReason(''); setError(''); }} className="rounded border border-stone-400 px-2 py-0.5 font-semibold hover:bg-stone-100">
+              Close short…
+            </button>
+          )}
+        </div>
+      ))}
+      {error ? <p className="text-red-800">{error}</p> : null}
+    </div>
+  );
+}
+
+function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fromFloor, showCustomerName, onChanged }) {
   const columns = bookColumns(stage.id, showCustomerName);
   const plainSpan = showCustomerName ? 10 : 9;
   const showUsage = stage.id !== 'dispatch';
@@ -50,6 +117,7 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
 
   return (
     <section>
+      <CloseShort stage={stage} orderId={orderId} onChanged={onChanged} />
       <table className="w-full border-separate border-spacing-0 border-l border-t border-stone-300 text-sm">
         <thead className="sticky top-0 z-20">
           <tr>
@@ -117,7 +185,7 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
                 <>
                   <td className={cell}>{customerCode || '—'}</td>
                   {showCustomerName ? <td className={cell}>{customerName || '—'}</td> : null}
-                  <td className={cell}>{line.product || '—'}</td>
+                  <td className={cell}>{[line.product, line.process].filter(Boolean).join(' · ') || '—'}</td>
                   <td className={cell}>{qtyOf(line.remaining, line.unit)} left</td>
                   <td className={cell}>—</td>
                   <td className={cell}>—</td>
@@ -170,7 +238,7 @@ function StageBook({ stage, customerName, customerCode, orderNumber, orderId, fr
                   {showUsage ? (
                     <>
                       <td className={cell}>{formatQty(entry.inputQty)}</td>
-                      <td className={cell}>{entry.wasteQty ? formatQty(entry.wasteQty) : '—'}</td>
+                      <td className={cell}>{entry.wasteQty ? qtyOf(entry.wasteQty, entry.wasteUnit || entry.unit) : '—'}</td>
                       <td className={cell}>{entry.pickedLotName || '—'}</td>
                     </>
                   ) : (
@@ -223,6 +291,7 @@ export function OrderRegister() {
   // The loaded book is tagged with its order: switching orders shows nothing
   // stale while the new one loads, and a late answer for the old one is ignored.
   const [loadedBook, setLoadedBook] = useState({ orderId: '', book: null, error: '' });
+  const [reloads, setReloads] = useState(0);
   const book = loadedBook.orderId === orderId ? loadedBook.book : null;
   const error = loadedBook.orderId === orderId ? loadedBook.error : '';
   const stages = book?.stages || [];
@@ -239,7 +308,7 @@ export function OrderRegister() {
     return () => {
       alive = false;
     };
-  }, [orderId]);
+  }, [orderId, reloads]);
 
   function selectStage(id) {
     const next = new URLSearchParams(searchParams);
@@ -307,6 +376,7 @@ export function OrderRegister() {
               orderId={orderId}
               fromFloor={fromFloor}
               showCustomerName={showCustomerName}
+              onChanged={() => setReloads((count) => count + 1)}
             />
           ) : null}
         </div>

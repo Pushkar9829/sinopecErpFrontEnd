@@ -27,6 +27,7 @@ const ACTION_LABELS = {
   customer_confirmed: 'Customer confirmed',
   customer_cleared: 'Customer changed',
   converted: 'Converted',
+  files_not_copied: 'Files not copied',
 };
 
 function when(value) {

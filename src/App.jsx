@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, Route, RouterProvider, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ConfirmHost } from './components/ui/ConfirmHost';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/auth';
 import { Login } from './pages/Login';
 import { ANALYTICS_VIEW_KEYS, PRODUCTION_VIEW_KEYS, SALES_ORDER_VIEW_KEYS } from './lib/sales';
 
@@ -58,6 +59,13 @@ const Books = lazy(() => import('./pages/Books').then((m) => ({ default: m.Books
 const Reports = lazy(() => import('./pages/Reports').then((m) => ({ default: m.Reports })));
 const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })));
 const Tasks = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.Tasks })));
+
+// Pages only the Super Admin can use (the API refuses everyone else). Sits
+// inside a ProtectedRoute, so the user is already known here.
+function OwnerOnly() {
+  const { user } = useAuth();
+  return user?.role?.slug === 'super_admin' ? <Outlet /> : <Navigate to="/" replace />;
+}
 
 function ToRegister() {
   const { search } = useLocation();
@@ -156,8 +164,8 @@ function AppRoutes() {
                 <Route path="statements" element={<Statements />} />
                 <Route path="suppliers/:id/account" element={<SupplierAccount />} />
               </Route>
-              {/* No role holds company:update, so only the owner gets here. */}
-              <Route element={<ProtectedRoute permission="company:update" />}>
+              {/* Only the Super Admin can save form field rules. */}
+              <Route element={<OwnerOnly />}>
                 <Route path="settings/form-fields" element={<FormFields />} />
               </Route>
               <Route element={<ProtectedRoute anyOf={['production:read', 'inventory:read']} />}>
@@ -169,7 +177,10 @@ function AppRoutes() {
                 </Route>
                 <Route path="machines/:id" element={<MachineForm />} />
               </Route>
-              <Route path="company" element={<CompanySettings />} />
+              {/* Same rule as the menu: no role holds company:update, so only the owner gets here. */}
+              <Route element={<ProtectedRoute permission="company:update" />}>
+                <Route path="company" element={<CompanySettings />} />
+              </Route>
               <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
                 <Route path="customers/:id/account" element={<CustomerAccount />} />
                 <Route path="receivables" element={<Receivables />} />

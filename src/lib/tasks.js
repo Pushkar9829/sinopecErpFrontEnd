@@ -140,7 +140,7 @@ export function taskAction(task) {
   }
 }
 
-const STAGE_NAMES = { rolling: 'Rolling', printing: 'Printing', cutting: 'Cutting', dispatch: 'Dispatch' };
+const STAGE_NAMES = { rolling: 'Rolling', printing: 'Printing', cutting: 'Cutting', other: 'the other process step', dispatch: 'Dispatch' };
 
 export function taskGuide(task) {
   switch (task.category) {

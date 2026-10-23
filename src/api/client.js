@@ -101,7 +101,9 @@ async function request(path, options = {}) {
   const payload = await parseBody(response);
   if (!response.ok) {
     if (response.status === 403 && !path.startsWith('/api/auth/')) window.dispatchEvent(new Event('auth:stale'));
-    throw new Error(payload.message || 'Request failed');
+    const error = new Error(payload.message || 'Request failed');
+    error.status = response.status;
+    throw error;
   }
 
   if (options.method && options.method !== 'GET' && TASK_SOURCES.test(path)) notifyTasksChanged();

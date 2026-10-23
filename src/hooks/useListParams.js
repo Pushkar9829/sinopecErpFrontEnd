@@ -4,19 +4,22 @@ import { useSearchParams } from 'react-router-dom';
 // List filters, page and rows-per-page kept in the address bar, so a refresh,
 // the Back button or a shared link shows the same list. Values equal to their
 // default are left out of the URL. Changing any filter goes back to page 1.
-export function useListParams(defaults = {}, { pageSize: defaultPageSize = 25 } = {}) {
+// `prefix` keeps lists on different tabs of one page apart: with prefix 'pay'
+// the names are pay.page, pay.status and so on.
+export function useListParams(defaults = {}, { pageSize: defaultPageSize = 25, prefix = '' } = {}) {
   const [params, setParams] = useSearchParams();
+  const urlName = useCallback((name) => (prefix ? `${prefix}.${name}` : name), [prefix]);
   const key = JSON.stringify(defaults);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const base = useMemo(() => defaults, [key]);
 
   const values = useMemo(() => {
     const out = {};
-    for (const [name, fallback] of Object.entries(base)) out[name] = params.get(name) ?? fallback;
+    for (const [name, fallback] of Object.entries(base)) out[name] = params.get(urlName(name)) ?? fallback;
     return out;
-  }, [params, base]);
-  const page = Math.max(1, Number(params.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(5, Number(params.get('rows')) || defaultPageSize));
+  }, [params, base, urlName]);
+  const page = Math.max(1, Number(params.get(urlName('page'))) || 1);
+  const pageSize = Math.min(100, Math.max(5, Number(params.get(urlName('rows'))) || defaultPageSize));
 
   const update = useCallback(
     (changes, { keepPage = false } = {}) => {
@@ -25,16 +28,16 @@ export function useListParams(defaults = {}, { pageSize: defaultPageSize = 25 } 
           const next = new URLSearchParams(current);
           for (const [name, value] of Object.entries(changes)) {
             const fallback = name === 'page' ? 1 : name === 'rows' ? defaultPageSize : base[name];
-            if (value === undefined || value === null || value === '' || String(value) === String(fallback ?? '')) next.delete(name);
-            else next.set(name, String(value));
+            if (value === undefined || value === null || value === '' || String(value) === String(fallback ?? '')) next.delete(urlName(name));
+            else next.set(urlName(name), String(value));
           }
-          if (!keepPage && !('page' in changes)) next.delete('page');
+          if (!keepPage && !('page' in changes)) next.delete(urlName('page'));
           return next;
         },
         { replace: true }
       );
     },
-    [setParams, base, defaultPageSize]
+    [setParams, base, defaultPageSize, urlName]
   );
 
   return {

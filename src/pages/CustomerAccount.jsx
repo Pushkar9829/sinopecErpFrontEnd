@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { billingApi } from '../api/billing.api';
 import { CreditNoteForm, WriteOffForm } from '../components/billing/CreditForms';
+import { DepositToField } from '../components/billing/DepositToField';
 import { Badge } from '../components/ui/Badge';
 import { confirmAction } from '../components/ui/confirm';
 import { Field, Grid, inputClass } from '../components/ui/FormField';
@@ -34,7 +35,7 @@ function Card({ label, value, tone = 'text-ink' }) {
 }
 
 function PaymentForm({ customerId, invoices, open, onClose, onDone }) {
-  const [form, setForm] = useState({ receivedAt: toDateInput(new Date()), amount: '', tds: '', tdsSection: '', method: 'bank_transfer', reference: '', note: '', invoiceId: '' });
+  const [form, setForm] = useState({ receivedAt: toDateInput(new Date()), amount: '', tds: '', tdsSection: '', method: 'bank_transfer', depositTo: '', reference: '', note: '', invoiceId: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -43,7 +44,7 @@ function PaymentForm({ customerId, invoices, open, onClose, onDone }) {
     setBusy(true);
     setError('');
     try {
-      await billingApi.addReceipt(customerId, { ...form, amount: Number(form.amount), tds: Number(form.tds) || 0, invoiceId: form.invoiceId || undefined });
+      await billingApi.addReceipt(customerId, { ...form, amount: Number(form.amount), tds: Number(form.tds) || 0, invoiceId: form.invoiceId || undefined, depositTo: form.depositTo || undefined });
       onDone('Payment recorded.');
     } catch (err) {
       setError(err.message);
@@ -71,6 +72,7 @@ function PaymentForm({ customerId, invoices, open, onClose, onDone }) {
               ))}
             </select>
           </Field>
+          <DepositToField method={form.method} value={form.depositTo} onChange={(depositTo) => setForm((f) => ({ ...f, depositTo }))} />
           <Field label="Reference (UTR, cheque no.)">
             <input value={form.reference} onChange={set('reference')} className={inputClass} />
           </Field>
@@ -168,6 +170,7 @@ export function CustomerAccount() {
   const [notice, setNotice] = useState('');
   const [tab, setTab] = useUrlState('tab', 'bills');
   const [notes, setNotes] = useState([]);
+  const [notesTotal, setNotesTotal] = useState(0);
   const [dialog, setDialog] = useState('');
 
   const load = useCallback(() => {
@@ -177,7 +180,10 @@ export function CustomerAccount() {
       .catch((err) => setError(err.message));
     billingApi
       .creditNotes({ customer: id, status: 'all', pageSize: 200 })
-      .then((r) => setNotes(r.items))
+      .then((r) => {
+        setNotes(r.items);
+        setNotesTotal(r.total || r.items.length);
+      })
       .catch(() => {});
   }, [id]);
   useEffect(load, [load]);
@@ -189,8 +195,12 @@ export function CustomerAccount() {
   }
 
   async function voidReceipt(receipt) {
-    const reason = await confirmAction({ title: `Void payment ${receipt.number}`, message: 'It stays on record, struck out, and no longer counts.', withReason: true, confirmLabel: 'Void', danger: true });
+    const reason = await confirmAction({ title: `Void payment ${receipt.number}`, message: 'It stays on record, struck out, and no longer counts.', withReason: true, reasonRequired: true, confirmLabel: 'Void', danger: true });
     if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setError('Give a reason for voiding the payment (at least 3 letters).');
+      return;
+    }
     try {
       await billingApi.voidReceipt(receipt.id, reason);
       done('Payment voided.');
@@ -200,8 +210,12 @@ export function CustomerAccount() {
   }
 
   async function cancelNote(n) {
-    const reason = await confirmAction({ title: `Cancel ${n.number}`, message: 'It stays on record, struck out, and the customer owes the amount again.', withReason: true, confirmLabel: 'Cancel', danger: true });
+    const reason = await confirmAction({ title: `Cancel ${n.number}`, message: 'It stays on record, struck out, and the customer owes the amount again.', withReason: true, reasonRequired: true, confirmLabel: 'Cancel', danger: true });
     if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setError('Give a reason for cancelling (at least 3 letters).');
+      return;
+    }
     try {
       await billingApi.cancelCreditNote(n.id, reason);
       done(`${n.number} cancelled.`);
@@ -254,7 +268,8 @@ export function CustomerAccount() {
     return exportTable(format, {
       fileName: `${customer.code}-payments_${day}`,
       title: `Payments: ${who}`,
-      subtitle: customer.code,
+      // The account sends the latest 200 payments only.
+      subtitle: data.receipts.length >= 200 ? `${customer.code} · latest 200 payments only` : customer.code,
       rows: data.receipts,
       columns: [
         { label: 'Receipt', type: 'text', get: (r) => r.number },
@@ -466,6 +481,7 @@ export function CustomerAccount() {
             </li>
           ))}
           {!notes.length ? <li className="px-3 py-4 text-sm text-slate">No credit notes or write-offs.</li> : null}
+          {notesTotal > notes.length ? <li className="px-3 py-2 text-xs text-slate">Showing the latest {notes.length} of {notesTotal}; see Credit notes under Accounts for all of them.</li> : null}
         </ul>
       ) : null}
 

@@ -18,7 +18,7 @@ import {
   routeHasCut,
   routeHasPrint,
   routeHasRoll,
-  routeLabel,
+  lineRouteLabel,
   setPath,
 } from '../../lib/sales';
 
@@ -336,7 +336,7 @@ export function SalesOrderLineCard({
   // ✱ on the inputs the owner made mandatory (Settings → Form fields).
   const rules = useFieldRules();
   const need = (key) => rules(hideTemplate ? 'template' : 'orderLine', key);
-  const summary = [item.productCode, item.quantity ? `${item.quantity} ${item.unit || ''}`.trim() : '', routeLabel(item.productionRoute)]
+  const summary = [item.productCode, item.quantity ? `${item.quantity} ${item.unit || ''}`.trim() : '', lineRouteLabel(item)]
     .filter(Boolean)
     .join(' · ');
   const productLabel = item.product?.trim() || `Product ${index + 1}`;
@@ -370,6 +370,19 @@ export function SalesOrderLineCard({
             ))}
           </select>
         </Field>
+        {item.productionRoute === 'other_dispatch' ? (
+          <Field label="Process name" mark>
+            <input
+              required
+              maxLength={60}
+              value={item.otherProcess || ''}
+              disabled={!canEdit}
+              onChange={(e) => update('otherProcess', e.target.value)}
+              placeholder="e.g. Lamination"
+              className={inputClass}
+            />
+          </Field>
+        ) : null}
       </Grid>
       <Grid>
         <ComboField label="Product" mark value={item.product} options={templates.map((template) => template.product)} disabled={!canEdit} onChange={(value) => update('product', value)} />

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { purchasesApi } from '../api/purchases.api';
 import { BillForm } from '../components/purchases/PurchaseForms';
-import { confirmAction } from '../components/ui/confirm';
+import { confirmAction, notify } from '../components/ui/confirm';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { ClearFilters, DateRangeFilter, FilterBar, FilterSelect } from '../components/ui/Filters';
@@ -31,8 +31,10 @@ const supplierLink = (id, name) => (
   </Link>
 );
 
-function useServerList(load, defaults) {
-  const list = useListParams(defaults, { pageSize: 25 });
+// Each tab keeps its own filters and page in the address bar (bill.page,
+// pay.page, ...), so switching tabs doesn't carry one list's filters to another.
+function useServerList(load, defaults, prefix) {
+  const list = useListParams(defaults, { pageSize: 25, prefix });
   const [query, setQuery] = useState(list.values.q || '');
   const search = useDebounced(query.trim(), 300);
   const [data, setData] = useState(null);
@@ -46,7 +48,11 @@ function useServerList(load, defaults) {
   useEffect(() => {
     let live = true;
     load({ ...list.values, page: list.page, pageSize: list.pageSize })
-      .then((d) => live && setData(d))
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        setError('');
+      })
       .catch((err) => live && setError(err.message));
     return () => {
       live = false;
@@ -59,14 +65,18 @@ function useServerList(load, defaults) {
 // ---------------------------------------------------------------- bills
 
 function Bills({ canCancel, reloadKey }) {
-  const { list, data, error, query, setQuery, reload } = useServerList(purchasesApi.bills, { from: '', to: '', kind: '', status: '', q: '' });
+  const { list, data, error, query, setQuery, reload } = useServerList(purchasesApi.bills, { from: '', to: '', kind: '', status: '', q: '' }, 'bill');
   const f = list.values;
   useEffect(reload, [reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
   async function cancel(b) {
     const reason = await confirmAction({ title: `Cancel bill ${b.supplierBillNo || b.number}?`, withReason: true, reasonRequired: true, confirmLabel: 'Cancel bill', danger: true });
     if (reason === null) return;
-    await purchasesApi.cancelBill(b.id, reason);
-    reload();
+    try {
+      await purchasesApi.cancelBill(b.id, reason);
+      reload();
+    } catch (err) {
+      notify(err.message, 'Bill not cancelled');
+    }
   }
   async function download(format) {
     const rows = await fetchAllPages(purchasesApi.bills, { from: f.from, to: f.to, kind: f.kind, status: f.status, q: f.q });
@@ -169,13 +179,17 @@ function Bills({ canCancel, reloadKey }) {
 // ---------------------------------------------------------------- payments & notes
 
 function Payments({ canVoid }) {
-  const { list, data, error, reload } = useServerList(purchasesApi.payments, { from: '', to: '', status: '' });
+  const { list, data, error, reload } = useServerList(purchasesApi.payments, { from: '', to: '', status: '' }, 'pay');
   const f = list.values;
   async function voidIt(p) {
     const reason = await confirmAction({ title: `Void payment ${p.number}?`, withReason: true, reasonRequired: true, confirmLabel: 'Void', danger: true });
     if (reason === null) return;
-    await purchasesApi.voidPayment(p.id, reason);
-    reload();
+    try {
+      await purchasesApi.voidPayment(p.id, reason);
+      reload();
+    } catch (err) {
+      notify(err.message, 'Payment not voided');
+    }
   }
   const download = async (format) => {
     const rows = await fetchAllPages(purchasesApi.payments, { from: f.from, to: f.to, status: f.status });
@@ -252,13 +266,17 @@ function Payments({ canVoid }) {
 }
 
 function DebitNotes({ canCancel }) {
-  const { list, data, error, reload } = useServerList(purchasesApi.debitNotes, { from: '', to: '', status: '' });
+  const { list, data, error, reload } = useServerList(purchasesApi.debitNotes, { from: '', to: '', status: '' }, 'note');
   const f = list.values;
   async function cancel(n) {
     const reason = await confirmAction({ title: `Cancel ${n.number}?`, withReason: true, reasonRequired: true, confirmLabel: 'Cancel note', danger: true });
     if (reason === null) return;
-    await purchasesApi.cancelDebitNote(n.id, reason);
-    reload();
+    try {
+      await purchasesApi.cancelDebitNote(n.id, reason);
+      reload();
+    } catch (err) {
+      notify(err.message, 'Debit note not cancelled');
+    }
   }
   const download = async (format) => {
     const rows = await fetchAllPages(purchasesApi.debitNotes, { from: f.from, to: f.to, status: f.status });
@@ -346,7 +364,10 @@ function Payables({ reloadKey }) {
   useEffect(() => {
     purchasesApi
       .payables()
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        setError('');
+      })
       .catch((err) => setError(err.message));
   }, [reloadKey]);
   const rows = (data?.rows || []).filter((r) => !onlyOverdue || r.overdue > 0);

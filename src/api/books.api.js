@@ -14,7 +14,6 @@ export const booksApi = {
   deleteAccount: (id) => api.delete(`/api/books/accounts/${id}`),
   saveOpenings: (rows) => api.put('/api/books/openings', { rows }),
   vouchers: (params) => api.get(`/api/books/vouchers${qs(params)}`),
-  voucher: (id) => api.get(`/api/books/vouchers/${id}`),
   createVoucher: (payload) => api.post('/api/books/vouchers', payload),
   cancelVoucher: (id, reason) => api.post(`/api/books/vouchers/${id}/cancel`, { reason }),
   ledger: (accountId, params) => api.get(`/api/books/ledger/${accountId}${qs(params)}`),
@@ -29,5 +28,4 @@ export const booksApi = {
   reopenYear: (fy) => api.post(`/api/books/years/${fy}/reopen`, {}),
   tds: (params) => api.get(`/api/books/tds${qs(params)}`),
   trialBalance: (asOf) => api.get(`/api/books/trial-balance${qs({ asOf })}`),
-  sync: () => api.post('/api/books/sync', {}),
 };
