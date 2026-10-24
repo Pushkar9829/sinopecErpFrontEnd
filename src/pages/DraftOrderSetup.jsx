@@ -30,7 +30,11 @@ const PROVIDERS = [
 ];
 
 function formFrom(data) {
-  const form = { autoReplyEnabled: Boolean(data.autoReplyEnabled), autoReplyTestMode: data.autoReplyTestMode !== false };
+  const form = {
+    autoReplyEnabled: Boolean(data.autoReplyEnabled),
+    autoReplyTestMode: data.autoReplyTestMode !== false,
+    confirmConvertedWhatsapp: data.confirmConvertedWhatsapp !== false,
+  };
   for (const key of TEXT_FIELDS) form[key] = data[key] || '';
   for (const key of NUMBER_FIELDS) form[key] = data[key] ?? '';
   for (const key of SECRET_FIELDS) form[key] = '';
@@ -323,6 +327,10 @@ export function DraftOrderSetup() {
           <input type="checkbox" checked={form.autoReplyTestMode} onChange={(event) => set('autoReplyTestMode', event.target.checked)} />
           Test mode: only reply to the numbers and addresses below
         </label>
+        <label className="flex items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" checked={form.confirmConvertedWhatsapp} onChange={(event) => set('confirmConvertedWhatsapp', event.target.checked)} />
+          Confirm converted orders on WhatsApp (“Your order is booked as SO-…”)
+        </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Test numbers / addresses (one per line)">
             <textarea className={`${inputClass} min-h-20`} value={form.autoReplyTestRecipients} onChange={(event) => set('autoReplyTestRecipients', event.target.value)} />
@@ -334,7 +342,11 @@ export function DraftOrderSetup() {
             <input className={inputClass} type="number" min="0" value={form.autoReplyDailyPerSender} onChange={(event) => set('autoReplyDailyPerSender', event.target.value)} />
           </Field>
         </div>
-        <p className="text-sm text-slate">One reply per conversation. Automated mail, newsletters and our own address are never answered. WhatsApp replies only go out within 24 hours of the customer’s message.</p>
+        <p className="text-sm text-slate">
+          One reply per conversation. Automated mail, newsletters and our own address are never answered. WhatsApp replies only go out within 24 hours of the customer’s message. The order
+          confirmation follows the same rules (test mode, daily limit); it does not need “Send we received your order” switched on. After a convert, Gmail mails get the label
+          “Sinopec/Converted” and are marked read.
+        </p>
       </Section>
 
       <Section title="Review and clean-up">

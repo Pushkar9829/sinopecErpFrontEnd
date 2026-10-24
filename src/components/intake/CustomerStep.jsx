@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { intakeApi } from '../../api/intake.api';
 import { Badge } from '../ui/Badge';
+import { SearchField } from '../ui/SearchField';
 
 const MATCHED_BY = { gst: 'GST number', mobile: 'mobile', email: 'email', name: 'name only' };
 
 // Step 1: which customer is this? Pick a match or create one from the message.
 export function CustomerStep({ draft, proposal, disabled, onDone, onError }) {
   const [busy, setBusy] = useState('');
+  const [search, setSearch] = useState('');
+  const [found, setFound] = useState(null);
   const match = draft.customerMatch;
   const fromMessage = proposal?.customer || {};
   const newName = fromMessage.name || fromMessage.companyName || draft.sender?.name || '';
@@ -21,6 +24,56 @@ export function CustomerStep({ draft, proposal, disabled, onDone, onError }) {
     } finally {
       setBusy('');
     }
+  }
+
+  // Any saved customer, by name, company, code, mobile, email or GST number.
+  useEffect(() => {
+    const text = search.trim();
+    if (text.length < 2) {
+      setFound(null);
+      return undefined;
+    }
+    let alive = true;
+    const timer = setTimeout(() => {
+      intakeApi
+        .customers(text)
+        .then((rows) => alive && setFound(rows))
+        .catch((err) => alive && onError(err.message));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  function row(candidate, best) {
+    return (
+      <li key={candidate.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${best ? 'border-emerald-300 bg-emerald-50' : 'border-line'}`}>
+        <div className="min-w-0 text-sm">
+          <div className="font-semibold">
+            {candidate.companyName || candidate.name} <span className="font-normal text-slate">{candidate.code}</span>
+          </div>
+          <div className="text-xs text-slate">{[candidate.mobile, candidate.email, candidate.gstNumber].filter(Boolean).join(' · ')}</div>
+          <div className="mt-1 flex gap-1">
+            {MATCHED_BY[candidate.matchedBy] ? (
+              <Badge tone={candidate.matchedBy === 'name' ? 'warning' : 'success'}>Matched by {MATCHED_BY[candidate.matchedBy]}</Badge>
+            ) : null}
+            {!candidate.isActive ? <Badge tone="danger">Inactive</Badge> : null}
+          </div>
+        </div>
+        {!disabled ? (
+          <button
+            type="button"
+            disabled={Boolean(busy) || !candidate.isActive}
+            onClick={() => run(candidate.id, () => intakeApi.confirmCustomer(draft.id, { customerId: candidate.id, version: draft.version }))}
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy === candidate.id ? 'Saving…' : 'Use this customer'}
+          </button>
+        ) : null}
+      </li>
+    );
   }
 
   if (draft.customer) {
@@ -49,37 +102,22 @@ export function CustomerStep({ draft, proposal, disabled, onDone, onError }) {
   return (
     <div className="space-y-3">
       {candidates.length ? (
-        <ul className="space-y-2">
-          {candidates.map((candidate) => (
-            <li key={candidate.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${candidate.id === match.best ? 'border-emerald-300 bg-emerald-50' : 'border-line'}`}>
-              <div className="min-w-0 text-sm">
-                <div className="font-semibold">
-                  {candidate.companyName || candidate.name} <span className="font-normal text-slate">{candidate.code}</span>
-                </div>
-                <div className="text-xs text-slate">
-                  {[candidate.mobile, candidate.email, candidate.gstNumber].filter(Boolean).join(' · ')}
-                </div>
-                <div className="mt-1 flex gap-1">
-                  <Badge tone={candidate.matchedBy === 'name' ? 'warning' : 'success'}>Matched by {MATCHED_BY[candidate.matchedBy] || candidate.matchedBy}</Badge>
-                  {!candidate.isActive ? <Badge tone="danger">Inactive</Badge> : null}
-                </div>
-              </div>
-              {!disabled ? (
-                <button
-                  type="button"
-                  disabled={Boolean(busy) || !candidate.isActive}
-                  onClick={() => run(candidate.id, () => intakeApi.confirmCustomer(draft.id, { customerId: candidate.id, version: draft.version }))}
-                  className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {busy === candidate.id ? 'Saving…' : 'Use this customer'}
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <ul className="space-y-2">{candidates.map((candidate) => row(candidate, candidate.id === match.best))}</ul>
       ) : (
         <p className="text-sm text-slate">No saved customer has this GST number, mobile, email or name.</p>
       )}
+      {!disabled ? (
+        <div className="space-y-2">
+          <SearchField value={search} onChange={setSearch} placeholder="Find another customer: name, code, mobile, GST" className="w-full" />
+          {found ? (
+            found.length ? (
+              <ul className="space-y-2">{found.map((candidate) => row(candidate, false))}</ul>
+            ) : (
+              <p className="text-sm text-slate">No customer found.</p>
+            )
+          ) : null}
+        </div>
+      ) : null}
       {!disabled ? (
         <div className="rounded-lg border border-dashed border-line p-3 text-sm">
           <p className="text-slate">

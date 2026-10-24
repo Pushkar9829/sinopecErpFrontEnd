@@ -4,6 +4,7 @@ import { intakeApi } from '../../api/intake.api';
 import { notify } from '../ui/confirm';
 import { inputClass } from '../ui/FormField';
 import { routeFitsOrderType } from '../../lib/sales';
+import { ProductPicker } from './ProductPicker';
 
 const small = `${inputClass} mt-0 px-2 py-1.5 text-sm`;
 
@@ -21,9 +22,33 @@ function initialLines(lines, suggestions) {
       material: line.material || '',
       notes: line.notes || '',
       saved: pick ? `${pick.source}:${pick.id}` : '',
+      savedLabel: pick?.label || '',
+      saveToCustomer: true,
       productionRoute: pick?.productionRoute || '',
+      otherProcess: pick?.otherProcess || '',
     };
   });
+}
+
+// A line the message did not have, picked from the saved products.
+function extraLine(spec) {
+  return {
+    include: true,
+    extra: true,
+    product: spec.product || spec.label,
+    quantity: '',
+    unit: spec.unit || 'pcs',
+    rate: spec.rate || '',
+    width: spec.width || '',
+    length: spec.length || '',
+    material: spec.material || '',
+    notes: '',
+    saved: `${spec.source}:${spec.id}`,
+    savedLabel: spec.label,
+    saveToCustomer: false,
+    productionRoute: spec.productionRoute || '',
+    otherProcess: spec.otherProcess || '',
+  };
 }
 
 function isoDate(value) {
@@ -71,13 +96,23 @@ export function ConvertStep({ draft, disabled, onError }) {
     setLines((current) => current.map((line, at) => (at === index ? { ...line, ...patch } : line)));
   }
 
-  function chooseSaved(index, value) {
-    const suggestion = (match?.lineSuggestions?.[index] || []).find((s) => `${s.source}:${s.id}` === value);
+  // spec is null for "New product".
+  function chooseSaved(index, spec) {
+    if (!spec) {
+      setLine(index, { saved: '', savedLabel: '' });
+      return;
+    }
     setLine(index, {
-      saved: value,
-      ...(suggestion?.productionRoute ? { productionRoute: suggestion.productionRoute } : {}),
-      ...(suggestion?.otherProcess ? { otherProcess: suggestion.otherProcess } : {}),
+      saved: `${spec.source}:${spec.id}`,
+      savedLabel: spec.label,
+      ...(spec.productionRoute ? { productionRoute: spec.productionRoute } : {}),
+      ...(spec.otherProcess ? { otherProcess: spec.otherProcess } : {}),
+      ...(lines[index]?.extra ? { product: spec.product || spec.label, unit: spec.unit || 'pcs', rate: spec.rate || '' } : {}),
     });
+  }
+
+  function removeLine(index) {
+    setLines((current) => current.filter((_line, at) => at !== index));
   }
 
   async function convert() {
@@ -89,10 +124,17 @@ export function ConvertStep({ draft, disabled, onError }) {
         deliveryDate: deliveryDate || null,
         lines: lines.map((line) => {
           const [source, sourceId] = line.saved ? line.saved.split(':') : ['', ''];
-          return { ...line, source, sourceId, quantity: line.quantity === '' ? 0 : Number(line.quantity), rate: line.rate === '' ? null : Number(line.rate) };
+          return {
+            ...line,
+            source,
+            sourceId,
+            saveToCustomer: !line.saved && Boolean(line.saveToCustomer),
+            quantity: line.quantity === '' ? 0 : Number(line.quantity),
+            rate: line.rate === '' ? null : Number(line.rate),
+          };
         }),
       });
-      if (result.warnings?.length) await notify(`Some files were not copied: ${result.warnings.join('; ')}`, 'Order created');
+      if (result.warnings?.length) await notify(result.warnings.join('\n'), 'Order created');
       navigate(`/sales-orders/${result.order.id}`);
     } catch (err) {
       onError(err.message);
@@ -101,8 +143,8 @@ export function ConvertStep({ draft, disabled, onError }) {
   }
 
   if (!match) return <p className="text-sm text-slate">Finding saved products…</p>;
-  if (!lines.length) return <p className="text-sm text-slate">Add at least one line in Order details and save it first.</p>;
   const included = lines.filter((line) => line.include);
+  const missingQuantity = included.some((line) => line.extra && !(Number(line.quantity) > 0));
   const missingRoute = included.some(
     (line) =>
       !line.productionRoute ||
@@ -129,76 +171,128 @@ export function ConvertStep({ draft, disabled, onError }) {
         <p className="text-xs text-slate">The message said “{draft.proposal.deliveryDate}”. Pick the date above.</p>
       ) : null}
 
+      {!lines.length ? <p className="text-sm text-slate">No lines yet. Add them in Order details and save, or add a product from this customer below.</p> : null}
       <ul className="space-y-2">
-        {lines.map((line, index) => {
-          const suggestions = match.lineSuggestions?.[index] || [];
-          return (
-            <li key={index} className={`rounded-lg border p-3 ${line.include ? 'border-line' : 'border-dashed border-line opacity-60'}`}>
+        {lines.map((line, index) => (
+          <li key={index} className={`rounded-lg border p-3 ${line.include ? 'border-line' : 'border-dashed border-line opacity-60'}`}>
+            {line.extra ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold">
+                <span>
+                  {line.product} <span className="font-normal text-slate">· added, not in the message</span>
+                </span>
+                {!disabled ? (
+                  <button type="button" onClick={() => removeLine(index)} className="text-xs font-semibold text-rose-700">
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            ) : (
               <label className="flex items-center gap-2 text-sm font-semibold">
                 <input type="checkbox" checked={line.include} disabled={disabled} onChange={(event) => setLine(index, { include: event.target.checked })} />
                 {line.product || `Line ${index + 1}`} · {line.quantity || '?'} {line.unit}
                 {line.width || line.length ? ` · ${line.width}×${line.length}` : ''}
               </label>
-              {line.include ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <label className="text-xs font-semibold text-slate">
-                    Start from a saved product
-                    <select value={line.saved} disabled={disabled} onChange={(event) => chooseSaved(index, event.target.value)} className={small}>
-                      <option value="">None — new product</option>
-                      {suggestions.map((s) => (
-                        <option key={`${s.source}:${s.id}`} value={`${s.source}:${s.id}`}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-xs font-semibold text-slate">
-                    Production route
-                    <select
-                      value={line.productionRoute}
-                      disabled={disabled}
-                      onChange={(event) => setLine(index, { productionRoute: event.target.value })}
-                      className={`${small} ${line.productionRoute && routes.some((r) => r.id === line.productionRoute) ? '' : 'border-amber-400'}`}
-                    >
-                      <option value="">Choose…</option>
-                      {routes.map((route) => (
-                        <option key={route.id} value={route.id}>
-                          {route.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {line.productionRoute === 'other_dispatch' ? (
+            )}
+            {line.include ? (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {line.extra ? (
+                  <div className="grid grid-cols-3 gap-2 sm:col-span-2">
                     <label className="text-xs font-semibold text-slate">
-                      Process name
+                      Quantity
                       <input
-                        value={line.otherProcess || ''}
-                        maxLength={60}
+                        type="number"
+                        min="0"
+                        value={line.quantity}
                         disabled={disabled}
-                        onChange={(event) => setLine(index, { otherProcess: event.target.value })}
-                        placeholder="e.g. Lamination"
-                        className={`${small} ${String(line.otherProcess || '').trim() ? '' : 'border-amber-400'}`}
+                        onChange={(event) => setLine(index, { quantity: event.target.value })}
+                        className={`${small} ${Number(line.quantity) > 0 ? '' : 'border-amber-400'}`}
                       />
+                    </label>
+                    <label className="text-xs font-semibold text-slate">
+                      Unit
+                      <input value={line.unit} disabled={disabled} onChange={(event) => setLine(index, { unit: event.target.value })} className={small} />
+                    </label>
+                    <label className="text-xs font-semibold text-slate">
+                      Rate
+                      <input type="number" min="0" step="any" value={line.rate} disabled={disabled} onChange={(event) => setLine(index, { rate: event.target.value })} className={small} />
+                    </label>
+                  </div>
+                ) : null}
+                <div className="text-xs font-semibold text-slate">
+                  Product
+                  <ProductPicker
+                    draftId={draft.id}
+                    lineIndex={line.extra ? undefined : index}
+                    selectedLabel={line.savedLabel}
+                    allowNew={!line.extra}
+                    disabled={disabled}
+                    onPick={(spec) => chooseSaved(index, spec)}
+                  />
+                  {!line.saved ? (
+                    <label className="mt-1 flex items-center gap-2 font-normal text-ink">
+                      <input type="checkbox" checked={line.saveToCustomer} disabled={disabled} onChange={(event) => setLine(index, { saveToCustomer: event.target.checked })} />
+                      Save to this customer’s products
                     </label>
                   ) : null}
                 </div>
-              ) : null}
-            </li>
-          );
-        })}
+                <label className="text-xs font-semibold text-slate">
+                  Production route
+                  <select
+                    value={line.productionRoute}
+                    disabled={disabled}
+                    onChange={(event) => setLine(index, { productionRoute: event.target.value })}
+                    className={`${small} ${line.productionRoute && routes.some((r) => r.id === line.productionRoute) ? '' : 'border-amber-400'}`}
+                  >
+                    <option value="">Choose…</option>
+                    {routes.map((route) => (
+                      <option key={route.id} value={route.id}>
+                        {route.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {line.productionRoute === 'other_dispatch' ? (
+                  <label className="text-xs font-semibold text-slate">
+                    Process name
+                    <input
+                      value={line.otherProcess || ''}
+                      maxLength={60}
+                      disabled={disabled}
+                      onChange={(event) => setLine(index, { otherProcess: event.target.value })}
+                      placeholder="e.g. Lamination"
+                      className={`${small} ${String(line.otherProcess || '').trim() ? '' : 'border-amber-400'}`}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
+          </li>
+        ))}
       </ul>
+      {!disabled ? (
+        <div className="max-w-sm">
+          <ProductPicker
+            draftId={draft.id}
+            allowNew={false}
+            buttonLabel="+ Add product from this customer"
+            buttonClass="text-sm font-semibold text-accent"
+            onPick={(spec) => spec && setLines((current) => [...current, extraLine(spec)])}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={disabled || busy || !included.length || missingRoute}
+          disabled={disabled || busy || !included.length || missingRoute || missingQuantity}
           onClick={convert}
           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
         >
           {busy ? 'Creating…' : 'Create draft sales order'}
         </button>
         <p className="text-xs text-slate">
-          {missingRoute ? 'Choose a production route for every checked line. ' : ''}The order opens as a draft; nothing is submitted. The customer’s files are attached as PO.
+          {missingRoute ? 'Choose a production route for every checked line. ' : ''}
+          {missingQuantity ? 'Fill the quantity of each added product. ' : ''}The order opens as a draft; nothing is submitted. The customer’s files are attached as PO.
         </p>
       </div>
     </div>

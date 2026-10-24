@@ -28,10 +28,24 @@ const ACTION_LABELS = {
   customer_cleared: 'Customer changed',
   converted: 'Converted',
   files_not_copied: 'Files not copied',
+  products_saved: 'Products saved to the customer',
+  products_not_saved: 'Products not saved to the customer',
+  gmail_marked: 'Gmail marked',
+  whatsapp_marked: 'WhatsApp marked',
+  mark_failed: 'Marking the message failed',
 };
+const MARK_ACTIONS = ['gmail_marked', 'whatsapp_marked', 'mark_failed'];
 
 function when(value) {
   return value ? new Date(value).toLocaleString() : '';
+}
+
+// After a convert the mail / WhatsApp chat is marked in the background.
+function markOutcome(draft) {
+  if (!['gmail', 'whatsapp'].includes(draft.channel)) return null;
+  const entry = (draft.history || []).filter((item) => MARK_ACTIONS.includes(item.action)).at(-1);
+  if (!entry) return { tone: 'muted', text: draft.channel === 'gmail' ? 'Marking the mail in Gmail…' : 'Marking the WhatsApp message…' };
+  return { tone: entry.action === 'mark_failed' ? 'danger' : 'success', text: entry.note || ACTION_LABELS[entry.action] };
 }
 
 function Step({ number, title, done, children, aside }) {
@@ -192,13 +206,15 @@ export function DraftOrderDetail() {
       {error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-800">{notice}</p> : null}
       {draft.status === 'converted' ? (
-        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          Converted to draft sales order{' '}
-          <Link to={`/sales-orders/${draft.salesOrder}`} className="font-semibold underline">
-            {draft.salesOrderNumber}
-          </Link>
-          .
-        </p>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <span>
+            Converted →{' '}
+            <Link to={`/sales-orders/${draft.salesOrder}`} className="font-semibold underline">
+              {draft.salesOrderNumber}
+            </Link>
+          </span>
+          {markOutcome(draft) ? <Badge tone={markOutcome(draft).tone}>{markOutcome(draft).text}</Badge> : null}
+        </div>
       ) : null}
       {draft.status === 'discarded' ? <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm">Discarded: {draft.discardReason}</p> : null}
       {draft.error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{draft.error}</p> : null}
@@ -253,6 +269,7 @@ export function DraftOrderDetail() {
                 {draft.replies.map((reply, index) => (
                   <li key={index} className="flex flex-wrap gap-2">
                     <Badge tone={reply.status === 'sent' ? 'success' : reply.status === 'failed' ? 'danger' : 'muted'}>{reply.status}</Badge>
+                    <span>{reply.kind === 'booked' ? 'Order booked' : 'Received'}</span>
                     <span>{when(reply.at)}</span>
                     <span className="text-slate">{reply.to}</span>
                     {reply.reason ? <span className="text-slate">— {reply.reason}</span> : null}
