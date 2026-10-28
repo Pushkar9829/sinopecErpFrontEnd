@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { StageRegister } from '../components/register/StageRegister';
 import { registersApi } from '../api/registers.api';
@@ -77,8 +77,6 @@ export function Registers() {
     });
   const loading = view === 'orders' && !orderList.loaded;
   const error = view === 'orders' ? orderList.error : '';
-  const [entryAction, setEntryAction] = useState(null);
-  const onEntryState = useCallback((next) => setEntryAction(next), []);
 
   useEffect(() => {
     if (view === 'orders' || !stages.length) return;
@@ -170,16 +168,6 @@ export function Registers() {
             ) : null}
           </div>
           <div className="flex w-full items-center justify-between gap-3 lg:w-auto lg:justify-start">
-            {view === 'stage' && entryAction?.canEnter ? (
-              <button
-                type="button"
-                onClick={entryAction.open}
-                disabled={entryAction.disabled}
-                className="rounded-sm bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 lg:px-3 lg:py-1"
-              >
-                New entry
-              </button>
-            ) : null}
             <p className="text-sm font-semibold text-stone-900">{formatDate(new Date())}</p>
           </div>
         </div>
@@ -247,13 +235,6 @@ export function Registers() {
           </>
         ) : (
           <>
-            {canPrintWorkList ? (
-              <div className="flex justify-end print:hidden">
-                <Link to={`/job-sheets/stage/${stage}`} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper">
-                  Print work list
-                </Link>
-              </div>
-            ) : null}
           <StageRegister
               key={stage}
               stage={stage}
@@ -262,8 +243,14 @@ export function Registers() {
               fromTask={presetJob ? fromTask : ''}
               operatorName={user?.fullName || user?.username || ''}
               onConsumePreset={clearJob}
-              onEntryState={onEntryState}
               onSaved={afterSave}
+              extraActions={
+                canPrintWorkList ? (
+                  <Link to={`/job-sheets/stage/${stage}`} className="rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold hover:bg-paper">
+                    Print work list
+                  </Link>
+                ) : null
+              }
             />
           </>
         )}

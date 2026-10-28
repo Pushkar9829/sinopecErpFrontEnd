@@ -554,9 +554,12 @@ function BarField({ label, children }) {
   );
 }
 
-function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery, fromTask, saving, error, onRelease }) {
+function EntryBar({ columns, draft, form, chosen, editing, isDelivery, fromTask, saving, error, onRelease }) {
   const lots = !editing && !chosen?.pickup ? chosen?.sourceLots || [] : [];
   const showUsed = form.unitsDiffer && Boolean(columns || isDelivery);
+  // Nothing to say or pick: no strip above the register.
+  const empty = !(fromTask && !editing) && !lots.length && !showUsed && !chosen?.pickup && !form.wasteBlocked && !form.weightError && !form.usedOver && !error && !(!editing && chosen);
+  if (empty) return null;
   return (
     <div className="space-y-2 border-b border-amber-300 bg-[#fffaf0] px-4 py-3">
       {fromTask && !editing ? (
@@ -565,29 +568,9 @@ function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery,
           {draft.prefilled?.length ? ' and the last entry (light blue boxes)' : ''}. Type today&apos;s figures in the{' '}
           <span className="font-semibold text-amber-800">orange-bordered</span> boxes and press Enter. You&apos;ll go back to your tasks.
         </p>
-      ) : (
-        <p className="text-sm text-stone-700">
-          {editing ? 'Change the yellow row in the register, then press Save.' : 'Fill the yellow row at the top of the register, then press Enter.'}
-        </p>
-      )}
+      ) : null}
+      {lots.length || showUsed ? (
       <div className="flex flex-wrap items-end gap-3">
-        {machines?.length ? (
-          <BarField label={form.fieldLabel('machineId', 'Machine')}>
-            <select
-              form={ENTRY_FORM}
-              value={draft.machineId || ''}
-              onChange={form.setTop('machineId')}
-              className={`${barBox} ${form.prefilled.has('machineId') ? 'bg-sky-50' : ''}`}
-            >
-              <option value="">{editing ? editing.machineName || 'Keep as is' : 'Choose'}</option>
-              {machines.map((machine) => (
-                <option key={machine.id} value={machine.id}>
-                  {machine.name}
-                </option>
-              ))}
-            </select>
-          </BarField>
-        ) : null}
         {lots.length ? (
           <BarField label="Material">
             <select form={ENTRY_FORM} value={draft.lotId || lots[0]?.id || ''} onChange={form.setTop('lotId')} className={`${barBox} max-w-[22rem]`}>
@@ -614,6 +597,7 @@ function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery,
           </BarField>
         ) : null}
       </div>
+      ) : null}
       {chosen?.pickup ? (
         <p className="flex flex-wrap items-center gap-2 text-sm text-amber-950">
           <span>
@@ -641,7 +625,7 @@ function EntryBar({ columns, draft, form, chosen, editing, machines, isDelivery,
   );
 }
 
-export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', operatorName = '', onConsumePreset, onEntryState, onSaved }) {
+export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', operatorName = '', onConsumePreset, onEntryState, onSaved, extraActions = null }) {
   const { user } = useAuth();
   const showCustomerName = isSuperAdmin(user);
   const [book, setBook] = useState(null);
@@ -732,7 +716,8 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
 
   // The machine list can arrive after the entry form opened: fill the machine
   // from the operator's last entry once per line (the user may clear it after).
-  const carryKey = entryOpen && !editing && machines.length && draft.jobId && !draft.machineId ? `${draft.jobId}|${machines.length}` : '';
+  const rowReady = entryOpen || Boolean(editing) || (Boolean(book?.canMark) && (book?.open || []).some((line) => line.canMark));
+  const carryKey = rowReady && !editing && machines.length && draft.jobId && !draft.machineId ? `${draft.jobId}|${machines.length}` : '';
   if (carryKey && carriedFor !== carryKey) {
     setCarriedFor(carryKey);
     const line = (book?.open || []).find((item) => item.jobId === draft.jobId);
@@ -749,6 +734,9 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
   );
   const openLines = (book?.open || []).filter((line) => line.canMark);
   const canEnter = Boolean(book?.canMark);
+  // Like a paper register, the yellow row to write in is always at the top
+  // while anything waits at this stage (and while a row is being edited).
+  const rowOpen = rowReady;
   const editLine = editing
     ? {
         orderId: editing.orderId,
@@ -770,8 +758,8 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
   const isDelivery = stage === 'dispatch';
   const columns = bookColumns(stage, showCustomerName);
   const form = entryForm({ stage, columns, openLines, chosen, draft, setDraft, isDelivery, machines, editing });
-  const adding = entryOpen && !editing;
-  const editingId = entryOpen && editing ? editing.id : '';
+  const adding = rowOpen && !editing;
+  const editingId = rowOpen && editing ? editing.id : '';
   const rowProps = { draft, form, chosen, editing, openLines, operatorName, saving, onCancel: closeEntry };
 
   async function reloadStage() {
@@ -859,12 +847,16 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
     }
   }
 
+  // Cancel: stop editing, or clear the yellow row (it stays, ready to fill).
   function closeEntry() {
     setEntryOpen(false);
+    setError('');
     if (editing) {
       setEditing(null);
+      setDraft((current) => ({ ...current, ...blankDraft() }));
       return;
     }
+    setDraft((current) => ({ ...current, ...blankDraft() }));
     onConsumePreset?.();
   }
 
@@ -998,15 +990,20 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
 
   return (
     <>
-      {book && entries.length ? (
-        <div className="flex justify-end border-b border-stone-200 bg-white px-3 py-1.5 print:hidden">
-          <ExportMenu onExport={downloadBook} label="Download register" />
+      {book ? (
+        // One toolbar: add a row on the left; print and download on the right.
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 bg-white px-3 py-2 print:hidden">
+          <p className="text-sm text-stone-600">{canEnter && !rowOpen ? 'Nothing is waiting at this stage right now.' : ''}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {extraActions}
+            {entries.length ? <ExportMenu onExport={downloadBook} label="Download register" /> : null}
+          </div>
         </div>
       ) : null}
-      {error && !entryOpen ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p> : null}
+      {error && !rowOpen ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</p> : null}
       {notice ? <p className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{notice}</p> : null}
       {!book && !error ? <p className="border-b border-stone-200 px-4 py-2 text-sm text-stone-500">Loading…</p> : null}
-      {entryOpen ? (
+      {rowOpen ? (
         <>
           <form id={ENTRY_FORM} onSubmit={submitEntry} className="hidden" />
           <EntryBar
@@ -1015,7 +1012,6 @@ export function StageRegister({ stage, isAdmin, presetJob = '', fromTask = '', o
             form={form}
             chosen={chosen}
             editing={editing}
-            machines={machines}
             isDelivery={isDelivery}
             fromTask={fromTask}
             saving={saving}

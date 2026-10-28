@@ -23,6 +23,7 @@ import {
   deliveryDateForCopy,
   ORDER_TYPES,
   orderTypeLabel,
+  PRODUCTION_VIEW_KEYS,
   STATUS_LABELS,
   stageLabel,
   statusLabel,
@@ -50,82 +51,17 @@ const DATE_FIELDS = [
 const LEGACY_STATUSES = new Set(['ready_for_packing', 'packed']);
 const STATUS_ORDER = Object.keys(STATUS_LABELS);
 
-const STATUS_CHIPS = {
-  all: { chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
-  draft: { chip: 'border-slate-300 bg-slate-100 text-slate-700', dot: 'bg-slate-500' },
-  submitted: { chip: 'border-amber-300 bg-amber-100 text-amber-900', dot: 'bg-amber-500' },
-  approved: { chip: 'border-sky-300 bg-sky-100 text-sky-800', dot: 'bg-sky-600' },
-  production_planned: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
-  in_production: { chip: 'border-orange-300 bg-orange-100 text-orange-900', dot: 'bg-orange-600' },
-  ready_for_packing: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
-  packed: { chip: 'border-violet-300 bg-violet-100 text-violet-800', dot: 'bg-violet-600' },
-  ready_for_dispatch: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
-  dispatched: { chip: 'border-teal-300 bg-teal-100 text-teal-800', dot: 'bg-teal-600' },
-  delivered: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
-  completed: { chip: 'border-emerald-300 bg-emerald-100 text-emerald-800', dot: 'bg-emerald-600' },
-  cancelled: { chip: 'border-rose-300 bg-rose-100 text-rose-800', dot: 'bg-rose-600' },
-};
-
-function StatusMenu({ value, counts, onChange }) {
-  const [open, setOpen] = useState(false);
-  const options = [
-    { id: 'all', label: 'All' },
-    ...STATUS_ORDER.filter((id) => !LEGACY_STATUSES.has(id) || counts[id] > 0 || id === value).map((id) => ({ id, label: STATUS_LABELS[id] })),
+// Status filter options with how many orders each holds (for the type picked).
+// Old statuses only show while an order still has them.
+function statusOptions(counts, value) {
+  return [
+    { id: 'all', label: `Any status (${counts.all ?? 0})` },
+    ...STATUS_ORDER.filter((id) => !LEGACY_STATUSES.has(id) || counts[id] > 0 || id === value).map((id) => ({ id, label: `${STATUS_LABELS[id]} (${counts[id] ?? 0})` })),
   ];
-  const current = options.find((item) => item.id === value) || options[0];
-  const tone = STATUS_CHIPS[current.id] || STATUS_CHIPS.all;
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function close() {
-      setOpen(false);
-    }
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [open]);
-
-  return (
-    <div className="relative" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
-        aria-label="Status"
-        aria-expanded={open}
-        onClick={() => setOpen((next) => !next)}
-        className={`inline-flex max-w-56 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold ${tone.chip}`}
-      >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
-        <span className="truncate">{current.label} · {counts[current.id] ?? 0}</span>
-        <svg viewBox="0 0 20 20" className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {open ? (
-        <div className="absolute left-0 z-20 mt-1 max-h-80 w-56 overflow-auto rounded-lg border border-line bg-white p-1 shadow-md">
-          {options.map((item) => {
-            const itemTone = STATUS_CHIPS[item.id] || STATUS_CHIPS.all;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  onChange(item.id);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
-                  item.id === value ? itemTone.chip : 'text-ink hover:bg-paper'
-                }`}
-              >
-                <span className={`h-2 w-2 rounded-full ${itemTone.dot}`} />
-                <span className="flex-1">{item.label}</span>
-                <span className="text-xs">{counts[item.id] ?? 0}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
 }
+
+// No job sheet before approval or after cancelling (same rule as the order page).
+const JOB_SHEET_HIDDEN = ['draft', 'submitted', 'cancelled'];
 
 function IconButton({ label, className = '', children, ...props }) {
   return (
@@ -146,6 +82,16 @@ function PencilIcon() {
     <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
       <path d="M12.5 3.5l4 4L7 17H3v-4L12.5 3.5z" strokeLinejoin="round" />
       <path d="M10.5 5.5l4 4" />
+    </svg>
+  );
+}
+
+function JobSheetIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M5 7V3h10v4" strokeLinejoin="round" />
+      <rect x="2.5" y="7" width="15" height="7" rx="1.5" />
+      <path d="M5 12h10v5H5z" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -181,6 +127,8 @@ function PlusIcon() {
 export function SalesOrders() {
   const navigate = useNavigate();
   const { can } = usePermission();
+  // Same rule as the order page: production roles, once the order is approved.
+  const canJobSheet = PRODUCTION_VIEW_KEYS.some(can);
   const showMoney = canSeeCommercial(can);
   const canCreate = can('sales:create');
   const list = useListParams(LIST_DEFAULTS, { pageSize: 25 });
@@ -324,7 +272,6 @@ export function SalesOrders() {
             </button>
           ))}
         </div>
-        <StatusMenu value={tab} counts={counts} onChange={setTab} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <SearchField value={query} onChange={setQuery} placeholder="Search number or customer" />
           {can('sales:read') ? (
@@ -354,6 +301,7 @@ export function SalesOrders() {
           to={filters.to}
           onChange={(range) => list.setMany(range)}
         />
+        <FilterSelect label="Status" value={tab} onChange={setTab} options={statusOptions(counts, tab)} />
         <FilterSelect label="Priority" value={filters.priority} onChange={(value) => list.set('priority', value)} options={PRIORITY_OPTIONS} />
         <FilterSelect label="Sort" value={filters.sort} onChange={(value) => list.set('sort', value)} options={SORT_OPTIONS} />
         <ClearFilters
@@ -447,14 +395,29 @@ export function SalesOrders() {
                     <IconButton label="Open order" className="text-ink hover:bg-paper" onClick={() => navigate(`/sales-orders/${order.id}`)}>
                       <PencilIcon />
                     </IconButton>
+                    {can('sales:delete') ? (
+                      <IconButton
+                        label={order.status === 'draft' ? 'Delete order' : 'Only a draft can be deleted'}
+                        className="text-red-700 hover:bg-red-50"
+                        disabled={order.status !== 'draft'}
+                        onClick={() => handleDelete(order.id)}
+                      >
+                        <TrashIcon />
+                      </IconButton>
+                    ) : null}
+                    {canJobSheet ? (
+                      <IconButton
+                        label={JOB_SHEET_HIDDEN.includes(order.status) ? 'Job sheet is ready once the order is approved' : 'Job sheet (print or save as PDF)'}
+                        className="text-ink hover:bg-paper"
+                        disabled={JOB_SHEET_HIDDEN.includes(order.status)}
+                        onClick={() => navigate(`/job-sheets/${order.id}`)}
+                      >
+                        <JobSheetIcon />
+                      </IconButton>
+                    ) : null}
                     {canCreate ? (
                       <IconButton label="Duplicate order" className="text-ink hover:bg-paper" disabled={Boolean(duplicating)} onClick={() => duplicateOrder(order)}>
                         <CopyIcon />
-                      </IconButton>
-                    ) : null}
-                    {can('sales:delete') && order.status === 'draft' ? (
-                      <IconButton label="Delete order" className="text-red-700 hover:bg-red-50" onClick={() => handleDelete(order.id)}>
-                        <TrashIcon />
                       </IconButton>
                     ) : null}
                   </div>

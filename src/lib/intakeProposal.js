@@ -1,6 +1,6 @@
 // Editable copy of a draft order's proposal (what the reader found).
 export function emptyLine() {
-  return { product: '', quantity: '', unit: '', rate: '', material: '', width: '', length: '', notes: '' };
+  return { product: '', quantity: '', unit: '', rate: '', material: '', width: '', length: '', flap: '', gusset: '', sizeUnit: '', sizeText: '', thickness: '', thicknessKind: '', notes: '' };
 }
 
 export function emptyProposal() {
@@ -28,6 +28,7 @@ export function toEditable(proposal) {
       ...line,
       quantity: line.quantity ?? '',
       rate: line.rate ?? '',
+      thickness: line.thickness ?? '',
     })),
   };
 }
@@ -36,7 +37,7 @@ export function toPayload(proposal) {
   return {
     ...proposal,
     lines: proposal.lines.filter((line) =>
-      [line.product, line.quantity, line.unit, line.rate, line.material, line.width, line.length, line.notes].some(
+      [line.product, line.quantity, line.unit, line.rate, line.material, line.width, line.length, line.flap, line.gusset, line.thickness, line.notes].some(
         (value) => String(value ?? '').trim() !== ''
       )
     ),

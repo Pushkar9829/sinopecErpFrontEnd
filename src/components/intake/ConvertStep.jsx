@@ -19,6 +19,11 @@ function initialLines(lines, suggestions) {
       rate: line.rate ?? '',
       width: line.width || '',
       length: line.length || '',
+      flap: line.flap || '',
+      gusset: line.gusset || '',
+      sizeUnit: line.sizeUnit || '',
+      thickness: line.thickness ?? '',
+      thicknessKind: line.thicknessKind || '',
       material: line.material || '',
       notes: line.notes || '',
       saved: pick ? `${pick.source}:${pick.id}` : '',
@@ -49,6 +54,19 @@ function extraLine(spec) {
     productionRoute: spec.productionRoute || '',
     otherProcess: spec.otherProcess || '',
   };
+}
+
+// "12 × 16 inch · flap 2 · gusset 1 · 150 gauge" for the user to check.
+function sizeSummary(line) {
+  const unit = line.sizeUnit || (line.width || line.length ? 'inch' : '');
+  return [
+    line.width || line.length ? `${[line.width, line.length].filter(Boolean).join(' × ')} ${unit}`.trim() : '',
+    line.flap ? `flap ${line.flap}` : '',
+    line.gusset ? `gusset ${line.gusset}` : '',
+    line.thickness ? `${line.thickness} ${line.thicknessKind || 'gauge'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function isoDate(value) {
@@ -190,9 +208,9 @@ export function ConvertStep({ draft, disabled, onError }) {
               <label className="flex items-center gap-2 text-sm font-semibold">
                 <input type="checkbox" checked={line.include} disabled={disabled} onChange={(event) => setLine(index, { include: event.target.checked })} />
                 {line.product || `Line ${index + 1}`} · {line.quantity || '?'} {line.unit}
-                {line.width || line.length ? ` · ${line.width}×${line.length}` : ''}
               </label>
             )}
+            {sizeSummary(line) ? <p className="mt-1 text-xs text-slate">{sizeSummary(line)}</p> : null}
             {line.include ? (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {line.extra ? (

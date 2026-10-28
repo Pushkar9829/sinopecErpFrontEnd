@@ -14,6 +14,45 @@ const BLANK_COLUMNS = {
   dispatch: ['Date', 'Quantity sent', 'Vehicle no.', 'Delivery partner', 'Handed to', 'Sign'],
 };
 
+// The order's instructions as separate points: one per line, sentence or "; " part.
+function instructionPoints(text) {
+  return String(text || '')
+    .split(/\r?\n|;\s*|\.\s+(?=[A-Z0-9])/)
+    .map((part) => part.replace(/^[\s•*-]+|[\s.]+$/g, ''))
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
+}
+
+// Specs as a ruled table, two label/value pairs per row.
+function SpecTable({ specs }) {
+  if (!specs.length) return null;
+  const rows = [];
+  for (let i = 0; i < specs.length; i += 2) rows.push(specs.slice(i, i + 2));
+  return (
+    <table className="w-full table-fixed border-collapse text-xs">
+      <tbody>
+        {rows.map((pair) => (
+          <tr key={pair[0].label}>
+            {pair.map((spec) => (
+              <SpecCell key={spec.label} spec={spec} />
+            ))}
+            {pair.length === 1 ? <td colSpan={2} className="border border-line" /> : null}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function SpecCell({ spec }) {
+  return (
+    <>
+      <th className="w-[18%] border border-line bg-slate-50 px-1.5 py-1 text-left font-semibold text-slate">{spec.label}</th>
+      <td className="border border-line px-1.5 py-1 font-medium">{spec.value}</td>
+    </>
+  );
+}
+
 // Job sheet of one order for the floor: a page per stage with what to make,
 // the specs, what is done so far, and rows to fill in during the shift.
 export function JobSheet() {
@@ -44,6 +83,10 @@ export function JobSheet() {
   if (error) return <p className="p-6 text-sm text-red-700">{error}</p>;
   if (!sheet) return <p className="p-6 text-sm text-slate">Loading job sheet…</p>;
   const { order } = sheet;
+  // "All stages" leaves out stages that are already finished (pick the stage to reprint one).
+  const open = sheet.stages.filter((page) => page.lines.some((line) => !line.finished));
+  const pages = stage || !open.length ? sheet.stages : open;
+  const skipped = sheet.stages.length - pages.length;
 
   return (
     <PrintShell
@@ -52,67 +95,91 @@ export function JobSheet() {
         <label className="text-sm font-semibold">
           Stage{' '}
           <select value={stage} onChange={(e) => setParams(e.target.value ? { stage: e.target.value } : {}, { replace: true })} className="ml-1 rounded-lg border border-line bg-white px-2 py-1.5">
-            <option value="">All stages ({sheet.stages.length} pages)</option>
+            <option value="">All open stages ({pages.length} {pages.length === 1 ? 'page' : 'pages'})</option>
             {PRODUCTION_STAGES.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
               </option>
             ))}
           </select>
+          {skipped ? <span className="ml-2 font-normal text-slate">{skipped} finished {skipped === 1 ? 'stage' : 'stages'} left out</span> : null}
         </label>
       }
     >
-      {sheet.stages.map((page) => (
+      {pages.map((page) => (
         <Sheet key={page.stage}>
           <SheetHeader company={company} title={`${page.label} job sheet`} number={order.number}>
             <p className="text-xs">{orderTypeLabel(order.orderType)}</p>
           </SheetHeader>
           <div className="mt-2 space-y-3">
             <Facts
+              cols={3}
               items={[
-                { label: 'Priority', value: order.priority ? order.priority.toUpperCase() : '', strong: order.priority !== 'normal' },
-                { label: 'Deliver by', value: formatDate(order.deliveryDate), strong: true },
                 { label: 'Customer', value: order.customer },
-                { label: 'Ordered', value: formatDate(order.orderDate) },
+                { label: 'Deliver by', value: formatDate(order.deliveryDate), strong: true },
+                { label: 'Priority', value: order.priority ? order.priority.toUpperCase() : '', strong: order.priority !== 'normal' },
               ]}
             />
             {order.productionInstructions ? (
-              <p className="rounded border border-ink px-2 py-1.5">
-                <span className="font-semibold">Instructions: </span>
-                {order.productionInstructions}
-              </p>
+              <div className="rounded border border-line bg-slate-50 px-2 py-1.5 text-xs">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Production instructions</p>
+                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 font-medium">
+                  {instructionPoints(order.productionInstructions).map((point, at) => (
+                    <li key={at}>{point}</li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
 
-            {page.lines.map((line, index) => (
-              <section key={line.itemId} className="break-inside-avoid space-y-2 rounded border border-line p-2">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="text-sm font-bold">
-                    Line {index + 1}: {line.product}
-                    {line.process ? ` · ${line.process}` : ''}
-                    {line.finished ? (
-                      <span className="ml-2 rounded bg-slate-200 px-1.5 text-[11px] font-semibold">{line.closedShort ? 'Closed short' : 'Stage finished'}</span>
-                    ) : null}
-                  </h2>
-                  <p className="text-sm">
-                    Make <span className="font-bold">{formatQtyUnit(line.target, line.unit)}</span> · Done {formatQtyUnit(line.done, line.unit)} · Left{' '}
-                    <span className="font-bold">{formatQtyUnit(line.remaining, line.unit)}</span>
-                    {line.wasteText ? <> · Waste {line.wasteText}</> : null}
+            {page.lines.map((line, index) => {
+              const name = [line.product, line.productCode && line.productCode !== line.product ? `(${line.productCode})` : '', line.process ? `· ${line.process}` : ''].filter(Boolean).join(' ');
+              if (line.finished) {
+                return (
+                  <p key={line.itemId} className="rounded border border-line px-2 py-1.5 text-slate">
+                    <span className="font-semibold text-ink">
+                      {index + 1}. {name}
+                    </span>{' '}
+                    · {line.closedShort ? 'closed short' : 'stage finished'} · {formatQtyUnit(line.done, line.unit)} made
                   </p>
+                );
+              }
+              return (
+              <section key={line.itemId} className="break-inside-avoid space-y-2 rounded border border-ink p-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold">
+                      {index + 1}. {name}
+                    </h2>
+                    {line.route?.length ? (
+                      <p className="text-xs text-slate">
+                        Route:{' '}
+                        {line.route.map((label, at) => (
+                          <span key={`${label}-${at}`}>
+                            {at ? ' → ' : ''}
+                            <span className={label === page.label || (page.stage === 'other' && label === line.process) ? 'font-bold text-ink' : ''}>{label}</span>
+                          </span>
+                        ))}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="shrink-0 rounded border-2 border-ink px-2 py-0.5 text-right">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate">{page.stage === 'dispatch' ? 'Send' : 'Make'}</p>
+                    <p className="text-base font-bold leading-tight">{formatQtyUnit(line.target, line.unit)}</p>
+                  </div>
                 </div>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 print:grid-cols-3 sm:grid-cols-3">
-                  {line.specs.map((spec) => (
-                    <div key={spec.label} className="flex gap-1.5">
-                      <dt className="shrink-0 text-slate">{spec.label}:</dt>
-                      <dd className="font-medium">{spec.value}</dd>
-                    </div>
-                  ))}
-                </dl>
+                <SpecTable specs={line.specs} />
                 {line.images.length ? (
                   <div className="flex flex-wrap gap-2">
                     {line.images.map((src) => (
                       <img key={src.slice(0, 80)} src={src} alt="Artwork" className="h-28 max-w-[45%] rounded border border-line object-contain" />
                     ))}
                   </div>
+                ) : null}
+                {line.entries.length ? (
+                  <p className="text-xs">
+                    Done so far <span className="font-bold">{formatQtyUnit(line.done, line.unit)}</span> · Left <span className="font-bold">{formatQtyUnit(line.remaining, line.unit)}</span>
+                    {line.wasteText ? <> · Waste {line.wasteText}</> : null}
+                  </p>
                 ) : null}
                 {line.entries.length ? (
                   <table className="w-full border-collapse text-[11px]">
@@ -143,9 +210,10 @@ export function JobSheet() {
                     </tbody>
                   </table>
                 ) : null}
-                {line.finished ? null : <BlankEntryTable columns={BLANK_COLUMNS[page.stage] || BLANK_COLUMNS.cutting} rows={page.lines.length > 2 ? 3 : 5} />}
+                <BlankEntryTable columns={BLANK_COLUMNS[page.stage] || BLANK_COLUMNS.cutting} rows={page.lines.length > 2 ? 3 : 5} />
               </section>
-            ))}
+              );
+            })}
             <div className="grid grid-cols-3 gap-4 pt-4 text-xs">
               {['Operator', 'Supervisor', 'Checked by'].map((who) => (
                 <p key={who} className="border-t border-ink pt-1 text-center">
