@@ -55,8 +55,88 @@ function SpecCell({ spec }) {
   );
 }
 
-// Job sheet of one order for the floor: a page per stage with what to make,
-// the specs, what is done so far, and rows to fill in during the shift.
+const lineName = (line) => [line.product, line.productCode && line.productCode !== line.product ? `(${line.productCode})` : '', line.process ? `· ${line.process}` : ''].filter(Boolean).join(' ');
+
+// One product with every stage on its route, in order: what to make, that
+// stage's specs (each spec printed once, at the first stage that has it),
+// progress, and a few rows to write in. Finished stages take one line.
+function ProductAllStages({ index, entry, doc }) {
+  const { line: first, stages } = entry;
+  const current = stages.find((s) => !s.line.finished);
+  const shown = new Set();
+  const images = stages.find((s) => s.line.images?.length)?.line.images || [];
+  return (
+    <section className="break-inside-avoid space-y-1.5 rounded border border-ink p-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold">
+            {index + 1}. {lineName(first)}
+          </h2>
+          {doc.block('route') && first.route?.length ? (
+            <p className="text-xs text-slate">
+              Route:{' '}
+              {first.route.map((label, at) => (
+                <span key={`${label}-${at}`}>
+                  {at ? ' → ' : ''}
+                  <span className={current && label === current.page.label ? 'font-bold text-ink' : ''}>{label}</span>
+                </span>
+              ))}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {doc.block('specs') && images.length ? (
+        <div className="flex flex-wrap gap-2">
+          {images.map((src) => (
+            <img key={src.slice(0, 80)} src={src} alt="Artwork" className="h-24 max-w-[40%] rounded border border-line object-contain" />
+          ))}
+        </div>
+      ) : null}
+      {stages.map(({ page, line }) => {
+        if (line.finished) {
+          return (
+            <p key={page.stage} className="rounded border border-line px-2 py-1 text-xs text-slate">
+              <span className="font-bold uppercase text-ink">{page.label}</span> · {line.closedShort ? 'closed short' : 'finished'} · {formatQtyUnit(line.done, line.unit)} {page.stage === 'dispatch' ? 'sent' : 'made'}
+            </p>
+          );
+        }
+        const specs = (line.specs || []).filter((spec) => {
+          const key = `${spec.label}|${spec.value}`;
+          if (shown.has(key)) return false;
+          shown.add(key);
+          return true;
+        });
+        return (
+          <div key={page.stage} className="space-y-1 rounded border border-line p-1.5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-wide">{page.label}</p>
+              <p className="text-xs">
+                {doc.block('target') ? (
+                  <>
+                    {page.stage === 'dispatch' ? 'Send' : 'Make'} <span className="text-sm font-bold">{formatQtyUnit(line.target, line.unit)}</span>
+                  </>
+                ) : null}
+                {doc.block('progress') && line.entries?.length ? (
+                  <>
+                    {' '}
+                    · Done <span className="font-bold">{formatQtyUnit(line.done, line.unit)}</span> · Left <span className="font-bold">{formatQtyUnit(line.remaining, line.unit)}</span>
+                    {line.wasteText ? <> · Waste {line.wasteText}</> : null}
+                  </>
+                ) : null}
+              </p>
+            </div>
+            {doc.block('specs') ? <SpecTable specs={specs} /> : null}
+            {doc.block('blankEntry') ? <BlankEntryTable columns={BLANK_COLUMNS[page.stage] || BLANK_COLUMNS.cutting} rows={2} /> : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+// Job sheet of one order for the floor. By default one sheet with every
+// product and all its stages; pick a stage to print that stage's own page
+// (what is entered so far, more rows to fill in).
 export function JobSheet() {
   const { orderId } = useParams();
   const [params, setParams] = useSearchParams();
@@ -100,10 +180,45 @@ export function JobSheet() {
       order.documentFields
     )
     .map((f) => ({ label: f.label, value: f.value, strong: f.key === 'deliverBy' || (f.key === 'priority' && order.priority !== 'normal') }));
-  // "All stages" leaves out stages that are already finished (pick the stage to reprint one).
-  const open = sheet.stages.filter((page) => page.lines.some((line) => !line.finished));
-  const pages = stage || !open.length ? sheet.stages : open;
-  const skipped = sheet.stages.length - pages.length;
+  const pages = sheet.stages;
+  // Every product once, with its stages in route order.
+  const products = [];
+  const byItem = new Map();
+  for (const page of sheet.stages) {
+    for (const line of page.lines) {
+      if (!byItem.has(line.itemId)) {
+        byItem.set(line.itemId, { line, stages: [] });
+        products.push(byItem.get(line.itemId));
+      }
+      byItem.get(line.itemId).stages.push({ page, line });
+    }
+  }
+  const signatures = (
+    <div className="grid grid-cols-3 gap-4 pt-4 text-xs">
+      {['Operator', 'Supervisor', 'Checked by'].map((who) => (
+        <p key={who} className="border-t border-ink pt-1 text-center">
+          {who}
+        </p>
+      ))}
+    </div>
+  );
+  const instructions =
+    doc.block('instructions') && order.productionInstructions ? (
+      <div className="rounded border border-line bg-slate-50 px-2 py-1.5 text-xs">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">{blockText(doc, 'instructions', 'Production instructions')}</p>
+        <ul className="mt-0.5 list-disc space-y-0.5 pl-4 font-medium">
+          {instructionPoints(order.productionInstructions).map((point, at) => (
+            <li key={at}>{point}</li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+  const footer = (
+    <>
+      <DocFootnotes note={doc.footerNote} />
+      {doc.block('footer') ? <SheetFooter printedAt={sheet.printedAt} printedBy={sheet.printedBy} note="Enter these figures in the app's register at the end of the shift." /> : null}
+    </>
+  );
 
   return (
     <PrintShell
@@ -112,37 +227,43 @@ export function JobSheet() {
         <label className="text-sm font-semibold">
           Stage{' '}
           <select value={stage} onChange={(e) => setParams(e.target.value ? { stage: e.target.value } : {}, { replace: true })} className="ml-1 rounded-lg border border-line bg-white px-2 py-1.5">
-            <option value="">All open stages ({pages.length} {pages.length === 1 ? 'page' : 'pages'})</option>
+            <option value="">All stages (one sheet)</option>
             {PRODUCTION_STAGES.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
               </option>
             ))}
           </select>
-          {skipped ? <span className="ml-2 font-normal text-slate">{skipped} finished {skipped === 1 ? 'stage' : 'stages'} left out</span> : null}
         </label>
       }
     >
-      {pages.map((page) => (
+      {!stage ? (
+        <Sheet>
+          <SheetHeader company={company} title={renamedTitle || 'Job sheet'} number={order.number}>
+            <p className="text-xs">{orderTypeLabel(order.orderType)}</p>
+          </SheetHeader>
+          <div className="mt-2 space-y-3">
+            <Facts cols={3} items={facts} />
+            {instructions}
+            {products.map((entry, index) => (
+              <ProductAllStages key={entry.line.itemId} index={index} entry={entry} doc={doc} />
+            ))}
+            {signatures}
+          </div>
+          {footer}
+        </Sheet>
+      ) : null}
+      {(stage ? pages : []).map((page) => (
         <Sheet key={page.stage}>
           <SheetHeader company={company} title={renamedTitle ? `${page.label} ${renamedTitle}` : `${page.label} job sheet`} number={order.number}>
             <p className="text-xs">{orderTypeLabel(order.orderType)}</p>
           </SheetHeader>
           <div className="mt-2 space-y-3">
             <Facts cols={3} items={facts} />
-            {doc.block('instructions') && order.productionInstructions ? (
-              <div className="rounded border border-line bg-slate-50 px-2 py-1.5 text-xs">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">{blockText(doc, 'instructions', 'Production instructions')}</p>
-                <ul className="mt-0.5 list-disc space-y-0.5 pl-4 font-medium">
-                  {instructionPoints(order.productionInstructions).map((point, at) => (
-                    <li key={at}>{point}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+            {instructions}
 
             {page.lines.map((line, index) => {
-              const name = [line.product, line.productCode && line.productCode !== line.product ? `(${line.productCode})` : '', line.process ? `· ${line.process}` : ''].filter(Boolean).join(' ');
+              const name = lineName(line);
               if (line.finished) {
                 return (
                   <p key={line.itemId} className="rounded border border-line px-2 py-1.5 text-slate">
@@ -226,16 +347,9 @@ export function JobSheet() {
               </section>
               );
             })}
-            <div className="grid grid-cols-3 gap-4 pt-4 text-xs">
-              {['Operator', 'Supervisor', 'Checked by'].map((who) => (
-                <p key={who} className="border-t border-ink pt-1 text-center">
-                  {who}
-                </p>
-              ))}
-            </div>
+            {signatures}
           </div>
-          <DocFootnotes note={doc.footerNote} />
-          {doc.block('footer') ? <SheetFooter printedAt={sheet.printedAt} printedBy={sheet.printedBy} note="Enter these figures in the app's register at the end of the shift." /> : null}
+          {footer}
         </Sheet>
       ))}
     </PrintShell>
