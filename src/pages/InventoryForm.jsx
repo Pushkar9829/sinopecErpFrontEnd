@@ -435,7 +435,7 @@ export function InventoryForm() {
               required
               disabled={locked}
               type="number"
-              min="0"
+              min={isEdit && Number(loadedQuantity) < 0 ? undefined : '0'}
               step="any"
               value={form.quantity}
               onChange={(event) => update('quantity', event.target.value)}
