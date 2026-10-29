@@ -106,3 +106,14 @@ export function SheetFooter({ printedAt, printedBy, note }) {
   );
 }
 
+
+// Owner's footer note and the "computer generated" line (Settings → Documents).
+export function DocFootnotes({ note, computerGenerated = false }) {
+  if (!note && !computerGenerated) return null;
+  return (
+    <div className="space-y-1 pt-2 text-xs">
+      {note ? <p className="whitespace-pre-line text-slate">{note}</p> : null}
+      {computerGenerated ? <p className="text-center text-slate">This is a Computer Generated Document</p> : null}
+    </div>
+  );
+}

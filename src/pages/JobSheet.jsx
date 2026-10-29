@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { companyApi } from '../api/company.api';
 import { productionApi } from '../api/production.api';
-import { BlankEntryTable, Facts, PrintShell, Sheet, SheetFooter, SheetHeader } from '../components/print/PrintKit';
+import { BlankEntryTable, DocFootnotes, Facts, PrintShell, Sheet, SheetFooter, SheetHeader } from '../components/print/PrintKit';
+import { blockText } from '../components/print/blockText';
+import { useDocumentLayout } from '../lib/documentLayout';
 import { PRODUCTION_STAGES, formatDate, formatQtyUnit, orderTypeLabel } from '../lib/sales';
 
 // What the operator writes in by hand on each stage's sheet.
@@ -62,6 +64,7 @@ export function JobSheet() {
   const [sheet, setSheet] = useState(null);
   const [company, setCompany] = useState(null);
   const [error, setError] = useState('');
+  const doc = useDocumentLayout('jobSheet');
 
   useEffect(() => {
     companyApi
@@ -81,8 +84,22 @@ export function JobSheet() {
   }, [orderId, stage]);
 
   if (error) return <p className="p-6 text-sm text-red-700">{error}</p>;
-  if (!sheet) return <p className="p-6 text-sm text-slate">Loading job sheet…</p>;
+  if (!sheet || !doc.ready) return <p className="p-6 text-sm text-slate">Loading job sheet…</p>;
   const { order } = sheet;
+  // Layout from Settings → Documents → Job sheet.
+  const renamedTitle = doc.layout?.title && doc.layout.title !== doc.layout.defaultTitle ? doc.layout.title : '';
+  const facts = doc
+    .fields(
+      {
+        customer: order.customer,
+        deliverBy: formatDate(order.deliveryDate),
+        priority: order.priority ? order.priority.toUpperCase() : '',
+        orderDate: order.orderDate ? formatDate(order.orderDate) : '',
+        customerPo: order.customerPoNumber,
+      },
+      order.documentFields
+    )
+    .map((f) => ({ label: f.label, value: f.value, strong: f.key === 'deliverBy' || (f.key === 'priority' && order.priority !== 'normal') }));
   // "All stages" leaves out stages that are already finished (pick the stage to reprint one).
   const open = sheet.stages.filter((page) => page.lines.some((line) => !line.finished));
   const pages = stage || !open.length ? sheet.stages : open;
@@ -108,21 +125,14 @@ export function JobSheet() {
     >
       {pages.map((page) => (
         <Sheet key={page.stage}>
-          <SheetHeader company={company} title={`${page.label} job sheet`} number={order.number}>
+          <SheetHeader company={company} title={renamedTitle ? `${page.label} ${renamedTitle}` : `${page.label} job sheet`} number={order.number}>
             <p className="text-xs">{orderTypeLabel(order.orderType)}</p>
           </SheetHeader>
           <div className="mt-2 space-y-3">
-            <Facts
-              cols={3}
-              items={[
-                { label: 'Customer', value: order.customer },
-                { label: 'Deliver by', value: formatDate(order.deliveryDate), strong: true },
-                { label: 'Priority', value: order.priority ? order.priority.toUpperCase() : '', strong: order.priority !== 'normal' },
-              ]}
-            />
-            {order.productionInstructions ? (
+            <Facts cols={3} items={facts} />
+            {doc.block('instructions') && order.productionInstructions ? (
               <div className="rounded border border-line bg-slate-50 px-2 py-1.5 text-xs">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Production instructions</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">{blockText(doc, 'instructions', 'Production instructions')}</p>
                 <ul className="mt-0.5 list-disc space-y-0.5 pl-4 font-medium">
                   {instructionPoints(order.productionInstructions).map((point, at) => (
                     <li key={at}>{point}</li>
@@ -150,7 +160,7 @@ export function JobSheet() {
                     <h2 className="text-sm font-bold">
                       {index + 1}. {name}
                     </h2>
-                    {line.route?.length ? (
+                    {doc.block('route') && line.route?.length ? (
                       <p className="text-xs text-slate">
                         Route:{' '}
                         {line.route.map((label, at) => (
@@ -162,26 +172,28 @@ export function JobSheet() {
                       </p>
                     ) : null}
                   </div>
-                  <div className="shrink-0 rounded border-2 border-ink px-2 py-0.5 text-right">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate">{page.stage === 'dispatch' ? 'Send' : 'Make'}</p>
-                    <p className="text-base font-bold leading-tight">{formatQtyUnit(line.target, line.unit)}</p>
-                  </div>
+                  {doc.block('target') ? (
+                    <div className="shrink-0 rounded border-2 border-ink px-2 py-0.5 text-right">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate">{page.stage === 'dispatch' ? 'Send' : 'Make'}</p>
+                      <p className="text-base font-bold leading-tight">{formatQtyUnit(line.target, line.unit)}</p>
+                    </div>
+                  ) : null}
                 </div>
-                <SpecTable specs={line.specs} />
-                {line.images.length ? (
+                {doc.block('specs') ? <SpecTable specs={line.specs} /> : null}
+                {doc.block('specs') && line.images.length ? (
                   <div className="flex flex-wrap gap-2">
                     {line.images.map((src) => (
                       <img key={src.slice(0, 80)} src={src} alt="Artwork" className="h-28 max-w-[45%] rounded border border-line object-contain" />
                     ))}
                   </div>
                 ) : null}
-                {line.entries.length ? (
+                {doc.block('progress') && line.entries.length ? (
                   <p className="text-xs">
                     Done so far <span className="font-bold">{formatQtyUnit(line.done, line.unit)}</span> · Left <span className="font-bold">{formatQtyUnit(line.remaining, line.unit)}</span>
                     {line.wasteText ? <> · Waste {line.wasteText}</> : null}
                   </p>
                 ) : null}
-                {line.entries.length ? (
+                {doc.block('entries') && line.entries.length ? (
                   <table className="w-full border-collapse text-[11px]">
                     <caption className="pb-0.5 text-left font-semibold">Entered so far</caption>
                     <thead>
@@ -210,7 +222,7 @@ export function JobSheet() {
                     </tbody>
                   </table>
                 ) : null}
-                <BlankEntryTable columns={BLANK_COLUMNS[page.stage] || BLANK_COLUMNS.cutting} rows={page.lines.length > 2 ? 3 : 5} />
+                {doc.block('blankEntry') ? <BlankEntryTable columns={BLANK_COLUMNS[page.stage] || BLANK_COLUMNS.cutting} rows={page.lines.length > 2 ? 3 : 5} /> : null}
               </section>
               );
             })}
@@ -222,7 +234,8 @@ export function JobSheet() {
               ))}
             </div>
           </div>
-          <SheetFooter printedAt={sheet.printedAt} printedBy={sheet.printedBy} note="Enter these figures in the app's register at the end of the shift." />
+          <DocFootnotes note={doc.footerNote} />
+          {doc.block('footer') ? <SheetFooter printedAt={sheet.printedAt} printedBy={sheet.printedBy} note="Enter these figures in the app's register at the end of the shift." /> : null}
         </Sheet>
       ))}
     </PrintShell>

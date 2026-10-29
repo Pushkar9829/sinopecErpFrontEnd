@@ -27,6 +27,8 @@ const CustomerAccount = lazy(() => import('./pages/CustomerAccount').then((m) =>
 const OpeningImport = lazy(() => import('./pages/OpeningImport').then((m) => ({ default: m.OpeningImport })));
 const CreditNotePrint = lazy(() => import('./pages/CreditNotePrint').then((m) => ({ default: m.CreditNotePrint })));
 const InvoicePrint = lazy(() => import('./pages/InvoicePrint').then((m) => ({ default: m.InvoicePrint })));
+const SalesOrderPrint = lazy(() => import('./pages/SalesOrderPrint').then((m) => ({ default: m.SalesOrderPrint })));
+const DocumentLayouts = lazy(() => import('./pages/DocumentLayouts').then((m) => ({ default: m.DocumentLayouts })));
 const Receivables = lazy(() => import('./pages/Receivables').then((m) => ({ default: m.Receivables })));
 const CustomerStatement = lazy(() => import('./pages/CustomerStatement').then((m) => ({ default: m.CustomerStatement })));
 const CompanySettings = lazy(() => import('./pages/CompanySettings').then((m) => ({ default: m.CompanySettings })));
@@ -81,6 +83,7 @@ function AppRoutes() {
           <Route element={<ProtectedRoute />}>
             <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
               <Route path="invoices/:id/print" element={<InvoicePrint />} />
+              <Route path="sales-orders/:id/print" element={<SalesOrderPrint />} />
               <Route path="credit-notes/:id/print" element={<CreditNotePrint />} />
               <Route path="customers/:id/statement" element={<CustomerStatement />} />
             </Route>
@@ -180,6 +183,7 @@ function AppRoutes() {
               {/* Same rule as the menu: no role holds company:update, so only the owner gets here. */}
               <Route element={<ProtectedRoute permission="company:update" />}>
                 <Route path="company" element={<CompanySettings />} />
+                <Route path="settings/documents" element={<DocumentLayouts />} />
               </Route>
               <Route element={<ProtectedRoute anyOf={['accounts:read', 'sales:read']} />}>
                 <Route path="customers/:id/account" element={<CustomerAccount />} />

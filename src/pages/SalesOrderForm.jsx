@@ -2,6 +2,7 @@ import { useFieldRules } from '../hooks/useFieldRules';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { companyApi } from '../api/company.api';
+import { documentLayoutsApi } from '../api/documentLayouts.api';
 import { customersApi } from '../api/customers.api';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { salesOrdersApi } from '../api/salesOrders.api';
@@ -107,6 +108,66 @@ function FlowMenu({ disabled, onPick, routes }) {
   );
 }
 
+const CHARGE_PRESETS = [
+  { name: 'Outward Freight Charges by Road', sac: '996511', gstPercent: '18' },
+  { name: 'Packing charges', sac: '998540', gstPercent: '18' },
+  { name: 'Designing charges', sac: '998391', gstPercent: '18' },
+];
+
+// Freight and other charge rows billed with the goods, each with its own GST.
+function ChargeRows({ charges, setCharges, disabled }) {
+  const update = (uid, patch) => setCharges((prev) => prev.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
+  const add = (preset = {}) =>
+    setCharges((prev) => [...prev, { uid: `new-${Date.now()}-${prev.length}`, name: '', sac: '', amount: '', gstPercent: '18', ...preset }]);
+  function rename(row, name) {
+    const preset = CHARGE_PRESETS.find((p) => p.name === name);
+    update(row.uid, { name, ...(preset && !row.sac ? { sac: preset.sac, gstPercent: preset.gstPercent } : {}) });
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-ink">
+        Other charges <span className="font-normal text-slate">(freight, packing… printed below the products)</span>
+      </p>
+      {charges.map((row) => (
+        <div key={row.uid} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_0.7fr_auto] sm:items-end">
+          <Field label="Charge">
+            <input value={row.name} disabled={disabled} list="charge-names" onChange={(e) => rename(row, e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="SAC / HSN">
+            <input value={row.sac} disabled={disabled} onChange={(e) => update(row.uid, { sac: e.target.value })} className={inputClass} />
+          </Field>
+          <Field label="Amount (₹)">
+            <input type="number" min="0" step="any" value={row.amount} disabled={disabled} onChange={(e) => update(row.uid, { amount: e.target.value })} className={inputClass} />
+          </Field>
+          <Field label="GST %">
+            <input type="number" min="0" max="100" step="any" value={row.gstPercent} disabled={disabled} onChange={(e) => update(row.uid, { gstPercent: e.target.value })} className={inputClass} />
+          </Field>
+          {!disabled ? (
+            <button type="button" onClick={() => setCharges((prev) => prev.filter((r) => r.uid !== row.uid))} className="mb-1 rounded-lg border border-line px-3 py-2 text-sm text-rose-800 hover:bg-rose-50">
+              Remove
+            </button>
+          ) : null}
+        </div>
+      ))}
+      <datalist id="charge-names">
+        {CHARGE_PRESETS.map((p) => (
+          <option key={p.name} value={p.name} />
+        ))}
+      </datalist>
+      {!disabled ? (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => add(CHARGE_PRESETS[0])} className="rounded-lg border border-accent px-3 py-1.5 text-sm font-semibold text-accent hover:bg-accent/10">
+            + Freight
+          </button>
+          <button type="button" onClick={() => add()} className="rounded-lg border border-line px-3 py-1.5 text-sm font-semibold hover:bg-paper">
+            + Other charge
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const emptyHeader = () => ({
   customerId: '',
   orderDate: todayInput(),
@@ -161,12 +222,16 @@ export function SalesOrderForm() {
   const [options, setOptions] = useState({});
   const [paidAmount, setPaidAmount] = useState(0);
   const [companyCreditDays, setCompanyCreditDays] = useState(30);
+  // Freight and other charge rows, and the values printed on the order's documents.
+  const [charges, setCharges] = useState([]);
+  const [docValues, setDocValues] = useState({});
+  const [docFieldDefs, setDocFieldDefs] = useState([]);
 
-  const { markSaved } = useUnsavedChanges({ header, items, orderType }, loaded && canSave);
+  const { markSaved } = useUnsavedChanges({ header, items, orderType, charges, docValues }, loaded && canSave);
   const selectedCustomer = customers.find((customer) => customer.id === header.customerId);
   const totals = useMemo(
-    () => calcOrder(items, header.discount, header.advanceAmount, paidAmount),
-    [items, header.discount, header.advanceAmount, paidAmount]
+    () => calcOrder(items, header.discount, header.advanceAmount, paidAmount, charges),
+    [items, header.discount, header.advanceAmount, paidAmount, charges]
   );
 
   useEffect(() => {
@@ -184,6 +249,10 @@ export function SalesOrderForm() {
         setCompanyCreditDays(days);
         if (!id) setHeader((prev) => ({ ...prev, creditDays: String(days) }));
       })
+      .catch(() => {});
+    documentLayoutsApi
+      .orderFields()
+      .then(setDocFieldDefs)
       .catch(() => {});
     // Loaded once; `id` only decides whether a new order takes the default.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,6 +292,8 @@ export function SalesOrderForm() {
           discount: String(order.discount ?? 0),
         });
         setItems((order.items?.length ? order.items.map(itemFromApi) : [emptyLineItem()]).map((item) => fitRoute(item, loadedType)));
+        setCharges((order.charges || []).map((charge) => ({ ...charge, uid: charge.id, amount: String(charge.amount ?? ''), gstPercent: String(charge.gstPercent ?? '') })));
+        setDocValues(order.documentFields || {});
         setLoaded(true);
       })
       .catch((err) => setError(err.message));
@@ -283,6 +354,10 @@ export function SalesOrderForm() {
       creditDays: Number(header.creditDays) || 0,
       advanceAmount: Number(header.advanceAmount) || 0,
       discount: Number(header.discount) || 0,
+      charges: charges
+        .filter((charge) => charge.name.trim() || Number(charge.amount) > 0)
+        .map((charge) => ({ id: charge.id, name: charge.name, sac: charge.sac, amount: Number(charge.amount) || 0, gstPercent: Number(charge.gstPercent) || 0 })),
+      documentFields: docValues,
       items: items
         .filter((item) => String(item.product || '').trim() || String(item.productCode || '').trim() || Number(item.quantity) > 0 || item.stageWork?.length)
         .map(itemToPayload),
@@ -567,6 +642,26 @@ export function SalesOrderForm() {
               <textarea rows={3} value={header.productionInstructions} disabled={!canSave} onChange={(e) => updateHeader('productionInstructions', e.target.value)} className={inputClass} />
             </Field>
           </div>
+          {docFieldDefs.length ? (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-ink">
+                Printed on the sales order and invoice <span className="font-normal text-slate">(Settings → Documents)</span>
+              </p>
+              <Grid>
+                {docFieldDefs.map((f) => (
+                  <Field key={f.key} label={f.label}>
+                    <input
+                      value={docValues[f.key] || ''}
+                      disabled={!canSave}
+                      onChange={(e) => setDocValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.key === 'destination' ? header.deliveryLocation.split('\n')[0] || '' : ''}
+                      className={inputClass}
+                    />
+                  </Field>
+                ))}
+              </Grid>
+            </div>
+          ) : null}
         </Section>
         ) : null}
 
@@ -579,6 +674,9 @@ export function SalesOrderForm() {
               <Field label="Order discount">
                 <input type="number" min="0" step="any" value={header.discount} disabled={!canSave} onChange={(e) => updateHeader('discount', e.target.value)} className={inputClass} />
               </Field>
+              <Field label="Other charges">
+                <input readOnly value={formatMoney(totals.charges)} className={inputClass} />
+              </Field>
               <Field label="Tax">
                 <input readOnly value={formatMoney(totals.tax)} className={inputClass} />
               </Field>
@@ -589,6 +687,7 @@ export function SalesOrderForm() {
                 <input readOnly value={formatMoney(totals.remaining)} className={`${inputClass} font-semibold!`} />
               </Field>
             </Grid>
+            <ChargeRows charges={charges} setCharges={setCharges} disabled={!canSave} />
           </Section>
         ) : null}
 

@@ -60,6 +60,7 @@ const sections = [
       // No role holds this key, so only the Super Admin (who passes every check) sees it.
       { to: '/company', label: 'Company details', permission: 'company:update' },
       { to: '/settings/form-fields', label: 'Form fields', ownerOnly: true },
+      { to: '/settings/documents', label: 'Documents', permission: 'company:update' },
       { to: '/users', label: 'Users', permission: 'users:read' },
       { to: '/roles', label: 'Roles', permission: 'roles:read' },
       { to: '/audit-logs', label: 'Audit log', permission: 'audit:read' },

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { companyApi } from '../api/company.api';
 import { productionApi } from '../api/production.api';
-import { PrintShell, Sheet, SheetFooter, SheetHeader } from '../components/print/PrintKit';
+import { DocFootnotes, PrintShell, Sheet, SheetFooter, SheetHeader } from '../components/print/PrintKit';
+import { useDocumentLayout } from '../lib/documentLayout';
 import { formatDate, formatQtyUnit } from '../lib/sales';
 
 // The work list of one stage, to hand to the operators: every line waiting
@@ -15,6 +16,7 @@ export function StageSheet() {
   const sheet = result.stage === stage ? result.data : null;
   const [company, setCompany] = useState(null);
   const [error, setError] = useState('');
+  const doc = useDocumentLayout('stageSheet');
 
   useEffect(() => {
     companyApi
@@ -34,7 +36,52 @@ export function StageSheet() {
   }, [stage]);
 
   if (error) return <p className="p-6 text-sm text-red-700">{error}</p>;
-  if (!sheet) return <p className="p-6 text-sm text-slate">Loading work list…</p>;
+  if (!sheet || !doc.ready) return <p className="p-6 text-sm text-slate">Loading work list…</p>;
+  // Layout from Settings → Documents → Stage work list.
+  const renamedTitle = doc.layout?.title && doc.layout.title !== doc.layout.defaultTitle ? doc.layout.title : '';
+  const facts = doc.fields({ date: formatDate(new Date()), lineCount: `${sheet.lines.length}` });
+  const td = 'border border-ink px-1 py-1';
+  const today = new Date(new Date().toDateString());
+  const columns = doc.columns([
+    { key: 'sl', label: '#', cell: (line, i) => <td key="sl" className={td}>{i + 1}</td> },
+    { key: 'order', label: 'Order', cell: (line) => <td key="order" className={`${td} font-mono font-bold`}>{line.number}</td> },
+    { key: 'priority', label: 'Priority', cell: (line) => <td key="priority" className={`${td} ${line.priority !== 'normal' ? 'font-bold uppercase' : ''}`}>{line.priority}</td> },
+    {
+      key: 'deliverBy',
+      label: 'Deliver by',
+      cell: (line) => {
+        const late = line.deliveryDate && new Date(line.deliveryDate) < today;
+        return (
+          <td key="deliverBy" className={`${td} ${late ? 'font-bold' : ''}`}>
+            {formatDate(line.deliveryDate)}
+            {late ? ' (late)' : ''}
+          </td>
+        );
+      },
+    },
+    { key: 'customer', label: 'Customer', cell: (line) => <td key="customer" className={td}>{line.customer}</td> },
+    {
+      key: 'product',
+      label: 'Product & specs',
+      cell: (line) => (
+        <td key="product" className={td}>
+          <p className="font-semibold">{line.product}</p>
+          <p className="text-slate">
+            {line.specs
+              .filter((s) => s.label !== 'Product')
+              .map((s) => `${s.label}: ${s.value}`)
+              .join(' · ')}
+          </p>
+        </td>
+      ),
+    },
+    { key: 'toMake', label: 'To make', cell: (line) => <td key="toMake" className={`whitespace-nowrap ${td} text-right`}>{formatQtyUnit(line.target, line.unit)}</td> },
+    { key: 'done', label: 'Done', cell: (line) => <td key="done" className={`whitespace-nowrap ${td} text-right`}>{formatQtyUnit(line.done, line.unit)}</td> },
+    { key: 'left', label: 'Left', cell: (line) => <td key="left" className={`whitespace-nowrap ${td} text-right font-bold`}>{formatQtyUnit(line.remaining, line.unit)}</td> },
+    { key: 'doneToday', label: 'Done today', cell: () => <td key="doneToday" className="w-20 border border-ink" /> },
+    { key: 'machine', label: 'Machine / operator', cell: () => <td key="machine" className="w-28 border border-ink" /> },
+    { key: 'sign', label: 'Sign', cell: () => <td key="sign" className="w-16 border border-ink" /> },
+  ]);
 
   return (
     <PrintShell
@@ -56,9 +103,22 @@ export function StageSheet() {
       }
     >
       <Sheet landscape>
-        <SheetHeader company={company} title={`${sheet.label} work list`}>
-          <p className="text-sm font-semibold">{formatDate(new Date())}</p>
-          <p className="text-xs">{sheet.lines.length} line(s) to do</p>
+        <SheetHeader company={company} title={renamedTitle ? `${sheet.label} ${renamedTitle}` : `${sheet.label} work list`}>
+          {facts.map((f) =>
+            f.key === 'date' ? (
+              <p key={f.key} className="text-sm font-semibold">
+                {f.value}
+              </p>
+            ) : f.key === 'lineCount' ? (
+              <p key={f.key} className="text-xs">
+                {f.value} line(s) to do
+              </p>
+            ) : (
+              <p key={f.key} className="text-xs">
+                {f.label}: {f.value}
+              </p>
+            )
+          )}
         </SheetHeader>
         {!sheet.lines.length ? (
           <p className="py-8 text-center text-slate">Nothing is waiting at {sheet.label.toLowerCase()} right now.</p>
@@ -66,48 +126,24 @@ export function StageSheet() {
           <table className="mt-3 w-full border-collapse text-left text-[11px]">
             <thead>
               <tr>
-                {['#', 'Order', 'Priority', 'Deliver by', 'Customer', 'Product & specs', 'To make', 'Done', 'Left', 'Done today', 'Machine / operator', 'Sign'].map((h) => (
-                  <th key={h} className="border border-ink bg-slate-100 px-1 py-1 font-semibold">
-                    {h}
+                {columns.map((c) => (
+                  <th key={c.key} className="border border-ink bg-slate-100 px-1 py-1 font-semibold">
+                    {c.label}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {sheet.lines.map((line, i) => {
-                const late = line.deliveryDate && new Date(line.deliveryDate) < new Date(new Date().toDateString());
-                return (
-                  <tr key={line.id} className="break-inside-avoid align-top">
-                    <td className="border border-ink px-1 py-1">{i + 1}</td>
-                    <td className="border border-ink px-1 py-1 font-mono font-bold">{line.number}</td>
-                    <td className={`border border-ink px-1 py-1 ${line.priority !== 'normal' ? 'font-bold uppercase' : ''}`}>{line.priority}</td>
-                    <td className={`border border-ink px-1 py-1 ${late ? 'font-bold' : ''}`}>
-                      {formatDate(line.deliveryDate)}
-                      {late ? ' (late)' : ''}
-                    </td>
-                    <td className="border border-ink px-1 py-1">{line.customer}</td>
-                    <td className="border border-ink px-1 py-1">
-                      <p className="font-semibold">{line.product}</p>
-                      <p className="text-slate">
-                        {line.specs
-                          .filter((s) => s.label !== 'Product')
-                          .map((s) => `${s.label}: ${s.value}`)
-                          .join(' · ')}
-                      </p>
-                    </td>
-                    <td className="whitespace-nowrap border border-ink px-1 py-1 text-right">{formatQtyUnit(line.target, line.unit)}</td>
-                    <td className="whitespace-nowrap border border-ink px-1 py-1 text-right">{formatQtyUnit(line.done, line.unit)}</td>
-                    <td className="whitespace-nowrap border border-ink px-1 py-1 text-right font-bold">{formatQtyUnit(line.remaining, line.unit)}</td>
-                    <td className="w-20 border border-ink" />
-                    <td className="w-28 border border-ink" />
-                    <td className="w-16 border border-ink" />
-                  </tr>
-                );
-              })}
+              {sheet.lines.map((line, i) => (
+                <tr key={line.id} className="break-inside-avoid align-top">
+                  {columns.map((c) => c.cell(line, i))}
+                </tr>
+              ))}
             </tbody>
           </table>
         )}
-        <SheetFooter printedAt={sheet.printedAt} printedBy={sheet.printedBy} note="Write today's figures here, then enter them in the app's register." />
+        <DocFootnotes note={doc.footerNote} />
+        {doc.block('footer') ? <SheetFooter printedAt={sheet.printedAt} printedBy={sheet.printedBy} note="Write today's figures here, then enter them in the app's register." /> : null}
       </Sheet>
     </PrintShell>
   );

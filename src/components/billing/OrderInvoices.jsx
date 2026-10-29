@@ -11,17 +11,23 @@ const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // Same working as the API (billing priceLine): the line discount plus its
 // share of the order discount, in proportion to the quantity billed now, and
 // GST rounded per line. So the preview total is the invoice total.
-function preview(lines, intraState) {
+function preview(lines, intraState, charges = []) {
   let taxable = 0;
   let cgst = 0;
   let sgst = 0;
   let igst = 0;
-  for (const line of lines) {
-    const quantity = Number(line.quantity) || 0;
-    if (quantity <= 0) continue;
-    const fraction = line.ordered > 0 ? quantity / line.ordered : 0;
-    const value = money(Math.max(0, quantity * (Number(line.rate) || 0) - money((Number(line.discount) || 0) * fraction)));
-    const tax = (value * (Number(line.gstPercent) || 0)) / 100;
+  const rows = [
+    ...lines.map((line) => {
+      const quantity = Number(line.quantity) || 0;
+      const fraction = line.ordered > 0 ? quantity / line.ordered : 0;
+      return { value: quantity > 0 ? money(Math.max(0, quantity * (Number(line.rate) || 0) - money((Number(line.discount) || 0) * fraction))) : 0, gstPercent: line.gstPercent };
+    }),
+    // Charges (freight...) ticked to go on this invoice.
+    ...charges.filter((c) => c.include).map((c) => ({ value: money(c.amount), gstPercent: c.gstPercent })),
+  ];
+  for (const { value, gstPercent } of rows) {
+    if (value <= 0) continue;
+    const tax = (value * (Number(gstPercent) || 0)) / 100;
     taxable += value;
     if (intraState) {
       cgst += money(tax / 2);
@@ -45,6 +51,7 @@ function CreateInvoice({ orderId, open, onClose }) {
   // Owner only: bill goods not dispatched yet, with a reason kept on the invoice.
   const [billAhead, setBillAhead] = useState(false);
   const [aheadReason, setAheadReason] = useState('');
+  const [charges, setCharges] = useState([]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -56,6 +63,7 @@ function CreateInvoice({ orderId, open, onClose }) {
         setDraft(data);
         setCreditDays(String(data.creditDays ?? ''));
         setLines(data.lines.map((line) => ({ ...line, quantity: line.suggested > 0 ? String(line.suggested) : '' })));
+        setCharges((data.charges || []).map((charge) => ({ ...charge, include: !charge.billed })));
       })
       .catch((err) => alive && setError(err.message));
     return () => {
@@ -63,7 +71,7 @@ function CreateInvoice({ orderId, open, onClose }) {
     };
   }, [open, orderId]);
 
-  const totals = useMemo(() => preview(lines, draft?.intraState), [lines, draft]);
+  const totals = useMemo(() => preview(lines, draft?.intraState, charges), [lines, draft, charges]);
   const tooMuch = lines.find((l) => (Number(l.quantity) || 0) > limitOf(l, billAhead) + 1e-6);
   const ahead = lines.some((l) => (Number(l.quantity) || 0) > l.available + 1e-6);
   const reasonMissing = billAhead && ahead && aheadReason.trim().length < 3;
@@ -77,6 +85,7 @@ function CreateInvoice({ orderId, open, onClose }) {
         creditDays,
         ...(billAhead && ahead ? { billAhead: true, billAheadReason: aheadReason.trim() } : {}),
         lines: lines.filter((l) => Number(l.quantity) > 0).map((l) => ({ itemId: l.itemId, quantity: Number(l.quantity) })),
+        charges: charges.filter((c) => c.include && !c.billed).map((c) => c.id),
       });
       navigate(`/invoices/${invoice.id}/print`);
     } catch (err) {
@@ -155,6 +164,23 @@ function CreateInvoice({ orderId, open, onClose }) {
               </tbody>
             </table>
           </div>
+          {charges.length ? (
+            <div className="space-y-1 rounded-lg border border-line px-3 py-2 text-sm">
+              <p className="font-semibold">Other charges on the order</p>
+              {charges.map((charge) => (
+                <label key={charge.id} className={`flex items-center gap-2 ${charge.billed ? 'text-slate' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={charge.billed ? false : charge.include}
+                    disabled={charge.billed}
+                    onChange={(e) => setCharges((all) => all.map((c) => (c.id === charge.id ? { ...c, include: e.target.checked } : c)))}
+                  />
+                  {charge.name} {charge.sac ? `(SAC ${charge.sac})` : ''} · {formatMoney(charge.amount)} + {charge.gstPercent}% GST
+                  {charge.billed ? ' · already on an invoice' : ''}
+                </label>
+              ))}
+            </div>
+          ) : null}
           {draft.canBillAhead ? (
             <div className="space-y-2 rounded-lg border border-line px-3 py-2 text-sm">
               <label className="flex items-center gap-2 font-semibold">

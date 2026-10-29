@@ -571,7 +571,7 @@ export function calcLine(item) {
 // GST on the value after all discounts: the order discount is spread over the
 // lines by value, then each line is taxed at its own rate. Must match
 // calcTotals in backend/src/modules/salesOrder/salesOrder.service.js.
-export function calcOrder(items, orderDiscount, advanceAmount, paidAmount = 0) {
+export function calcOrder(items, orderDiscount, advanceAmount, paidAmount = 0, charges = []) {
   const taxables = items.map((item) =>
     Math.max(0, (Number(item.quantity) || 0) * (Number(item.rate) || 0) - (Number(item.discount) || 0))
   );
@@ -582,11 +582,18 @@ export function calcOrder(items, orderDiscount, advanceAmount, paidAmount = 0) {
     const share = subtotal > 0 ? (discount * taxable) / subtotal : 0;
     tax += money(((taxable - share) * (Number(items[index].taxPercent) || 0)) / 100);
   });
-  const grandTotal = Math.max(0, subtotal - discount + tax);
+  // Charges (freight...) are not discounted; each carries its own GST.
+  let chargeTotal = 0;
+  for (const charge of charges || []) {
+    chargeTotal += Number(charge.amount) || 0;
+    tax += money(((Number(charge.amount) || 0) * (Number(charge.gstPercent) || 0)) / 100);
+  }
+  const grandTotal = Math.max(0, subtotal - discount + chargeTotal + tax);
   const remaining = Math.max(0, grandTotal - Math.max(0, Number(advanceAmount) || 0) - (Number(paidAmount) || 0));
   return {
     subtotal: money(subtotal),
     discount: money(discount),
+    charges: money(chargeTotal),
     tax: money(tax),
     grandTotal: money(grandTotal),
     remaining: money(remaining),

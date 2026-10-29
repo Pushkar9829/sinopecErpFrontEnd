@@ -15,6 +15,9 @@ import { OrderNextStep, OrderTasksTab } from '../components/tasks/OrderTasksTab'
 import { useOrderTasks } from '../hooks/useOrderTasks';
 import { OrderPayments } from '../components/sales/OrderPayments';
 import { OrderInvoices } from '../components/billing/OrderInvoices';
+
+// Built-in document boxes kept on the order; added fields show as "Printed field".
+const DOC_FIELD_LABELS = { otherReferences: 'Other references', dispatchedThrough: 'Dispatched through', destination: 'Destination', deliveryTerms: 'Terms of delivery' };
 import {
   ATTACHMENT_KINDS,
   STEP_LABELS,
@@ -309,6 +312,8 @@ export function SalesOrderDetail() {
                       remarks: order.remarks,
                       productionInstructions: order.productionInstructions,
                       discount: order.discount,
+                      charges: (order.charges || []).map(({ name, sac, amount, gstPercent }) => ({ name, sac, amount, gstPercent })),
+                      documentFields: order.documentFields || {},
                       items: copyItemsForNewOrder(order.items),
                     });
                     navigate(`/sales-orders/${created.id}`);
@@ -323,6 +328,11 @@ export function SalesOrderDetail() {
               >
                 Duplicate
               </button>
+            ) : null}
+            {showMoney ? (
+              <Link to={`/sales-orders/${order.id}/print`} className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper" title="Customer copy of the order, to print or save as PDF">
+                {order.orderType === 'job_work' ? 'Job work order PDF' : 'Sales order PDF'}
+              </Link>
             ) : null}
             {PRODUCTION_VIEW_KEYS.some(can) && !['draft', 'submitted', 'cancelled'].includes(order.status) ? (
               <Link to={`/job-sheets/${order.id}`} className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-semibold text-ink hover:bg-paper" title="Printable sheet for each stage, to give to the operators">
@@ -534,6 +544,11 @@ export function SalesOrderDetail() {
           <Value label="Shipping address">{order.shippingAddress}</Value>
           <Value label="Delivery location">{order.deliveryLocation}</Value>
           <Value label="Delivery instructions">{order.deliveryInstructions}</Value>
+          {Object.entries(order.documentFields || {}).map(([key, value]) => (
+            <Value key={key} label={DOC_FIELD_LABELS[key] || 'Printed field'}>
+              {value}
+            </Value>
+          ))}
         </Grid>
       </Fold>
       </div>
@@ -745,6 +760,11 @@ export function SalesOrderDetail() {
             <Grid cols="sm:grid-cols-2 lg:grid-cols-4">
               <Value label="Subtotal">{formatMoney(order.subtotal)}</Value>
               <Value label="Discount">{formatMoney(order.discount)}</Value>
+              {(order.charges || []).map((charge) => (
+                <Value key={charge.id} label={`${charge.name}${charge.gstPercent ? ` (+${charge.gstPercent}% GST)` : ''}`}>
+                  {formatMoney(charge.amount)}
+                </Value>
+              ))}
               <Value label="Tax">{formatMoney(order.tax)}</Value>
               <Value label="Grand total" strong>{formatMoney(order.grandTotal)}</Value>
               <Value label="Advance">{formatMoney(order.advanceAmount)}</Value>

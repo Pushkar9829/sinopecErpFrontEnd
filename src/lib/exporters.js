@@ -94,21 +94,49 @@ async function writeXlsx(fileName, sheets) {
 
 // ------------------------------------------------------------------ PDF
 
+// Company name for the PDF heading, fetched once per visit; blank if it fails.
+let companyName = null;
+async function loadCompanyName() {
+  if (companyName === null) {
+    companyName = import('../api/company.api')
+      .then(({ companyApi }) => companyApi.get())
+      .then((c) => c?.legalName || '')
+      .catch(() => '');
+  }
+  return companyName;
+}
+
 async function writePdf(fileName, { title, subtitle, columns, rows, totals }) {
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+  const [{ jsPDF }, { default: autoTable }, { loadLayout }] = await Promise.all([import('jspdf'), import('jspdf-autotable'), import('./documentLayout')]);
+  // What shows on every table PDF: Settings → Documents → Table downloads.
+  const layout = await loadLayout('tableExport');
+  const company = layout.block('companyName') ? await loadCompanyName() : '';
   const landscape = columns.length > 6;
   const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
   // The built-in PDF fonts have no rupee sign, so amounts are written "Rs."
   const pdfText = (text) => String(text).replace(/₹\s?/g, 'Rs. ');
+  let y = 40;
+  if (company) {
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    doc.text(pdfText(company), 36, y - 6);
+    y += 10;
+  }
   doc.setFontSize(14);
-  doc.text(pdfText(title || fileName), 36, 40);
-  doc.setFontSize(9);
-  doc.setTextColor(90);
-  doc.text(pdfText(`${subtitle ? `${subtitle}  ·  ` : ''}Downloaded ${stamp()}`), 36, 56);
+  doc.setTextColor(0);
+  doc.text(pdfText(title || fileName), 36, y);
+  const subline = [layout.block('subtitle') ? subtitle : '', layout.block('downloadedAt') ? `Downloaded ${stamp()}` : ''].filter(Boolean).join('  ·  ');
+  if (subline) {
+    doc.setFontSize(9);
+    doc.setTextColor(90);
+    doc.text(pdfText(subline), 36, y + 16);
+    y += 16;
+  }
   const body = rows.map((row) => columns.map((c) => pdfText(plainText(c, cellValue(c, row)))));
-  const foot = totals ? [columns.map((c, i) => (i === 0 ? 'Total' : typeof totals[c.key] === 'number' ? pdfText(plainText(c, totals[c.key])) : ''))] : undefined;
+  const foot = totals && layout.block('totals') ? [columns.map((c, i) => (i === 0 ? 'Total' : typeof totals[c.key] === 'number' ? pdfText(plainText(c, totals[c.key])) : ''))] : undefined;
+  const showPages = layout.block('pageNumbers');
   autoTable(doc, {
-    startY: 68,
+    startY: y + 12,
     head: [columns.map((c) => pdfText(c.label))],
     body,
     foot,
@@ -120,12 +148,25 @@ async function writePdf(fileName, { title, subtitle, columns, rows, totals }) {
     columnStyles: Object.fromEntries(columns.map((c, i) => [i, NUMERIC.has(c.type) ? { halign: 'right' } : {}])),
     margin: { left: 36, right: 36, bottom: 36 },
     didDrawPage: () => {
+      if (!showPages) return;
       const { width, height } = doc.internal.pageSize;
       doc.setFontSize(8);
       doc.setTextColor(120);
       doc.text(`Page ${doc.internal.getNumberOfPages()}`, width - 36, height - 18, { align: 'right' });
     },
   });
+  if (layout.footerNote) {
+    const { width, height } = doc.internal.pageSize;
+    const lines = doc.splitTextToSize(pdfText(layout.footerNote), width - 72);
+    let at = (doc.lastAutoTable?.finalY || y) + 18;
+    if (at + lines.length * 10 > height - 30) {
+      doc.addPage();
+      at = 40;
+    }
+    doc.setFontSize(8);
+    doc.setTextColor(90);
+    doc.text(lines, 36, at);
+  }
   saveBlob(doc.output('blob'), `${safeName(fileName)}.pdf`);
 }
 

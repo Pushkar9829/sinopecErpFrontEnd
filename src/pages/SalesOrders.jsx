@@ -233,6 +233,8 @@ export function SalesOrders() {
         remarks: source.remarks,
         productionInstructions: source.productionInstructions,
         discount: source.discount,
+        charges: (source.charges || []).map(({ name, sac, amount, gstPercent }) => ({ name, sac, amount, gstPercent })),
+        documentFields: source.documentFields || {},
         items: copyItemsForNewOrder(source.items),
       });
       navigate(`/sales-orders/${created.id}`);
