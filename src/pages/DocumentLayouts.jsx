@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { billingApi } from '../api/billing.api';
+import { customersApi } from '../api/customers.api';
 import { documentLayoutsApi } from '../api/documentLayouts.api';
+import { salesOrdersApi } from '../api/salesOrders.api';
+import { tasksApi } from '../api/tasks.api';
 import { confirmAction } from '../components/ui/confirm';
+import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
-import { forgetLayouts } from '../lib/documentLayout';
+import { clearPreviewLayout, forgetLayouts, setPreviewLayout, withPreviewLayout } from '../lib/documentLayout';
+import { exportTable } from '../lib/exporters';
 
 // Owner: what each printed document and PDF shows — header fields, table
 // columns and page parts (show / hide, rename, reorder), added fields, title
@@ -18,6 +24,114 @@ function move(list, index, by) {
   if (to < 0 || to >= next.length) return list;
   [next[index], next[to]] = [next[to], next[index]];
   return next;
+}
+
+const rowsOf = (data) => (Array.isArray(data) ? data : data?.items || data?.rows || data?.orders || data?.tasks || []);
+const FLOOR = ['production_planned', 'in_production', 'ready_for_dispatch', 'dispatched', 'delivered'];
+
+// A real record to show each document with: the newest one that has one.
+async function samplePath(id) {
+  if (id === 'stageSheet') return '/job-sheets/stage/rolling';
+  if (id === 'salesOrder' || id === 'jobSheet') {
+    const orders = rowsOf(await salesOrdersApi.list());
+    const pick = id === 'jobSheet' ? orders.find((o) => FLOOR.includes(o.status)) : orders.find((o) => o.status !== 'draft') || orders[0];
+    if (!pick) return null;
+    return id === 'jobSheet' ? `/job-sheets/${pick.id}` : `/sales-orders/${pick.id}/print`;
+  }
+  if (id === 'taxInvoice') {
+    const invoice = rowsOf(await billingApi.invoices()).find((i) => i.kind !== 'opening');
+    return invoice ? `/invoices/${invoice.id}/print` : null;
+  }
+  if (id === 'creditNote') {
+    const note = rowsOf(await billingApi.creditNotes())[0];
+    return note ? `/credit-notes/${note.id}/print` : null;
+  }
+  if (id === 'customerStatement') {
+    const invoice = rowsOf(await billingApi.invoices())[0];
+    const customer = invoice?.customer || rowsOf(await customersApi.list())[0]?.id;
+    return customer ? `/customers/${customer}/statement` : null;
+  }
+  if (id === 'taskSheet') {
+    const task = rowsOf(await tasksApi.list({}))[0];
+    return task ? `/tasks/${task.id}/print` : null;
+  }
+  return null;
+}
+
+const SAMPLE_TABLE = {
+  fileName: 'sample_table',
+  title: 'Sample table',
+  subtitle: '3 row(s)',
+  columns: [
+    { key: 'item', label: 'Item' },
+    { key: 'qty', label: 'Quantity', type: 'number' },
+    { key: 'amount', label: 'Amount', type: 'money' },
+  ],
+  rows: [
+    { item: 'LDPE granules', qty: 500, amount: 49000 },
+    { item: 'Printed LD poly bag', qty: 2200, amount: 3850 },
+    { item: 'Outward freight', qty: 1, amount: 500 },
+  ],
+  totals: { qty: 2701, amount: 53350 },
+};
+
+// The chosen document with the unsaved changes, on a real record. The frame
+// reloads a moment after each change.
+function PreviewPanel({ draft, onClose }) {
+  const [path, setPath] = useState(undefined);
+  const [error, setError] = useState('');
+  const [stamp, setStamp] = useState(0);
+  const isTable = draft.id === 'tableExport';
+
+  useEffect(() => {
+    if (isTable) return undefined;
+    let live = true;
+    samplePath(draft.id)
+      .then((next) => live && setPath(next))
+      .catch((err) => live && setError(err.message));
+    return () => {
+      live = false;
+    };
+  }, [draft.id, isTable]);
+
+  useEffect(() => {
+    setPreviewLayout(draft);
+    const timer = setTimeout(() => setStamp(Date.now()), 500);
+    return () => clearTimeout(timer);
+  }, [draft]);
+
+  useEffect(() => () => clearPreviewLayout(draft.id), [draft.id]);
+
+  const src = path ? `${path}${path.includes('?') ? '&' : '?'}layoutPreview=1&t=${stamp}` : '';
+  return (
+    <Modal open title={`Preview: ${draft.label}`} onClose={onClose} wide>
+      <div className="space-y-2">
+        <p className="text-sm text-slate">Shows your changes before you save them. Nothing is saved until you press Save changes.</p>
+        {isTable ? (
+          <button
+            type="button"
+            onClick={() => withPreviewLayout(draft, () => exportTable('pdf', SAMPLE_TABLE)).catch((err) => setError(err.message))}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white"
+          >
+            Download a sample table PDF
+          </button>
+        ) : error ? (
+          <p className="text-sm text-rose-800">{error}</p>
+        ) : path === undefined ? (
+          <p className="text-sm text-slate">Finding a record to show…</p>
+        ) : !path ? (
+          <p className="text-sm text-slate">There is nothing of this kind in the system yet to preview.</p>
+        ) : (
+          <>
+            <a href={src} target="_blank" rel="noreferrer" className="text-sm font-semibold text-accent">
+              Open in a new tab
+            </a>
+            <iframe key={stamp} title="Document preview" src={src} className="h-[75vh] w-full rounded-lg border border-line bg-paper" />
+          </>
+        )}
+      </div>
+    </Modal>
+  );
 }
 
 function PartList({ title, hint, parts, onChange, orderLinked, canAdd }) {
@@ -100,6 +214,7 @@ export function DocumentLayouts() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const selected = params.get('doc') || 'salesOrder';
 
   useEffect(() => {
@@ -170,6 +285,9 @@ export function DocumentLayouts() {
         actions={
           draft ? (
             <div className="flex gap-2">
+              <button type="button" onClick={() => setPreviewing(true)} className="rounded-lg border border-accent bg-white px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/10">
+                Preview
+              </button>
               <button type="button" onClick={reset} disabled={!draft.changed} className="rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold disabled:opacity-40">
                 Reset to default
               </button>
@@ -181,6 +299,7 @@ export function DocumentLayouts() {
         }
       />
       {error ? <p className="whitespace-pre-line rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p> : null}
+      {previewing && draft ? <PreviewPanel draft={draft} onClose={() => setPreviewing(false)} /> : null}
       {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
       {!layouts && !error ? <p className="text-sm text-slate">Loading…</p> : null}
 

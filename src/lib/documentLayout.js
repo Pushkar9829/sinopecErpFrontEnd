@@ -21,7 +21,51 @@ export function forgetLayouts() {
   cache = null;
 }
 
+// Preview of unsaved changes (Settings → Documents → Preview): the editor
+// leaves its draft in this browser; a print page opened with ?layoutPreview
+// uses it instead of the saved layout. Nothing is sent to the server.
+const previewKey = (id) => `layoutPreview:${id}`;
+const inMemory = {};
+
+export function setPreviewLayout(layout) {
+  try {
+    localStorage.setItem(previewKey(layout.id), JSON.stringify(layout));
+  } catch {
+    // Private window: the preview frame falls back to the saved layout.
+  }
+}
+
+// Runs `fn` (e.g. a sample table PDF in this window) with the draft layout.
+export async function withPreviewLayout(layout, fn) {
+  inMemory[layout.id] = layout;
+  try {
+    return await fn();
+  } finally {
+    delete inMemory[layout.id];
+  }
+}
+
+export function clearPreviewLayout(id) {
+  try {
+    localStorage.removeItem(previewKey(id));
+  } catch {
+    // nothing stored
+  }
+}
+
+function previewFor(id) {
+  if (inMemory[id]) return inMemory[id];
+  if (typeof window === 'undefined' || !new URLSearchParams(window.location.search).has('layoutPreview')) return null;
+  try {
+    return JSON.parse(localStorage.getItem(previewKey(id)) || 'null');
+  } catch {
+    return null;
+  }
+}
+
 export async function loadLayout(id) {
+  const preview = previewFor(id);
+  if (preview) return wrap(preview);
   const all = await loadLayouts().catch(() => []);
   return wrap(all.find((l) => l.id === id) || null);
 }
